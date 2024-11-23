@@ -8,7 +8,6 @@
 <body>
     <h1>Duty Teams</h1>
 
-    <!-- Section Selection -->
     <h2>Select Your Section</h2>
     <select id="sectionSelect" onchange="loadUsersBySection()">
         <option value="">Select Section</option>
@@ -21,26 +20,21 @@
         <option value="Team Leaders">Team Leaders</option>
     </select>
 
-    <!-- User Selection -->
     <h2>Select Your Name</h2>
     <select id="userSelect" disabled>
         <option value="">Select User</option>
     </select>
     <button onclick="fetchUserDuty()" disabled id="getDutyButton">Get Duty</button>
 
-    <!-- Duty Display -->
     <h2>Today's Duty</h2>
     <div id="dutyDisplay"></div>
 
     <script>
-        // Load users by selected section
         async function loadUsersBySection() {
             const section = document.getElementById('sectionSelect').value;
             const userSelect = document.getElementById('userSelect');
             const dutyButton = document.getElementById('getDutyButton');
-
-            // Clear previous user options
-            userSelect.innerHTML = '<option value="">Select User</option>';
+            userSelect.innerHTML = '<option value="">Select User</option>'; // Clear previous options
             dutyButton.disabled = true;
 
             if (!section) {
@@ -58,27 +52,27 @@
                     return;
                 }
 
-                // Populate users dropdown
                 data.users.forEach(user => {
                     const option = document.createElement('option');
                     option.value = user.name;
-                    option.textContent = `${user.name} (${user.role})`;
+
+                    // Use the role or default to "Team Member"
+                    const roleText = user.role || "Team Member";
+                    option.textContent = `${user.name} (${roleText})`;
+
                     userSelect.appendChild(option);
                 });
 
                 userSelect.disabled = false;
                 dutyButton.disabled = false;
-
             } catch (error) {
                 alert("An error occurred while loading users. Please try again.");
                 userSelect.disabled = true;
             }
         }
 
-        // Fetch duty for the selected user
         async function fetchUserDuty() {
             const user = document.getElementById('userSelect').value;
-
             if (!user) {
                 alert("Please select a user.");
                 return;
@@ -87,6 +81,7 @@
             try {
                 const response = await fetch(`/user-duty?user=${user}`);
                 const data = await response.json();
+
                 const dutyDisplay = document.getElementById('dutyDisplay');
 
                 if (data.error) {
@@ -101,7 +96,6 @@
                         <p><strong>Today's Duty:</strong> ${data.duty || "None"}</p>
                     `;
                 }
-
             } catch (error) {
                 alert("An error occurred while fetching the duty. Please try again.");
             }
