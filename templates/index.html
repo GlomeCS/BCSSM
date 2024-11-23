@@ -3,39 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Duty Scheduler</title>
+    <title>Home</title>
 </head>
 <body>
-    <h1>Daily Duty Scheduler</h1>
-
-    <h2>User Information</h2>
-    <div id="userInfo">
-        <!-- User info will be displayed here -->
-    </div>
-
-    <script>
-        async function fetchUserDuty() {
-            // Simulate a logged-in user (replace with actual user later)
-            const username = "Alice";  // Replace with actual logged-in username
-            const response = await fetch(`/user-duty?user=${username}`);
-            const data = await response.json();
-
-            const userInfo = document.getElementById('userInfo');
-
-            if (data.error) {
-                userInfo.innerText = data.error;
-            } else {
-                userInfo.innerHTML = `
-                    <p><strong>User:</strong> ${data.user}</p>
-                    <p><strong>Section:</strong> ${data.section}</p>
-                    <p><strong>Team:</strong> ${data.team}</p>
-                    <p><strong>Today's Duty:</strong> ${data.duty}</p>
-                `;
-            }
-        }
-
-        // Fetch user duty on page load
-        fetchUserDuty();
-    </script>
+    <h1>Welcome to the Duty Scheduler</h1>
+    <ul>
+        <li><a href="/duty-teams">Duty Teams</a></li>
+        <li><a href="/devos-feedback">Devo's Feedback (Coming Soon)</a></li>
+    </ul>
 </body>
 </html>
