@@ -1,6 +1,7 @@
+# user_assignments.py
 from datetime import datetime
 
-# Single source of truth for user assignments
+# Centralized user data (section, role, and team info)
 user_assignments = {
     "Alice": {"section": "Minis", "role": "Section Leader"},
     "Bob": {"section": "Micros", "role": "Section Leader"},
@@ -40,27 +41,13 @@ def get_user_duty(user_name):
     duty = duties[(today_index) % len(duties)]
     return {"user": user_name, "section": user_info["section"], "team": team, "duty": duty}
 
-# utils.py
-
+# Function to get all users in a given section
 def get_users_by_section(section):
-    # Example data (you would pull this from a database or data structure)
-    section_users = {
-        "Minis": ["Alice", "Ivy"],
-        "Micros": ["Bob", "Jack"],
-        "Minors": ["Charlie", "Kara"],
-        "Majors": ["David", "Liam"],
-        "Midis": ["Eve", "Mona"],
-        "Maxis": ["Frank", "Nora"],
-        "Team Leaders": ["Grace", "Hank"]
-    }
-
-    users = section_users.get(section, [])
-    
-    # Assign a default role ("Team Member") for users who don't have a defined role
+    # Filter users by section and return the list with their roles
     result = []
-    for user in users:
-        user_info = user_assignments.get(user, {})
-        role = user_info.get("role", "Team Member")  # Default to "Team Member"
-        result.append({"name": user, "role": role})
+    for user, user_info in user_assignments.items():
+        if user_info.get("section") == section:
+            role = user_info.get("role", "Team Member")  # Default to "Team Member"
+            result.append({"name": user, "role": role})
 
     return result
