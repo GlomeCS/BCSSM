@@ -19,6 +19,10 @@ user_assignments = {
     "Nora": {"section": "Maxis", "team": "Duty Team 3"},
 }
 
+def get_all_users():
+    # Return all keys (usernames) from the user_assignments dictionary
+    return list(user_assignments.keys())
+
 # Function to get a user's duty
 def get_user_duty(user_name):
     if user_name not in user_assignments:

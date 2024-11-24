@@ -3,13 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Home</title>
+    <title>Duty Scheduler</title>
+    <script>
+        async function fetchSelectedUser() {
+            const response = await fetch('/get-selected-user');
+            const data = await response.json();
+            const currentUserEl = document.getElementById('currentUser');
+            if (data.user) {
+                currentUserEl.textContent = `Current User: ${data.user}`;
+            } else {
+                currentUserEl.textContent = `No user selected. Please choose below.`;
+            }
+        }
+
+        async function selectUser() {
+            const userName = document.getElementById('userSelect').value;
+            if (!userName) return alert("Please select a user!");
+            const response = await fetch('/select-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user_name: userName }),
+            });
+            const data = await response.json();
+            alert(data.message);
+            fetchSelectedUser();
+        }
+
+        async function logout() {
+            const response = await fetch('/logout', { method: 'POST' });
+            const data = await response.json();
+            alert(data.message);
+            fetchSelectedUser();
+        }
+
+        window.onload = fetchSelectedUser;
+    </script>
 </head>
 <body>
     <h1>Welcome to the Duty Scheduler</h1>
-    <ul>
-        <li><a href="/duty-teams">Duty Teams</a></li>
-        <li><a href="/devos-feedback">Devo's Feedback (Coming Soon)</a></li>
-    </ul>
+    <p id="currentUser"></p>
+    
+    <h3>Select a User:</h3>
+    <select id="userSelect">
+        <option value="">--Select a user--</option>
+        {% for user in users %}
+            <option value="{{ user }}">{{ user }}</option>
+        {% endfor %}
+    </select>
+    <button onclick="selectUser()">Set User</button>
+    <button onclick="logout()">Logout</button>
+
+    <h3>Navigation</h3>
+    <a href="/duty-teams">View Duty Teams</a><br>
+    <a href="/devos-feedback">Devos Feedback</a>
 </body>
 </html>

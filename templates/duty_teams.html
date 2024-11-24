@@ -4,102 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duty Teams</title>
+    <script>
+        async function fetchSelectedUser() {
+            const response = await fetch('/get-selected-user');
+            const data = await response.json();
+            const currentUserEl = document.getElementById('currentUser');
+            if (data.user) {
+                currentUserEl.textContent = `Current User: ${data.user}`;
+            } else {
+                currentUserEl.textContent = `No user selected. Please return to the main page to select a user.`;
+            }
+        }
+
+        window.onload = fetchSelectedUser;
+    </script>
 </head>
 <body>
     <h1>Duty Teams</h1>
+    <p id="currentUser"></p>
 
-    <h2>Select Your Section</h2>
-    <select id="sectionSelect" onchange="loadUsersBySection()">
-        <option value="">Select Section</option>
-        <option value="Minis">Minis</option>
-        <option value="Micros">Micros</option>
-        <option value="Minors">Minors</option>
-        <option value="Majors">Majors</option>
-        <option value="Midis">Midis</option>
-        <option value="Maxis">Maxis</option>
-        <option value="Team Leaders">Team Leaders</option>
-    </select>
+    <h3>Your Duty</h3>
+    <p>
+        {% if duty_message %}
+            {{ duty_message }}  <!-- This is the dynamic duty message -->
+        {% else %}
+            No duty assigned today. Please check the duty assignments.
+        {% endif %}
+    </p>
 
-    <h2>Select Your Name</h2>
-    <select id="userSelect" disabled>
-        <option value="">Select User</option>
-    </select>
-    <button onclick="fetchUserDuty()" disabled id="getDutyButton">Get Duty</button>
-
-    <h2>Today's Duty</h2>
-    <div id="dutyDisplay"></div>
-
-    <script>
-        async function loadUsersBySection() {
-            const section = document.getElementById('sectionSelect').value;
-            const userSelect = document.getElementById('userSelect');
-            const dutyButton = document.getElementById('getDutyButton');
-            userSelect.innerHTML = '<option value="">Select User</option>'; // Clear previous options
-            dutyButton.disabled = true;
-
-            if (!section) {
-                userSelect.disabled = true;
-                return;
-            }
-
-            try {
-                const response = await fetch(`/users-by-section?section=${section}`);
-                const data = await response.json();
-
-                if (data.error) {
-                    alert(data.error);
-                    userSelect.disabled = true;
-                    return;
-                }
-
-                data.users.forEach(user => {
-                    const option = document.createElement('option');
-                    option.value = user.name;
-
-                    // Use the role or default to "Team Member"
-                    const roleText = user.role || "Team Member";
-                    option.textContent = `${user.name} (${roleText})`;
-
-                    userSelect.appendChild(option);
-                });
-
-                userSelect.disabled = false;
-                dutyButton.disabled = false;
-            } catch (error) {
-                alert("An error occurred while loading users. Please try again.");
-                userSelect.disabled = true;
-            }
-        }
-
-        async function fetchUserDuty() {
-            const user = document.getElementById('userSelect').value;
-            if (!user) {
-                alert("Please select a user.");
-                return;
-            }
-
-            try {
-                const response = await fetch(`/user-duty?user=${user}`);
-                const data = await response.json();
-
-                const dutyDisplay = document.getElementById('dutyDisplay');
-
-                if (data.error) {
-                    dutyDisplay.innerText = data.error;
-                } else {
-                    let roleText = data.role ? `<p><strong>Role:</strong> ${data.role}</p>` : "";
-                    dutyDisplay.innerHTML = `
-                        <p><strong>User:</strong> ${data.user}</p>
-                        <p><strong>Section:</strong> ${data.section}</p>
-                        ${roleText}
-                        <p><strong>Team:</strong> ${data.team || "None"}</p>
-                        <p><strong>Today's Duty:</strong> ${data.duty || "None"}</p>
-                    `;
-                }
-            } catch (error) {
-                alert("An error occurred while fetching the duty. Please try again.");
-            }
-        }
-    </script>
+    <h3>Navigation</h3>
+    <a href="/">Return to User Selection</a><br>
+    <a href="/devos-feedback">Devos Feedback</a>
 </body>
 </html>
