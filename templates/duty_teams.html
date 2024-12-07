@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Duty Teams</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         async function fetchSelectedUser() {
             const response = await fetch('/get-selected-user');
@@ -12,28 +14,84 @@
             if (data.user) {
                 currentUserEl.textContent = `Current User: ${data.user}`;
             } else {
-                currentUserEl.textContent = `No user selected. Please return to the main page to select a user.`;
+                currentUserEl.textContent = `No user selected. Please return to the home page to select a user.`;
+                document.getElementById('content').style.display = 'none';
             }
+        }
+
+        async function logout() {
+            const response = await fetch('/logout', { method: 'POST' });
+            const data = await response.json();
+            window.location.href = '/'; // Redirect to home page after logout
         }
 
         window.onload = fetchSelectedUser;
     </script>
 </head>
 <body>
-    <h1>Duty Teams</h1>
-    <p id="currentUser"></p>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">Duty Scheduler</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/devos-feedback">Devos Feedback</a>
+                    </li>
+                    <li class="nav-item">
+                        <button class="btn btn-danger nav-link text-white" data-bs-toggle="modal" data-bs-target="#logoutModal">Logout</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
-    <h3>Your Duty</h3>
-    <p>
-        {% if duty_message %}
-            {{ duty_message }}  <!-- This is the dynamic duty message -->
-        {% else %}
-            No duty assigned today. Please check the duty assignments.
-        {% endif %}
-    </p>
+    <!-- Logout Confirmation Modal -->
+    <div class="modal fade" id="logoutModal" tabindex="-1" aria-labelledby="logoutModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="logoutModalLabel">Confirm Logout</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Are you sure you want to log out?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="logout()">Logout</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-    <h3>Navigation</h3>
-    <a href="/">Return to User Selection</a><br>
-    <a href="/devos-feedback">Devos Feedback</a>
+    <!-- Main Content -->
+    <div class="container mt-5 pt-5">
+        <h1 class="text-center mb-4">Duty Teams</h1>
+        <p id="currentUser" class="text-center"></p>
+
+        <div id="content">
+            <h3 class="text-center">Your Duty</h3>
+            {% if duty_message %}
+                <div class="alert alert-success text-center">
+                    {{ duty_message }}
+                </div>
+            {% else %}
+                <div class="alert alert-warning text-center">
+                    No duty assigned today. Please check the duty assignments.
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="text-center mt-4">
+            <a href="/" class="btn btn-primary">Return to Home</a>
+        </div>
+    </div>
 </body>
 </html>
