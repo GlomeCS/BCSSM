@@ -26,5 +26,18 @@ class TestAppConfig(unittest.TestCase):
         self.assertFalse(self.app.config['DEBUG'])
         self.assertEqual(self.app.config['ENV'], 'production')
 
+    def test_default_config(self):
+        if 'FLASK_ENV' in os.environ:
+            del os.environ['FLASK_ENV']
+        self.app.config.from_object('config.DevelopmentConfig')
+        self.assertTrue(self.app.config['DEBUG'])
+        self.assertEqual(self.app.config['ENV'], 'development')
+
+    def test_routes_initialization(self):
+        with self.app.app_context():
+            response = self.client.get('/')
+            self.assertNotEqual(response.status_code, 404)
+
+
 if __name__ == '__main__':
     unittest.main()

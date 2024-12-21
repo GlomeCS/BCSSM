@@ -79,5 +79,82 @@ class TestRoutes(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Devo\'s Feedback', response.data)  # Adjust based on actual response content
 
+    def test_devos_feedback_edit_get(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'
+                user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
+            response = client.get('/devos-feedback/edit?date=2023-10-10§ion=Minis')
+            self.assertEqual(response.status_code, 302)
+
+    def test_devos_feedback_edit_post(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'
+                user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
+            response = client.post('/devos-feedback/edit?date=2023-10-10§ion=Minis', data={'feedback': 'Great job!'})
+            self.assertEqual(response.status_code, 302)  # Redirect after post
+            self.assertIn('/devos-feedback', response.headers['Location'])
+
+    def test_devos_feedback_edit_unauthorized(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Bob'
+                user_assignments['Bob'] = {'role': 'Team Member', 'section': 'Micros'}
+            response = client.get('/devos-feedback/edit?date=2023-10-10§ion=Minis')
+            self.assertEqual(response.status_code, 302)  # Forbidden
+
+    def test_duty_team_without_user(self):
+        response = self.client.get('/duty-teams')
+        self.assertEqual(response.status_code, 302)  # Redirect to index
+        self.assertIn('/', response.headers['Location'])  # Check for root path
+
+    def test_users_by_section(self):
+        response = self.client.get('/users-by-section?section=Minis')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Alice', response.data)  # Adjust based on actual response content
+
+    def test_user_duty(self):
+        response = self.client.get('/user-duty?user=Alice')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Minis', response.data)  # Adjust based on actual response content
+
+    def test_select_user_valid(self):
+        response = self.client.post('/select-user', json={"user_name": "Alice"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"User Alice selected successfully!", response.data)
+
+    def test_select_user_invalid(self):
+        response = self.client.post('/select-user', json={"user_name": "Unknown"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"User not found", response.data)
+
+    def test_get_selected_user_with_user(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'
+            response = client.get('/get-selected-user')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json, {"user": "Alice"})
+
+    def test_get_selected_user_without_user(self):
+        response = self.client.get('/get-selected-user')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json, {"user": None})
+
+    def test_logout(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'
+            response = client.post('/logout')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"User logged out successfully!", response.data)
+            self.assertNotIn('user_name', session)
+
+    def test_devos_feedback(self):
+        response = self.client.get('/devos-feedback')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Devo\'s Feedback', response.data)  # Adjust based on actual response content
+
 if __name__ == '__main__':
     unittest.main()
