@@ -1,6 +1,7 @@
 import os
 import unittest
 from unittest import TestCase
+from unittest.mock import patch
 from app import create_app
 from config import DevelopmentConfig, TestingConfig, ProductionConfig
 
@@ -46,6 +47,12 @@ class TestApp(TestCase):
         app = create_app()
         self.assertTrue(app.config['DEBUG'])
         self.assertFalse(app.config['TESTING'])
+
+    def test_invalid_env_falls_back_to_development_config(self):
+        with patch('os.environ.get', return_value='invalid_env'):  # Simulate invalid FLASK_ENV
+            app = create_app()
+            self.assertEqual(app.config['DEBUG'], DevelopmentConfig.DEBUG)
+            self.assertFalse(app.config.get('TESTING', False))
 
 
 if __name__ == '__main__':
