@@ -3,20 +3,20 @@ from flask import Flask
 from routes import init_routes
 from config import DevelopmentConfig, TestingConfig, ProductionConfig
 
-app = Flask(__name__)
-
-# Dynamically load configuration based on environment
-env = os.getenv('FLASK_ENV', 'development')  # Default to 'development'
-
-if env == 'development':
-    app.config.from_object(DevelopmentConfig)
-elif env == 'testing':
-    app.config.from_object(TestingConfig)
-else:
-    app.config.from_object(ProductionConfig)
-
-# Initialize routes
-init_routes(app)
-
-if __name__ == "__main__":
-    app.run()
+def create_app():
+    app = Flask(__name__)
+    
+    # Configure the app based on the environment
+    env = os.environ.get('FLASK_ENV', 'development')
+    if env == 'development':
+        app.config.from_object(DevelopmentConfig)
+    elif env == 'testing':
+        app.config.from_object(TestingConfig)
+    elif env == 'production':
+        app.config.from_object(ProductionConfig)
+    else:
+        app.config.from_object(DevelopmentConfig)
+    
+    # Initialize routes or extensions here if needed
+    init_routes(app)
+    return app

@@ -1,6 +1,12 @@
 # user_assignments.py
 from datetime import datetime
 
+# Key: (date_str, section)
+# Value: { "feedback": str, "last_edited_by": str, "last_edited_at": datetime }
+feedback_records = {}
+
+sections = ["Minis", "Micros", "Minors", "Majors", "Midis", "Maxis", "Team Leaders"]
+
 # Centralized user data (section, role, and team info)
 user_assignments = {
     "Alice": {"section": "Minis", "role": "Section Leader"},
@@ -55,3 +61,7 @@ def get_users_by_section(section):
             result.append({"name": user, "role": role})
 
     return result
+
+def get_all_feedback_dates():
+    dates = set(date for (date, section) in feedback_records.keys())
+    return sorted(dates, reverse=True)  # Most recent first

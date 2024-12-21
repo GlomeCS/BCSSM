@@ -1,26 +1,43 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Devo's Feedback</title>
-    <script>
-        async function fetchSelectedUser() {
-            const response = await fetch('/get-selected-user');
-            const data = await response.json();
-            const currentUserEl = document.getElementById('currentUser');
-            if (data.user) {
-                currentUserEl.textContent = `Current User: ${data.user}`;
-            } else {
-                currentUserEl.textContent = `No user selected. Please return to the main page to select a user.`;
-            }
-        }
+<!-- templates/devos_feedback.html -->
+{% extends "base.html" %}
 
-        window.onload = fetchSelectedUser;
-    </script>
-</head>
-<body>
-    <h1>Devo's Feedback</h1>
-    <p>This feature is coming soon!</p>
-</body>
-</html>
+{% block title %}Devo's Feedback - View All{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="text-center">Devo's Feedback</h1>
+    <form method="GET" class="d-flex align-items-center">
+        <input type="date" name="date" value="{{ date_str }}" class="form-control me-2" style="max-width: 200px;">
+        <button type="submit" class="btn btn-outline-primary">View</button>
+    </form>
+</div>
+
+<div class="row row-cols-1 row-cols-md-2 g-4">
+    {% for section, feedback_text in daily_feedback.items() %}
+    <div class="col">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>{{ section }}</strong>
+                {% if is_logged_in and (is_leader or user_section == section) %}
+                    {% if feedback_text %}
+                        <a href="/devos-feedback/edit?date={{ date_str }}&section={{ section }}" class="btn btn-sm btn-primary">Edit</a>
+                    {% else %}
+                        <a href="/devos-feedback/edit?date={{ date_str }}&section={{ section }}" class="btn btn-sm btn-success">Add</a>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if feedback_text %}
+                    <p class="card-text" style="white-space: pre-wrap;">{{ feedback_text }}</p>
+                {% else %}
+                    <p class="text-muted fst-italic">No feedback submitted yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<div class="mt-4 text-center">
+    <a href="/" class="btn btn-secondary">Return to Home</a>
+</div>
+{% endblock %}

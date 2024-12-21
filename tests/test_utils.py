@@ -1,5 +1,5 @@
 import unittest
-from utils import get_all_users, get_user_duty, get_users_by_section
+from utils import get_all_users, get_user_duty, get_users_by_section, feedback_records, get_all_feedback_dates
 from datetime import datetime
 
 class TestUtils(unittest.TestCase):
@@ -34,6 +34,27 @@ class TestUtils(unittest.TestCase):
             {"name": "Hank", "role": "Team Leader"}
         ]
         self.assertEqual(get_users_by_section("Team Leaders"), expected_team_leaders)
+    
+    def test_get_all_feedback_dates_with_records(self): 
+        # Mock feedback records
+        feedback_records.clear()
+        feedback_records.update({
+            ("2024-12-20", "Minis"): {"feedback": "Great job!", "last_edited_by": "Alice", "last_edited_at": datetime(2024, 12, 19)},
+            ("2024-12-18", "Micros"): {"feedback": "Keep it up!", "last_edited_by": "Bob", "last_edited_at": datetime(2024, 12, 18)},
+            ("2024-12-19", "Majors"): {"feedback": "Well done!", "last_edited_by": "Charlie", "last_edited_at": datetime(2024, 12, 19)},
+        })
+
+        expected_dates = ["2024-12-20", "2024-12-19", "2024-12-18"]
+        result = get_all_feedback_dates()
+        assert result == expected_dates
+
+
+    def test_get_all_feedback_dates_no_records(self):
+        # Ensure feedback records are empty
+        feedback_records.clear()
+
+        result = get_all_feedback_dates()
+        assert result == []
 
 if __name__ == '__main__':
     unittest.main()
