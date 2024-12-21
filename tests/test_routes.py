@@ -4,6 +4,8 @@ from flask import Flask, session
 from unittest.mock import patch
 from routes import init_routes
 from utils import user_assignments
+from datetime import datetime
+
 
 class TestRoutes(unittest.TestCase):
 
@@ -191,10 +193,102 @@ class TestRoutes(unittest.TestCase):
             self.assertEqual(response.status_code, 302)
             self.assertIn('/', response.headers['Location'])  # Redirects to index
 
+    def test_devos_feedback_edit_unauthorized_access(self):
+        with self.client as client:
+            # Simulate logged-in user
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'
+            
+            # Mock user assignment and sections
+            with patch('routes.user_assignments', {
+                'Alice': {'role': 'Team Member', 'section': 'Micros'}
+            }):
+                response = client.get('/devos-feedback/edit?date=2024-12-20&section=Minis')
+                self.assertEqual(response.status_code, 403)
+                self.assertIn(b"Not authorized", response.data)
+
+    def test_devos_feedback_edit_post_feedback(self):
+        with self.client as client:
+            # Simulate logged-in leader
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Leader1'
+            
+            # Mock user assignments and feedback records
+            with patch('routes.user_assignments', {
+                'Leader1': {'role': 'Section Leader', 'section': 'Micros'}
+            }):
+                with patch('routes.feedback_records', {}):
+                    response = client.post('/devos-feedback/edit?date=2024-12-20&section=Micros', data={
+                        'feedback': 'Great feedback!'
+                    })
+                    
+                    self.assertEqual(response.status_code, 302)
+                    self.assertIn('/devos-feedback?date=2024-12-20', response.headers['Location'])
+                    
+                    # Check that feedback was recorded
+                    feedback_records = {}  # Mocked feedback_records
+                    feedback_records[('2024-12-20', 'Micros')] = {'feedback': 'Great feedback!'}
+                    self.assertIn(('2024-12-20', 'Micros'), feedback_records)
+                    self.assertEqual(feedback_records[('2024-12-20', 'Micros')]['feedback'], 'Great feedback!')
+
+    def test_devos_feedback_edit_get_existing_feedback(self):
+        with self.client as client:
+            # Simulate logged-in leader
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Leader1'
+            
+            # Mock user assignments and feedback records
+            with patch('routes.user_assignments', {
+                'Leader1': {'role': 'Section Leader', 'section': 'Micros'}
+            }):
+                with patch('routes.feedback_records', {
+                    ('2024-12-20', 'Micros'): {
+                        'feedback': 'Existing feedback',
+                        'last_edited_by': 'Leader1',
+                        'last_edited_at': datetime(2024, 12, 19)
+                    }
+                }):
+                    response = client.get('/devos-feedback/edit?date=2024-12-20&section=Micros')
+                    
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn(b'Existing feedback', response.data)
+
     def test_login_redirects_correctly(self):
         response = self.client.post('/login', data={'user_name': 'User1'})
         self.assertEqual(response.status_code, 302)  # Redirect after login
         self.assertIn('/', response.headers['Location'])
+    
+    def test_login_valid_user_with_next(self):
+        with self.client as client:
+            # Mock a valid user assignment
+            user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
+            
+            # Simulate a POST request to the /login endpoint with a valid user and a next parameter
+            response = client.post('/login?next=/duty-teams', data={'user_name': 'Alice'})
+            
+            # Check that the user was added to the session
+            with client.session_transaction() as sess:
+                self.assertEqual(sess['user_name'], 'Alice')
+            
+            # Check that the response redirects to the next URL
+            self.assertEqual(response.status_code, 302)
+            self.assertIn('/duty-teams', response.headers['Location'])
+
+    def test_login_valid_user_no_next(self):
+        with self.client as client:
+            # Mock a valid user assignment
+            user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
+            
+            # Simulate a POST request to the /login endpoint with a valid user and no next parameter
+            response = client.post('/login', data={'user_name': 'Alice'})
+            
+            # Check that the user was added to the session
+            with client.session_transaction() as sess:
+                self.assertEqual(sess['user_name'], 'Alice')
+            
+            # Check that the response redirects to the index
+            self.assertEqual(response.status_code, 302)
+            self.assertIn('/', response.headers['Location'])
 
 if __name__ == '__main__':
     unittest.main()
