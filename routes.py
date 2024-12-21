@@ -7,7 +7,17 @@ def init_routes(app):
     @app.route('/')
     def index():
         users = get_all_users()  # Fetch all users to populate the dropdown
-        return render_template('index.html', users=users)
+        next_url = request.args.get('next', '/')
+        return render_template('index.html', users=users, next = next_url)
+    
+    @app.route('/login', methods=['POST'])
+    def login():
+        user_name = request.form.get('user_name')
+        if user_name in user_assignments:
+            session['user_name'] = user_name
+            next_url = request.args.get('next', url_for('index'))
+            return redirect(next_url)
+        return redirect(url_for('index'))
 
     @app.route('/duty-teams')
     def duty_team():
@@ -93,7 +103,7 @@ def init_routes(app):
     def devos_feedback_edit():
         user_name = session.get('user_name')
         if not user_name:
-            return redirect(url_for('index'))
+                return redirect(url_for('index', next=request.url))
         user_info = user_assignments.get(user_name)
         user_role = user_info.get('role', 'Team Member') if user_info else None
         is_leader = user_role in ["Section Leader", "Team Leader"]

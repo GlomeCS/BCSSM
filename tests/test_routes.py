@@ -1,6 +1,7 @@
 import unittest
 import os
 from flask import Flask, session
+from unittest.mock import patch
 from routes import init_routes
 from utils import user_assignments
 
@@ -155,6 +156,45 @@ class TestRoutes(unittest.TestCase):
         response = self.client.get('/devos-feedback')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Devo\'s Feedback', response.data)  # Adjust based on actual response content
+
+    def test_duty_teams_no_duty(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'  # Simulate logged-in user
+
+            # Use patch to mock the `get_user_duty` function
+            with patch('routes.get_user_duty', return_value=None):  # Simulate no assigned duty
+                response = client.get('/duty-teams')
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(b"You do not have a duty today.", response.data)
+
+    def test_devos_feedback_with_feedback(self):
+        
+        with patch('routes.sections', ['Minis', 'Micros']), \
+         patch('routes.feedback_records', {
+             ('2024-12-20', 'Micros'): {"feedback": "Great job!"}
+         }):
+            response = self.client.get('/devos-feedback?date=2024-12-20')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"Great job!", response.data)
+
+    def test_devos_feedback_edit_redirect_not_logged_in(self):
+        response = self.client.get('/devos-feedback/edit?date=2024-12-20&section=Minis')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/?next=http://localhost/devos-feedback/edit?date%3D2024-12-20%26section%3DMinis', response.headers['Location'])
+
+    def test_devos_feedback_edit_redirect_missing_params(self):
+        with self.client as client:
+            with client.session_transaction() as sess:
+                sess['user_name'] = 'Alice'  # Simulate logged-in user
+            response = client.get('/devos-feedback/edit?section=Micros')  # Missing date_str
+            self.assertEqual(response.status_code, 302)
+            self.assertIn('/', response.headers['Location'])  # Redirects to index
+
+    def test_login_redirects_correctly(self):
+        response = self.client.post('/login', data={'user_name': 'User1'})
+        self.assertEqual(response.status_code, 302)  # Redirect after login
+        self.assertIn('/', response.headers['Location'])
 
 if __name__ == '__main__':
     unittest.main()
