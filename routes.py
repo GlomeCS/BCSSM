@@ -1,6 +1,7 @@
 from flask import render_template, request, jsonify, session, redirect, url_for
 from datetime import datetime
 from utils import get_user_duty, get_users_by_section, user_assignments, get_all_users, feedback_records, sections, get_all_feedback_dates
+from urllib.parse import urlparse
 
 def init_routes(app):
 
@@ -9,14 +10,22 @@ def init_routes(app):
         users = get_all_users()  # Fetch all users to populate the dropdown
         next_url = request.args.get('next', '/')
         return render_template('index.html', users=users, next = next_url)
-    
+            
     @app.route('/login', methods=['POST'])
     def login():
         user_name = request.form.get('user_name')
+        print(f"Received user_name: {user_name}")  # Debug log
         if user_name in user_assignments:
             session['user_name'] = user_name
-            next_url = request.args.get('next', url_for('index'))
-            return redirect(next_url)
+            target = request.args.get('target', '/').strip()  # Default to '/' if target is empty
+            target = target.replace('\\', '')  # Remove backslashes
+            print(f"Processed target: {target}")  # Debug log
+            if not urlparse(target).netloc and not urlparse(target).scheme:
+                print(f"Redirecting to: {target}")  # Debug log
+                return redirect(target, code=302)
+            print("Target invalid, redirecting to '/'")  # Debug log
+            return redirect('/', code=302)
+        print("User not found, redirecting to index")  # Debug log
         return redirect(url_for('index'))
 
     @app.route('/duty-teams')
