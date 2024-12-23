@@ -1,5 +1,8 @@
+import os
+
 class Config:
-    SECRET_KEY = 'your_secret_key'
+    SECRET_KEY = os.getenv('SECRET_KEY', 'fallback_key')
+
     # Add other common configurations here
 
 class DevelopmentConfig(Config):
