@@ -1,6 +1,7 @@
 from flask import render_template, request, jsonify, session, redirect, url_for
 from datetime import datetime
 from utils import get_user_duty, get_users_by_section, user_assignments, get_all_users, feedback_records, sections, get_all_feedback_dates
+from urllib.parse import urlparse
 
 def init_routes(app):
 
@@ -15,8 +16,13 @@ def init_routes(app):
         user_name = request.form.get('user_name')
         if user_name in user_assignments:
             session['user_name'] = user_name
-            next_url = request.args.get('next', url_for('index'))
-            return redirect(next_url)
+            target = request.args.get('target', '')
+            target = target.replace('\\', '')
+            if not urlparse(target).netloc and not urlparse(target).scheme:
+                # relative path, safe to redirect
+                return redirect(target, code=302)
+            # ignore the target and redirect to the home page
+            return redirect('/', code=302)
         return redirect(url_for('index'))
 
     @app.route('/duty-teams')
