@@ -2,6 +2,8 @@ import os
 from flask import Flask
 from routes import init_routes
 from config import DevelopmentConfig, TestingConfig, ProductionConfig
+from dotenv import load_dotenv
+load_dotenv()
 
 def create_app():
     app = Flask(__name__)
