@@ -259,36 +259,57 @@ class TestRoutes(unittest.TestCase):
         self.assertIn('/', response.headers['Location'])
     
     def test_login_valid_user_with_next(self):
+        """Test login with a valid user and a valid target parameter."""
         with self.client as client:
             # Mock a valid user assignment
-            user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
-            
-            # Simulate a POST request to the /login endpoint with a valid user and a next parameter
-            response = client.post('/login?next=/duty-teams', data={'user_name': 'Alice'})
-            
-            # Check that the user was added to the session
-            with client.session_transaction() as sess:
-                self.assertEqual(sess['user_name'], 'Alice')
-            
-            # Check that the response redirects to the next URL
-            self.assertEqual(response.status_code, 302)
-            self.assertIn('/duty-teams', response.headers['Location'])
+            with patch('routes.user_assignments', {
+                'Alice': {'role': 'Section Leader', 'section': 'Minis'}
+            }):
+                # Simulate a POST request to /login with a valid target parameter
+                response = client.post('/login?target=/duty-teams', data={'user_name': 'Alice'})
+
+                # Check that the user was added to the session
+                with client.session_transaction() as sess:
+                    self.assertEqual(sess['user_name'], 'Alice')
+
+                # Check that the response redirects to the target URL
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.headers['Location'], '/duty-teams')
 
     def test_login_valid_user_no_next(self):
+        """Test login with a valid user and no target parameter."""
         with self.client as client:
             # Mock a valid user assignment
-            user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
-            
-            # Simulate a POST request to the /login endpoint with a valid user and no next parameter
-            response = client.post('/login', data={'user_name': 'Alice'})
-            
-            # Check that the user was added to the session
-            with client.session_transaction() as sess:
-                self.assertEqual(sess['user_name'], 'Alice')
-            
-            # Check that the response redirects to the index
-            self.assertEqual(response.status_code, 302)
-            self.assertIn('/', response.headers['Location'])
+            with patch('routes.user_assignments', {
+                'Alice': {'role': 'Section Leader', 'section': 'Minis'}
+            }):
+                # Simulate a POST request to /login without a target parameter
+                response = client.post('/login', data={'user_name': 'Alice'})
+
+                # Check that the user was added to the session
+                with client.session_transaction() as sess:
+                    self.assertEqual(sess['user_name'], 'Alice')
+
+                # Check that the response redirects to '/'
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.headers['Location'], '/') 
+
+    def test_login_valid_user_with_invalid_target(self):
+        with self.client as client:
+            # Mock a valid user assignment
+            with patch('routes.user_assignments', {
+                'Alice': {'role': 'Section Leader', 'section': 'Minis'}
+            }):
+                # Simulate a POST request to /login with an invalid target parameter
+                response = client.post('/login?target=http://malicious.com', data={'user_name': 'Alice'})
+
+                # Check that the user was added to the session
+                with client.session_transaction() as sess:
+                    self.assertEqual(sess['user_name'], 'Alice')
+
+                # Check that the response ignores the target and redirects to '/'
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.headers['Location'], '/')
 
 if __name__ == '__main__':
     unittest.main()
