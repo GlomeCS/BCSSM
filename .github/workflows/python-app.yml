@@ -16,6 +16,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+    - name: Get latest commit SHA for codecov/test-results-action
+      run: |
+        LATEST_SHA=$(curl -s https://api.github.com/repos/codecov/test-results-action/git/ref/tags/v1 | jq -r '.object.sha')
+        echo "LATEST_SHA=$LATEST_SHA" >> $GITHUB_ENV
     - name: Set up Python 3.10
       uses: actions/setup-python@v3
       with:
