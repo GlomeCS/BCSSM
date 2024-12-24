@@ -1,6 +1,8 @@
 import os
 from flask import Flask
-from routes import init_routes
+from routes.routes import init_main_routes
+from routes.devos_feedback import init_feedback_routes
+from routes.users import init_users_routes
 from config import DevelopmentConfig, TestingConfig, ProductionConfig
 from dotenv import load_dotenv
 load_dotenv()
@@ -20,5 +22,7 @@ def create_app():
         app.config.from_object(DevelopmentConfig)
     
     # Initialize routes or extensions here if needed
-    init_routes(app)
+    init_main_routes(app)
+    init_feedback_routes(app)
+    init_users_routes(app)
     return app

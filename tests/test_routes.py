@@ -2,7 +2,9 @@ import unittest
 import os
 from flask import Flask, session
 from unittest.mock import patch
-from routes import init_routes
+from routes.routes import init_main_routes
+from routes.devos_feedback import init_feedback_routes
+from routes.users import init_users_routes
 from utils import user_assignments
 from datetime import datetime
 
@@ -14,7 +16,9 @@ class TestRoutes(unittest.TestCase):
         self.app = Flask(__name__, template_folder=template_dir)
         self.app.config['TESTING'] = True
         self.app.config['SECRET_KEY'] = 'secret'
-        init_routes(self.app)
+        init_main_routes(self.app)
+        init_feedback_routes(self.app)
+        init_users_routes(self.app)
         self.client = self.app.test_client()
 
     def test_index(self):
@@ -165,15 +169,15 @@ class TestRoutes(unittest.TestCase):
                 sess['user_name'] = 'Alice'  # Simulate logged-in user
 
             # Use patch to mock the `get_user_duty` function
-            with patch('routes.get_user_duty', return_value=None):  # Simulate no assigned duty
+            with patch('routes.routes.get_user_duty', return_value=None):  # Simulate no assigned duty
                 response = client.get('/duty-teams')
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(b"You do not have a duty today.", response.data)
 
     def test_devos_feedback_with_feedback(self):
         
-        with patch('routes.sections', ['Minis', 'Micros']), \
-         patch('routes.feedback_records', {
+        with patch('routes.devos_feedback.sections', ['Minis', 'Micros']), \
+         patch('routes.devos_feedback.feedback_records', {
              ('2024-12-20', 'Micros'): {"feedback": "Great job!"}
          }):
             response = self.client.get('/devos-feedback?date=2024-12-20')
@@ -200,7 +204,7 @@ class TestRoutes(unittest.TestCase):
                 sess['user_name'] = 'Alice'
             
             # Mock user assignment and sections
-            with patch('routes.user_assignments', {
+            with patch('routes.devos_feedback.user_assignments', {
                 'Alice': {'role': 'Team Member', 'section': 'Micros'}
             }):
                 response = client.get('/devos-feedback/edit?date=2024-12-20&section=Minis')
@@ -214,10 +218,10 @@ class TestRoutes(unittest.TestCase):
                 sess['user_name'] = 'Leader1'
             
             # Mock user assignments and feedback records
-            with patch('routes.user_assignments', {
+            with patch('routes.devos_feedback.user_assignments', {
                 'Leader1': {'role': 'Section Leader', 'section': 'Micros'}
             }):
-                with patch('routes.feedback_records', {}):
+                with patch('routes.devos_feedback.feedback_records', {}):
                     response = client.post('/devos-feedback/edit?date=2024-12-20&section=Micros', data={
                         'feedback': 'Great feedback!'
                     })
@@ -238,10 +242,10 @@ class TestRoutes(unittest.TestCase):
                 sess['user_name'] = 'Leader1'
             
             # Mock user assignments and feedback records
-            with patch('routes.user_assignments', {
+            with patch('routes.devos_feedback.user_assignments', {
                 'Leader1': {'role': 'Section Leader', 'section': 'Micros'}
             }):
-                with patch('routes.feedback_records', {
+                with patch('routes.devos_feedback.feedback_records', {
                     ('2024-12-20', 'Micros'): {
                         'feedback': 'Existing feedback',
                         'last_edited_by': 'Leader1',
@@ -262,7 +266,7 @@ class TestRoutes(unittest.TestCase):
         """Test login with a valid user and a valid target parameter."""
         with self.client as client:
             # Mock a valid user assignment
-            with patch('routes.user_assignments', {
+            with patch('routes.routes.user_assignments', {
                 'Alice': {'role': 'Section Leader', 'section': 'Minis'}
             }):
                 # Simulate a POST request to /login with a valid target parameter
@@ -280,7 +284,7 @@ class TestRoutes(unittest.TestCase):
         """Test login with a valid user and no target parameter."""
         with self.client as client:
             # Mock a valid user assignment
-            with patch('routes.user_assignments', {
+            with patch('routes.routes.user_assignments', {
                 'Alice': {'role': 'Section Leader', 'section': 'Minis'}
             }):
                 # Simulate a POST request to /login without a target parameter
@@ -297,7 +301,7 @@ class TestRoutes(unittest.TestCase):
     def test_login_valid_user_with_invalid_target(self):
         with self.client as client:
             # Mock a valid user assignment
-            with patch('routes.user_assignments', {
+            with patch('routes.routes.user_assignments', {
                 'Alice': {'role': 'Section Leader', 'section': 'Minis'}
             }):
                 # Simulate a POST request to /login with an invalid target parameter

@@ -3,7 +3,7 @@ import unittest
 from unittest import TestCase
 from unittest.mock import patch
 from app import create_app
-from config import DevelopmentConfig, TestingConfig, ProductionConfig
+from config import DevelopmentConfig
 
 
 class TestApp(TestCase):
