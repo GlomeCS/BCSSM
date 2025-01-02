@@ -1,5 +1,10 @@
 # user_assignments.py
 from datetime import datetime
+from sqlalchemy import text
+import logging
+from database import db
+
+logger = logging.getLogger(__name__)
 
 # Key: (date_str, section)
 # Value: { "feedback": str, "last_edited_by": str, "last_edited_at": datetime }
@@ -25,9 +30,59 @@ user_assignments = {
     "Nora": {"section": "Maxis", "team": "Duty Team 3"},
 }
 
+
+def execute_query(query, params=None):
+    try:
+        # Start a transaction
+        db.session.begin()
+
+        # Wrap the query in text() and log execution details
+        query = text(query)  # Explicitly mark as a textual SQL expression
+        if params:
+            logger.info(f"Executing query: {query} with params: {params}")
+            result = db.session.execute(query, params)
+        else:
+            logger.info(f"Executing query: {query}")
+            result = db.session.execute(query)
+
+        # Fetch all rows from the result
+        rows = result.fetchall()
+        logger.info(f"Raw rows fetched: {rows}")
+
+        # Commit the transaction after successful execution
+        db.session.commit()
+        logger.info("Query successful.")
+        return rows  # Return the fetched rows
+
+    except Exception as e:
+        # Rollback the transaction in case of an error
+        db.session.rollback()
+        logger.error(f"Query failed. Query: {query}, Params: {params}, Error: {e}")
+        raise e  # Re-raise the exception to propagate it further
+
 def get_all_users():
-    # Return all keys (usernames) from the user_assignments dictionary
-    return list(user_assignments.keys())
+    query = """
+    SELECT 
+        u.name, 
+        COALESCE(s.name, 'Unassigned') AS section,  -- Use 'Unassigned' if section is NULL
+        u.role, 
+        COALESCE(dt.name, 'No Team') AS team       -- Use 'No Team' if team is NULL
+    FROM users u
+    LEFT JOIN sections s ON u.section_id = s.id
+    LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id;
+    """
+    try:
+        logger.info("Starting query execution for get_all_users...")
+        rows = execute_query(query)
+        logger.info(f"Query returned rows: {rows}")
+
+        # Extract only the names for the dropdown
+        user_names = [row[0] for row in rows]  # Extract only the name (first column)
+        logger.info(f"Fetched user names: {user_names}")
+        return user_names
+    except Exception as e:
+        logger.error(f"Failed to fetch users: {e}")
+        return []
 
 # Function to get a user's duty
 def get_user_duty(user_name):
@@ -53,14 +108,18 @@ def get_user_duty(user_name):
 
 # Function to get all users in a given section
 def get_users_by_section(section):
-    # Filter users by section and return the list with their roles
-    result = []
-    for user, user_info in user_assignments.items():
-        if user_info.get("section") == section:
-            role = user_info.get("role", "Team Member")  # Default to "Team Member"
-            result.append({"name": user, "role": role})
-
-    return result
+    query = """
+    SELECT name, role
+    FROM users
+    WHERE section = :section;
+    """
+    try:
+        result = db.session.execute(query, {"section": section})
+        users = [{"name": row[0], "role": row[1]} for row in result]
+        return users
+    except Exception as e:
+        db.session.rollback()
+        return {"error": f"Failed to fetch users by section: {e}"}
 
 def get_all_feedback_dates():
     dates = set(date for (date, section) in feedback_records.keys())
