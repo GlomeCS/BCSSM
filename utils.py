@@ -30,32 +30,30 @@ user_assignments = {
 
 def execute_query(query, params=None):
     try:
-        # Start a transaction
         db.session.begin()
 
-        # Wrap the query in text() and log execution details
-        query = text(query)  # Explicitly mark as a textual SQL expression
-        if params:
-            logger.info(f"Executing query: {query} with params: {params}")
-            result = db.session.execute(query, params)
-        else:
-            logger.info(f"Executing query: {query}")
-            result = db.session.execute(query)
+        # Log the query and parameters
+        logger.info(f"Executing query: {query} with params: {params}")
 
-        # Fetch all rows from the result
-        rows = result.fetchall()
-        logger.info(f"Raw rows fetched: {rows}")
+        # Execute the query
+        result = db.session.execute(text(query), params)
 
-        # Commit the transaction after successful execution
+        # Commit for write operations
         db.session.commit()
-        logger.info("Query successful.")
-        return rows  # Return the fetched rows
+
+        # Return rows only if the query expects a result
+        if result.returns_rows:
+            rows = result.fetchall()
+            logger.info(f"Raw rows fetched: {rows}")
+            return rows
+        else:
+            logger.info("Query executed successfully with no rows returned.")
+            return None
 
     except Exception as e:
-        # Rollback the transaction in case of an error
         db.session.rollback()
         logger.error(f"Query failed. Query: {query}, Params: {params}, Error: {e}")
-        raise e  # Re-raise the exception to propagate it further
+        raise e
 
 def get_all_users():
     query = """

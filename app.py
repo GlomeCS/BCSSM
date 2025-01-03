@@ -31,8 +31,6 @@ def create_app():
     HOST = os.getenv("host")
     PORT = os.getenv("port", "5432")  # Default to 5432 if not set
     DBNAME = os.getenv("database")
-
-    app.logger.info("App logging works.")
     
     if not all([USER, PASSWORD, HOST, DBNAME]):
         raise RuntimeError("Missing required database environment variables.")
@@ -58,4 +56,3 @@ def configure_logging(app=None):
 
     if app:
         app.logger.setLevel(logging.DEBUG)
-        app.logger.info("Logging configured for Flask app.")
