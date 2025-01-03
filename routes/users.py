@@ -1,5 +1,7 @@
 from flask import request, jsonify, session
 from utils import get_user_duty, get_users_by_section, user_assignments
+from globals import cache
+from utils import get_all_users
 
 def init_users_routes(app):
 
@@ -18,12 +20,21 @@ def init_users_routes(app):
     @app.route('/select-user', methods=['POST'])
     def select_user():
         user_name = request.json.get('user_name')
-        if user_name not in user_assignments:
-            return jsonify({"error": "User not found"}), 400
+        print(f"Received user_name: {user_name}")
 
-        # Store the selected user in the session
+        # Get valid users from cache or database
+        valid_users = cache.get('valid_users')
+        if not valid_users:
+            valid_users = get_all_users()
+            cache.set('valid_users', valid_users, timeout=300)  # Cache for 5 minutes
+
+        if user_name not in valid_users:
+            print("Invalid user selected")
+            return {"message": "Invalid user selected."}, 400
+
         session['user_name'] = user_name
-        return jsonify({"message": f"User {user_name} selected successfully!"})
+        print(f"User {user_name} successfully set in session.")
+        return {"message": f"User {user_name} successfully selected."}, 200
 
     @app.route('/get-selected-user')
     def get_selected_user():

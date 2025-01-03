@@ -7,7 +7,7 @@ from routes.devos_feedback import init_feedback_routes
 from routes.users import init_users_routes
 from config import DevelopmentConfig, TestingConfig, ProductionConfig
 from dotenv import load_dotenv
-from database import db 
+from globals import db, cache
 
 def create_app():
     load_dotenv()
@@ -42,6 +42,7 @@ def create_app():
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
+    cache.init_app(app)
 
     init_main_routes(app)
     init_feedback_routes(app)
