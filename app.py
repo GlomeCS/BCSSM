@@ -1,5 +1,4 @@
 import os
-import psycopg2
 import logging
 from flask import Flask
 from routes.routes import init_main_routes
@@ -31,7 +30,7 @@ def create_app():
     HOST = os.getenv("host")
     PORT = os.getenv("port", "5432")  # Default to 5432 if not set
     DBNAME = os.getenv("database")
-    
+
     if not all([USER, PASSWORD, HOST, DBNAME]):
         raise RuntimeError("Missing required database environment variables.")
 
