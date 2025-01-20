@@ -1,6 +1,10 @@
-import pytest
-from app import create_app
+import os
 from unittest.mock import patch
+
+import pytest
+
+from app import create_app
+
 
 @pytest.fixture(autouse=True)
 def mock_db_calls():
@@ -12,6 +16,17 @@ def mock_db_calls():
         with patch('globals.db.session') as mock_db_session:
             mock_db_session.execute.side_effect = AssertionError("Database access attempted during test!")
             yield
+
+@pytest.fixture(autouse=True)
+def mock_env_vars(mocker):
+    # Mock environment variables
+    mocker.patch.dict(os.environ, {
+        "user": "test_user",
+        "password": "test_password",
+        "host": "localhost",
+        "port": "5432",
+        "database": "test_db"
+    })
 
 @pytest.fixture
 def app():

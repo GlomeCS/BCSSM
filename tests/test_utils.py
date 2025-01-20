@@ -1,6 +1,10 @@
-import pytest
-from utils import get_all_users, get_user_duty, get_users_by_section, get_all_feedback_dates
 from datetime import datetime
+
+import pytest
+
+from utils import (get_all_feedback_dates, get_all_users, get_user_duty,
+                   get_users_by_section)
+
 
 @pytest.fixture(autouse=True)
 def mock_db_calls(mocker):

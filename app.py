@@ -1,12 +1,15 @@
-import os
 import logging
-from flask import Flask
-from routes.routes import init_main_routes
-from routes.devos_feedback import init_feedback_routes
-from routes.users import init_users_routes
-from config import DevelopmentConfig, TestingConfig, ProductionConfig
+import os
+
 from dotenv import load_dotenv
-from globals import db, cache
+from flask import Flask
+
+from config import DevelopmentConfig, ProductionConfig, TestingConfig
+from globals import cache, db
+from routes.devos_feedback import init_feedback_routes
+from routes.routes import init_main_routes
+from routes.users import init_users_routes
+
 
 def create_app():
     load_dotenv()
