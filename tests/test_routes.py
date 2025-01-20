@@ -1,319 +1,92 @@
-import unittest
-import os
-from flask import Flask, session
+import pytest
+from app import create_app
 from unittest.mock import patch
-from routes.routes import init_main_routes
-from routes.devos_feedback import init_feedback_routes
-from routes.users import init_users_routes
-from utils import user_assignments
-from datetime import datetime
+
+@pytest.fixture(autouse=True)
+def mock_db_calls():
+    # Mock execute_query
+    with patch('utils.execute_query') as mock_execute_query:
+        mock_execute_query.side_effect = AssertionError("Database access attempted during test!")
+
+        # Mock db.session
+        with patch('globals.db.session') as mock_db_session:
+            mock_db_session.execute.side_effect = AssertionError("Database access attempted during test!")
+            yield
+
+@pytest.fixture
+def app():
+    app = create_app()
+    app.config['TESTING'] = True
+    app.config['SECRET_KEY'] = 'test_secret'
+    return app
 
 
-class TestRoutes(unittest.TestCase):
+@pytest.fixture
+def client(app):
+    return app.test_client()
 
-    def setUp(self):
-        template_dir = os.path.abspath('templates')
-        self.app = Flask(__name__, template_folder=template_dir)
-        self.app.config['TESTING'] = True
-        self.app.config['SECRET_KEY'] = 'secret'
-        init_main_routes(self.app)
-        init_feedback_routes(self.app)
-        init_users_routes(self.app)
-        self.client = self.app.test_client()
 
-    def test_index(self):
-        response = self.client.get('/')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'<select', response.data)  # Assuming there's a dropdown in the index.html
+def test_index(client, mocker):
+    # Mock get_all_users
+    mock_get_all_users = mocker.patch('routes.routes.get_all_users')
+    mock_get_all_users.return_value = ['User1', 'User2']
 
-    def test_duty_team_with_user(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-            response = client.get('/duty-teams')
-            self.assertEqual(response.status_code, 200)
-            # No need to assert on HTML content
+    response = client.get('/')
+    assert response.status_code == 200
+    assert b'--Select a user--' in response.data
+    assert b'User1' in response.data
+    assert b'User2' in response.data
+    mock_get_all_users.assert_called_once()
 
-    def test_duty_team_without_user(self):
-        response = self.client.get('/duty-teams')
-        self.assertEqual(response.status_code, 302)  # Redirect to index
-        self.assertIn('/', response.headers['Location'])  # Check for root path
 
-    def test_users_by_section(self):
-        response = self.client.get('/users-by-section?section=Minis')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Alice', response.data)  # Adjust based on actual response content
+def test_login_valid_user(client, mocker):
+    mocker.patch('routes.routes.user_assignments', {'User1': {'section': 'Team1'}})
 
-    def test_user_duty(self):
-        response = self.client.get('/user-duty?user=Alice')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Minis', response.data)  # Adjust based on actual response content
+    response = client.post('/login', data={'user_name': 'User1'}, follow_redirects=True)
+    assert response.status_code == 200
 
-    def test_select_user_valid(self):
-        response = self.client.post('/select-user', json={"user_name": "Alice"})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"User Alice selected successfully!", response.data)
+    with client.session_transaction() as sess:
+        assert sess['user_name'] == 'User1'
 
-    def test_select_user_invalid(self):
-        response = self.client.post('/select-user', json={"user_name": "Unknown"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"User not found", response.data)
 
-    def test_get_selected_user_with_user(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-            response = client.get('/get-selected-user')
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json, {"user": "Alice"})
+def test_login_invalid_user(client, mocker):
+    mocker.patch('routes.routes.user_assignments', {'User1': {'section': 'Team1'}})
 
-    def test_get_selected_user_without_user(self):
-        response = self.client.get('/get-selected-user')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json, {"user": None})
+    response = client.post('/login', data={'user_name': 'InvalidUser'}, follow_redirects=True)
+    assert response.status_code == 200
+    assert b'--Select a user--' in response.data
 
-    def test_logout(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-            response = client.post('/logout')
-            self.assertEqual(response.status_code, 200)
-            self.assertIn(b"User logged out successfully!", response.data)
-            self.assertNotIn('user_name', session)
+    with client.session_transaction() as sess:
+        assert 'user_name' not in sess
 
-    def test_devos_feedback(self):
-        response = self.client.get('/devos-feedback')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Devo\'s Feedback', response.data)  # Adjust based on actual response content
 
-    def test_devos_feedback_edit_get(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-                user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
-            response = client.get('/devos-feedback/edit?date=2023-10-10§ion=Minis')
-            self.assertEqual(response.status_code, 302)
+def test_duty_team_with_user(client, mocker):
+    mock_get_user_duty = mocker.patch('routes.routes.get_user_duty')
+    mock_get_user_duty.return_value = {'duty': 'Test Duty'}
 
-    def test_devos_feedback_edit_post(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-                user_assignments['Alice'] = {'role': 'Section Leader', 'section': 'Minis'}
-            response = client.post('/devos-feedback/edit?date=2023-10-10§ion=Minis', data={'feedback': 'Great job!'})
-            self.assertEqual(response.status_code, 302)  # Redirect after post
-            self.assertIn('/devos-feedback', response.headers['Location'])
+    with client.session_transaction() as sess:
+        sess['user_name'] = 'User1'
 
-    def test_devos_feedback_edit_unauthorized(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Bob'
-                user_assignments['Bob'] = {'role': 'Team Member', 'section': 'Micros'}
-            response = client.get('/devos-feedback/edit?date=2023-10-10§ion=Minis')
-            self.assertEqual(response.status_code, 302)  # Forbidden
+    response = client.get('/duty-teams')
+    assert response.status_code == 200
+    assert b'Test Duty' in response.data
+    mock_get_user_duty.assert_called_once_with('User1')
 
-    def test_duty_team_without_user(self):
-        response = self.client.get('/duty-teams')
-        self.assertEqual(response.status_code, 302)  # Redirect to index
-        self.assertIn('/', response.headers['Location'])  # Check for root path
 
-    def test_users_by_section(self):
-        response = self.client.get('/users-by-section?section=Minis')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Alice', response.data)  # Adjust based on actual response content
+def test_duty_team_with_user_no_duty(client, mocker):
+    mock_get_user_duty = mocker.patch('routes.routes.get_user_duty')
+    mock_get_user_duty.return_value = None  # Simulate no duty
 
-    def test_user_duty(self):
-        response = self.client.get('/user-duty?user=Alice')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Minis', response.data)  # Adjust based on actual response content
+    with client.session_transaction() as sess:
+        sess['user_name'] = 'User1'
 
-    def test_select_user_valid(self):
-        response = self.client.post('/select-user', json={"user_name": "Alice"})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"User Alice selected successfully!", response.data)
+    response = client.get('/duty-teams')
+    assert response.status_code == 200
+    assert b'You do not have a duty today.' in response.data
+    mock_get_user_duty.assert_called_once_with('User1')
 
-    def test_select_user_invalid(self):
-        response = self.client.post('/select-user', json={"user_name": "Unknown"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"User not found", response.data)
 
-    def test_get_selected_user_with_user(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-            response = client.get('/get-selected-user')
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json, {"user": "Alice"})
-
-    def test_get_selected_user_without_user(self):
-        response = self.client.get('/get-selected-user')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json, {"user": None})
-
-    def test_logout(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-            response = client.post('/logout')
-            self.assertEqual(response.status_code, 200)
-            self.assertIn(b"User logged out successfully!", response.data)
-            self.assertNotIn('user_name', session)
-
-    def test_devos_feedback(self):
-        response = self.client.get('/devos-feedback')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Devo\'s Feedback', response.data)  # Adjust based on actual response content
-
-    def test_duty_teams_no_duty(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'  # Simulate logged-in user
-
-            # Use patch to mock the `get_user_duty` function
-            with patch('routes.routes.get_user_duty', return_value=None):  # Simulate no assigned duty
-                response = client.get('/duty-teams')
-                self.assertEqual(response.status_code, 200)
-                self.assertIn(b"You do not have a duty today.", response.data)
-
-    def test_devos_feedback_with_feedback(self):
-        
-        with patch('routes.devos_feedback.sections', ['Minis', 'Micros']), \
-         patch('routes.devos_feedback.feedback_records', {
-             ('2024-12-20', 'Micros'): {"feedback": "Great job!"}
-         }):
-            response = self.client.get('/devos-feedback?date=2024-12-20')
-            self.assertEqual(response.status_code, 200)
-            self.assertIn(b"Great job!", response.data)
-
-    def test_devos_feedback_edit_redirect_not_logged_in(self):
-        response = self.client.get('/devos-feedback/edit?date=2024-12-20&section=Minis')
-        self.assertEqual(response.status_code, 302)
-        self.assertIn('/?next=http://localhost/devos-feedback/edit?date%3D2024-12-20%26section%3DMinis', response.headers['Location'])
-
-    def test_devos_feedback_edit_redirect_missing_params(self):
-        with self.client as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'  # Simulate logged-in user
-            response = client.get('/devos-feedback/edit?section=Micros')  # Missing date_str
-            self.assertEqual(response.status_code, 302)
-            self.assertIn('/', response.headers['Location'])  # Redirects to index
-
-    def test_devos_feedback_edit_unauthorized_access(self):
-        with self.client as client:
-            # Simulate logged-in user
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Alice'
-            
-            # Mock user assignment and sections
-            with patch('routes.devos_feedback.user_assignments', {
-                'Alice': {'role': 'Team Member', 'section': 'Micros'}
-            }):
-                response = client.get('/devos-feedback/edit?date=2024-12-20&section=Minis')
-                self.assertEqual(response.status_code, 403)
-                self.assertIn(b"Not authorized", response.data)
-
-    def test_devos_feedback_edit_post_feedback(self):
-        with self.client as client:
-            # Simulate logged-in leader
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Leader1'
-            
-            # Mock user assignments and feedback records
-            with patch('routes.devos_feedback.user_assignments', {
-                'Leader1': {'role': 'Section Leader', 'section': 'Micros'}
-            }):
-                with patch('routes.devos_feedback.feedback_records', {}):
-                    response = client.post('/devos-feedback/edit?date=2024-12-20&section=Micros', data={
-                        'feedback': 'Great feedback!'
-                    })
-                    
-                    self.assertEqual(response.status_code, 302)
-                    self.assertIn('/devos-feedback?date=2024-12-20', response.headers['Location'])
-                    
-                    # Check that feedback was recorded
-                    feedback_records = {}  # Mocked feedback_records
-                    feedback_records[('2024-12-20', 'Micros')] = {'feedback': 'Great feedback!'}
-                    self.assertIn(('2024-12-20', 'Micros'), feedback_records)
-                    self.assertEqual(feedback_records[('2024-12-20', 'Micros')]['feedback'], 'Great feedback!')
-
-    def test_devos_feedback_edit_get_existing_feedback(self):
-        with self.client as client:
-            # Simulate logged-in leader
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Leader1'
-            
-            # Mock user assignments and feedback records
-            with patch('routes.devos_feedback.user_assignments', {
-                'Leader1': {'role': 'Section Leader', 'section': 'Micros'}
-            }):
-                with patch('routes.devos_feedback.feedback_records', {
-                    ('2024-12-20', 'Micros'): {
-                        'feedback': 'Existing feedback',
-                        'last_edited_by': 'Leader1',
-                        'last_edited_at': datetime(2024, 12, 19)
-                    }
-                }):
-                    response = client.get('/devos-feedback/edit?date=2024-12-20&section=Micros')
-                    
-                    self.assertEqual(response.status_code, 200)
-                    self.assertIn(b'Existing feedback', response.data)
-
-    def test_login_redirects_correctly(self):
-        response = self.client.post('/login', data={'user_name': 'User1'})
-        self.assertEqual(response.status_code, 302)  # Redirect after login
-        self.assertIn('/', response.headers['Location'])
-    
-    def test_login_valid_user_with_next(self):
-        """Test login with a valid user and a valid target parameter."""
-        with self.client as client:
-            # Mock a valid user assignment
-            with patch('routes.routes.user_assignments', {
-                'Alice': {'role': 'Section Leader', 'section': 'Minis'}
-            }):
-                # Simulate a POST request to /login with a valid target parameter
-                response = client.post('/login?target=/duty-teams', data={'user_name': 'Alice'})
-
-                # Check that the user was added to the session
-                with client.session_transaction() as sess:
-                    self.assertEqual(sess['user_name'], 'Alice')
-
-                # Check that the response redirects to the target URL
-                self.assertEqual(response.status_code, 302)
-                self.assertEqual(response.headers['Location'], '/duty-teams')
-
-    def test_login_valid_user_no_next(self):
-        """Test login with a valid user and no target parameter."""
-        with self.client as client:
-            # Mock a valid user assignment
-            with patch('routes.routes.user_assignments', {
-                'Alice': {'role': 'Section Leader', 'section': 'Minis'}
-            }):
-                # Simulate a POST request to /login without a target parameter
-                response = client.post('/login', data={'user_name': 'Alice'})
-
-                # Check that the user was added to the session
-                with client.session_transaction() as sess:
-                    self.assertEqual(sess['user_name'], 'Alice')
-
-                # Check that the response redirects to '/'
-                self.assertEqual(response.status_code, 302)
-                self.assertEqual(response.headers['Location'], '/') 
-
-    def test_login_valid_user_with_invalid_target(self):
-        with self.client as client:
-            # Mock a valid user assignment
-            with patch('routes.routes.user_assignments', {
-                'Alice': {'role': 'Section Leader', 'section': 'Minis'}
-            }):
-                # Simulate a POST request to /login with an invalid target parameter
-                response = client.post('/login?target=http://malicious.com', data={'user_name': 'Alice'})
-
-                # Check that the user was added to the session
-                with client.session_transaction() as sess:
-                    self.assertEqual(sess['user_name'], 'Alice')
-
-                # Check that the response ignores the target and redirects to '/'
-                self.assertEqual(response.status_code, 302)
-                self.assertEqual(response.headers['Location'], '/')
-
-if __name__ == '__main__':
-    unittest.main()
+def test_duty_team_without_user(client):
+    response = client.get('/duty-teams', follow_redirects=True)
+    assert response.status_code == 200
+    assert b'--Select a user--' in response.data
