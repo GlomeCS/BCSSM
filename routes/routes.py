@@ -1,6 +1,9 @@
-from flask import render_template, request, session, redirect, url_for
-from utils import get_user_duty, user_assignments, get_all_users
 from urllib.parse import urlparse
+
+from flask import redirect, render_template, request, session, url_for
+
+from utils import get_all_users, get_user_duty, user_assignments
+
 
 def init_main_routes(app):
 
