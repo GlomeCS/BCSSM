@@ -1,6 +1,8 @@
-from datetime import datetime
-from sqlalchemy import text
 import logging
+from datetime import datetime
+
+from sqlalchemy import text
+
 from globals import db
 
 logger = logging.getLogger(__name__)

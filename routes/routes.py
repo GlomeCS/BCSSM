@@ -1,7 +1,7 @@
 from urllib.parse import urlparse
 
 from flask import redirect, render_template, request, session, url_for
-
+from markupsafe import escape
 from utils import get_all_users, get_user_duty, user_assignments
 
 
@@ -16,6 +16,8 @@ def init_main_routes(app):
     @app.route('/login', methods=['POST'])
     def login():
         user_name = request.form.get('user_name')
+        user_name = escape(user_name)  # Escape to prevent XSS
+        
         print(f"Received user_name: {user_name}")  # Debug log
         if user_name in user_assignments:
             session['user_name'] = user_name
