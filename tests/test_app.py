@@ -1,67 +1,98 @@
-import os
-import unittest
 import logging
-from unittest.mock import patch, MagicMock
-from app import create_app, configure_logging
+import os
+from unittest.mock import MagicMock, patch
+from config import DevelopmentConfig, ProductionConfig
+
+import pytest
 from flask import Flask
 
-class TestApp(unittest.TestCase):
-    def setUp(self):
-        self.original_env = os.environ.copy()
+from app import configure_logging, create_app
 
-    def tearDown(self):
-        os.environ.clear()
-        os.environ.update(self.original_env)
 
-    @patch('app.db')  # Correct patch path
-    @patch('app.cache')  # Correct patch path
-    def test_create_app_with_valid_env_vars(self, mock_cache, mock_db):
-        # Set required environment variables
-        os.environ['FLASK_ENV'] = 'testing'
-        os.environ['user'] = 'test_user'
-        os.environ['password'] = 'test_password'
-        os.environ['host'] = 'localhost'
-        os.environ['database'] = 'test_db'
+@pytest.fixture(scope="function")
+def clean_env():
+    """Fixture to clean and restore environment variables after each test."""
+    original_env = os.environ.copy()
+    yield
+    os.environ.clear()
+    os.environ.update(original_env)
 
-        # Mock database and cache initialization
+
+@pytest.fixture
+def mock_db_cache():
+    """Fixture to mock database and cache."""
+    with patch('app.db') as mock_db, patch('app.cache') as mock_cache:
         mock_db.init_app = MagicMock()
         mock_cache.init_app = MagicMock()
+        yield mock_db, mock_cache
 
-        # Create the app
-        app = create_app()
 
-        # Assert the app is configured correctly
-        self.assertIsInstance(app, Flask)
-        self.assertEqual(app.config['SQLALCHEMY_DATABASE_URI'],
-                        'postgresql://test_user:test_password@localhost:5432/test_db')
-        self.assertFalse(app.config['SQLALCHEMY_TRACK_MODIFICATIONS'])
+def test_create_app_with_valid_env_vars(clean_env, mock_db_cache):
+    """Test that create_app initializes correctly with valid environment variables."""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
 
-        # Ensure init_app was called
-        mock_db.init_app.assert_called_once_with(app)
-        mock_cache.init_app.assert_called_once_with(app)
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
 
-    @patch.dict(os.environ, {}, clear=True)  # Clear the environment variables
-    @patch('app.load_dotenv')  # Mock load_dotenv to prevent .env loading
-    def test_create_app_missing_env_vars_raises_error(self, mock_load_dotenv):
-        mock_load_dotenv.return_value = None  # Mock load_dotenv to do nothing
+    assert isinstance(app, Flask)
+    assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql://test_user:test_password@localhost:5432/test_db'
+    assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is False
 
-        with self.assertRaises(RuntimeError) as context:
-            create_app()
+    mock_db.init_app.assert_called_once_with(app)
+    mock_cache.init_app.assert_called_once_with(app)
 
-        # Confirm the error message
-        self.assertEqual(str(context.exception), "Missing required database environment variables.")
 
-    @patch('logging.basicConfig')
-    @patch('logging.getLogger')
-    def test_configure_logging(self, mock_get_logger, mock_basic_config):
-        app = MagicMock()
-        app.logger.setLevel = MagicMock()
+@patch.dict(os.environ, {}, clear=True)
+@patch('app.load_dotenv')
+def test_create_app_missing_env_vars_raises_error(mock_load_dotenv):
+    """Test that create_app raises an error when required env vars are missing."""
+    mock_load_dotenv.return_value = None
 
-        configure_logging(app)
+    with pytest.raises(RuntimeError, match="Missing required database environment variables."):
+        create_app()
 
-        # Assert logging is configured with the correct format
-        mock_basic_config.assert_called_once_with(
-            level=logging.DEBUG,
-            format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
-        )
-        app.logger.setLevel.assert_called_once_with(logging.DEBUG)
+
+@patch('logging.basicConfig')
+@patch('logging.getLogger')
+def test_configure_logging(mock_get_logger, mock_basic_config):
+    """Test that logging is configured correctly."""
+    app = MagicMock()
+    app.logger.setLevel = MagicMock()
+
+    configure_logging(app)
+
+    mock_basic_config.assert_called_once_with(
+        level=logging.DEBUG,
+        format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+    )
+    app.logger.setLevel.assert_called_once_with(logging.DEBUG)
+
+@pytest.mark.parametrize("env, expected_env, expected_debug", [
+    ("production", "production", False),  # Production case
+    ("unknown_env", "development", True),  # Fallback to development
+])
+def test_create_app_config(clean_env, mock_db_cache, monkeypatch, env, expected_env, expected_debug):
+    """Test that create_app() applies the correct config based on FLASK_ENV."""
+    monkeypatch.setenv("FLASK_ENV", env)  # Mock FLASK_ENV
+    monkeypatch.setenv("user", "test_user")
+    monkeypatch.setenv("password", "test_password")
+    monkeypatch.setenv("host", "localhost")
+    monkeypatch.setenv("database", "test_db")
+
+    mock_db, mock_cache = mock_db_cache  # Use mocked db and cache
+
+    app = create_app()
+
+    expected_db_uri = f"postgresql://test_user:test_password@localhost:5432/test_db"
+
+    assert app.config["ENV"] == expected_env  # Check the environment variable was applied
+    assert app.config["DEBUG"] == expected_debug  # Check DEBUG mode
+    assert app.config["SQLALCHEMY_DATABASE_URI"] == expected_db_uri  # Ensure correct DB URI
+    assert isinstance(app.config, dict)  # Ensure app config is loaded correctly
+
+    mock_db.init_app.assert_called_once_with(app)
+    mock_cache.init_app.assert_called_once_with(app)
