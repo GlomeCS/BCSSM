@@ -53,7 +53,7 @@ def init_users_routes(app):
         user_name = session.get('user_name', None)
         if user_name:
             user_info = user_assignments.get(user_name, {})
-            is_leader = user_info.get('role', 'Team Member') in ["Section Leader", "Team Leader"]
+            is_leader = user_info.get('role', 'Team Member') in ["Section Leader", "Team Leader", "Admin"]
             return {
                 'is_logged_in': True,
                 'user_section': user_info.get('section'),

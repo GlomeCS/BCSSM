@@ -1,6 +1,9 @@
-from flask import render_template, request, session, redirect, url_for
 from datetime import datetime
-from utils import get_all_sections, execute_query
+
+from flask import redirect, render_template, request, session, url_for
+
+from utils import execute_query
+
 
 def init_feedback_routes(app):
 
@@ -10,9 +13,6 @@ def init_feedback_routes(app):
         date_str = request.args.get('date')
         if not date_str:
             date_str = datetime.now().strftime('%Y-%m-%d')
-
-        # Fetch all sections from the database
-        sections = get_all_sections()  # Dynamically fetch section names from the DB
 
         # Collect feedback for all sections from the database
         query = """
@@ -45,7 +45,7 @@ def init_feedback_routes(app):
                     "role": user_rows[0][1],
                     "section": user_rows[0][2],
                 }
-                is_leader = user_info["role"] in ["Section Leader", "Team Leader"]
+                is_leader = user_info["role"] in ["Section Leader", "Team Leader", "Admin"]
 
         return render_template(
             'devos_feedback.html',

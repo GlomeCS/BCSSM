@@ -1,8 +1,9 @@
 from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from utils import (get_all_feedback_dates, get_all_users, get_user_duty,
+from utils import (execute_query, get_all_feedback_dates, get_all_users, get_user_duty,
                    get_users_by_section)
 
 
@@ -122,3 +123,58 @@ def test_get_all_feedback_dates_no_records(mock_db_calls):
     # Assert results
     assert result == []
     mock_db_calls.assert_called_once()
+
+
+
+@pytest.fixture
+def mock_db_session():
+    """Fixture to mock db.session"""
+    with patch("utils.db.session") as mock_session:
+        yield mock_session
+
+
+def test_execute_query_success_with_results(mock_db_session):
+    """Test execute_query when query returns rows"""
+    mock_result = MagicMock()
+    mock_result.returns_rows = True
+    mock_result.fetchall.return_value = [("Alice",), ("Bob",)]
+    
+    mock_db_session.execute.return_value = mock_result
+
+    query = "SELECT name FROM users"
+    result = execute_query(query)
+
+    mock_db_session.begin.assert_called_once()
+    mock_db_session.execute.assert_called_once()
+    mock_db_session.commit.assert_called_once()
+    assert result == [("Alice",), ("Bob",)]
+
+
+def test_execute_query_success_no_results(mock_db_session):
+    """Test execute_query when query does not return rows"""
+    mock_result = MagicMock()
+    mock_result.returns_rows = False
+
+    mock_db_session.execute.return_value = mock_result
+
+    query = "UPDATE users SET name='John' WHERE id=1"
+    result = execute_query(query)
+
+    mock_db_session.begin.assert_called_once()
+    mock_db_session.execute.assert_called_once()
+    mock_db_session.commit.assert_called_once()
+    assert result is None
+
+
+def test_execute_query_failure(mock_db_session):
+    """Test execute_query when an exception occurs"""
+    mock_db_session.execute.side_effect = Exception("DB error")
+
+    query = "DELETE FROM users WHERE id=1"
+
+    with pytest.raises(Exception, match="DB error"):
+        execute_query(query)
+
+    mock_db_session.begin.assert_called_once()
+    mock_db_session.rollback.assert_called_once()
+    mock_db_session.commit.assert_not_called()
