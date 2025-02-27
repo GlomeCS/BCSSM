@@ -289,3 +289,41 @@ def test_get_all_feedback_dates_exception(mocker):
     actual_query = mock_execute_query.call_args[0][0]  # Get actual query argument
 
     assert actual_query.strip() == expected_query  # Ensure query matches ignoring whitespace
+
+def test_get_user_duty_exception(mocker):
+    """Test get_user_duty handles exceptions correctly"""
+    
+    # Mock execute_query to raise an exception
+    mock_execute_query = mocker.patch("utils.execute_query")
+    mock_execute_query.side_effect = Exception("Database error")
+
+    user_name = "JohnDoe"
+
+    result = get_user_duty(user_name)
+
+    # Ensure it returns the expected error message
+    assert "error" in result
+    assert "Failed to fetch duty for user" in result["error"]
+    assert "Database error" in result["error"]
+
+    # Verify the query was called with expected parameters
+    expected_query = """
+    SELECT 
+        u.name AS user_name, 
+        COALESCE(s.name, 'Unassigned') AS section, 
+        u.role, 
+        COALESCE(dt.name, 'No Team') AS team,
+        COALESCE(d.name, 'No Duty') AS duty
+    FROM users u
+    LEFT JOIN sections s ON u.section_id = s.id
+    LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
+    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id AND ds.day = :day
+    LEFT JOIN duties d ON ds.duty_id = d.id
+    WHERE u.name = :user_name;
+    """.strip()
+
+    actual_query, actual_params = mock_execute_query.call_args[0]  # Extract actual call arguments
+
+    assert actual_query.strip() == expected_query  # Strip to avoid whitespace mismatches
+    assert actual_params["user_name"] == user_name  # Ensure user_name matches
+    assert isinstance(actual_params["day"], int)  # Ensure "day" parameter is an integer
