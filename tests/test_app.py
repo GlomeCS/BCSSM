@@ -1,7 +1,6 @@
 import logging
 import os
 from unittest.mock import MagicMock, patch
-from config import DevelopmentConfig, ProductionConfig
 
 import pytest
 from flask import Flask

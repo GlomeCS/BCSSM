@@ -7,35 +7,14 @@ from globals import db
 
 logger = logging.getLogger(__name__)
 
-feedback_records = {}
-
-sections = ["Minis", "Micros", "Minors", "Majors", "Midis", "Maxis", "Team Leaders"]
-
-# Centralized user data (section, role, and team info)
-user_assignments = {
-    "Alice": {"section": "Minis", "role": "Section Leader"},
-    "Bob": {"section": "Micros", "role": "Section Leader"},
-    "Charlie": {"section": "Minors", "role": "Section Leader"},
-    "David": {"section": "Majors", "role": "Section Leader"},
-    "Eve": {"section": "Midis", "role": "Section Leader"},
-    "Frank": {"section": "Maxis", "role": "Section Leader"},
-    "Grace": {"section": "Team Leaders", "role": "Team Leader"},
-    "Hank": {"section": "Team Leaders", "role": "Team Leader"},
-    "Ivy": {"section": "Minis", "team": "Duty Team 1"},
-    "Jack": {"section": "Micros", "team": "Duty Team 2"},
-    "Kara": {"section": "Minors", "team": "Duty Team 3"},
-    "Liam": {"section": "Majors", "team": "Duty Team 1"},
-    "Mona": {"section": "Midis", "team": "Duty Team 2"},
-    "Nora": {"section": "Maxis", "team": "Duty Team 3"},
-}
-
+user_assignments = {}
 
 def execute_query(query, params=None):
     try:
         db.session.begin()
 
         # Log the query and parameters
-        logger.info(f"Executing query: {query} with params: {params}")
+        logger.info("Executing query: %s with params: %s", query, params)
 
         # Execute the query
         result = db.session.execute(text(query), params)
@@ -46,7 +25,7 @@ def execute_query(query, params=None):
         # Return rows only if the query expects a result
         if result.returns_rows:
             rows = result.fetchall()
-            logger.info(f"Raw rows fetched: {rows}")
+            logger.info("Raw rows fetched: %s", rows)
             return rows
         else:
             logger.info("Query executed successfully with no rows returned.")
@@ -54,7 +33,7 @@ def execute_query(query, params=None):
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Query failed. Query: {query}, Params: {params}, Error: {e}")
+        logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
         raise e
 
 def get_all_users():
@@ -71,14 +50,14 @@ def get_all_users():
     try:
         logger.info("Starting query execution for get_all_users...")
         rows = execute_query(query)
-        logger.info(f"Query returned rows: {rows}")
+        logger.info("Query returned rows: %s", rows)
 
         # Extract only the names for the dropdown
         user_names = [row[0] for row in rows]  # Extract only the name (first column)
-        logger.info(f"Fetched user names: {user_names}")
+        logger.info("Fetched user names: %s", user_names)
         return user_names
     except Exception as e:
-        logger.error(f"Failed to fetch users: {e}")
+        logger.error("Failed to fetch users: %s", e)
         return []
 
 def get_user_duty(user_name):
@@ -117,7 +96,7 @@ def get_user_duty(user_name):
         return duty_data
 
     except Exception as e:
-        logger.error(f"Failed to fetch duty for user {user_name}: {e}")
+        logger.error("Failed to fetch duty for user %s: %s", user_name, e)
         return {"error": f"Failed to fetch duty for user: {e}"}
 
 def get_all_sections():
@@ -131,7 +110,7 @@ def get_all_sections():
         sections = [row[0] for row in result]
         return sections
     except Exception as e:
-        logger.error(f"Failed to fetch sections: {e}")
+        logger.error("Failed to fetch sections: %s", e)
         return {"error": f"Failed to fetch sections: {e}"}
 
 def get_users_by_section(section):
@@ -146,7 +125,7 @@ def get_users_by_section(section):
         users = [{"name": row[0], "role": row[1]} for row in result]
         return users
     except Exception as e:
-        logger.error(f"Failed to fetch users by section {section}: {e}")
+        logger.error("Failed to fetch users by section %s: %s", section, e)
         return {"error": f"Failed to fetch users by section: {e}"}
 
 def get_all_feedback_dates():
@@ -160,5 +139,5 @@ def get_all_feedback_dates():
         dates = [row[0] for row in result]
         return dates
     except Exception as e:
-        logger.error(f"Failed to fetch feedback dates: {e}")
+        logger.error("Failed to fetch feedback dates: %s", e)
         return {"error": f"Failed to fetch feedback dates: {e}"}

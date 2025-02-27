@@ -17,8 +17,8 @@ def init_main_routes(app):
     def login():
         user_name = request.form.get('user_name')
         user_name = escape(user_name)  # Escape to prevent XSS
-        
         print(f"Received user_name: {user_name}")  # Debug log
+        
         if user_name in user_assignments:
             session['user_name'] = user_name
             target = request.args.get('target', '/').strip()  # Default to '/' if target is empty
