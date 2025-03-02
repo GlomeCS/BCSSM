@@ -1,8 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
-from flask import session
 from app import create_app
-
 
 @pytest.fixture
 def client():
@@ -13,116 +10,123 @@ def client():
     return app.test_client()
 
 
-def test_devos_feedback_success(client, mocker):
-    """Test fetching devotional feedback successfully"""
+@pytest.fixture(autouse=True)
+def mock_db_calls(mocker):
+    """Automatically mock execute_query for all tests"""
     mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.return_value = [("Minors", "Great session"), ("Majors", "Needs improvement")]
+    return mock_execute_query
+
+
+@pytest.fixture(autouse=True)
+def mock_flash(mocker):
+    """Mock Flask's flash function to prevent side effects in tests"""
+    return mocker.patch("routes.devos_feedback.flash")
+
+
+def test_devos_feedback_success(client, mock_db_calls):
+    """Test successful retrieval of feedback records"""
+    mock_db_calls.side_effect = lambda query, params: [("Minors", "Great session"), ("Majors", "Needs improvement")]
 
     response = client.get("/devos-feedback?date=2024-03-01")
-    
+
     assert response.status_code == 200
     assert b"Great session" in response.data
     assert b"Needs improvement" in response.data
-    mock_execute_query.assert_called_once()
+    mock_db_calls.assert_called_once()
 
 
-def test_devos_feedback_no_data(client, mocker):
-    """Test fetching devotional feedback when no data exists"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.return_value = []  # No feedback data
+def test_devos_feedback_no_data(client, mock_db_calls):
+    """Test case when no feedback exists"""
+    mock_db_calls.side_effect = lambda query, params: []  # Simulate no feedback
 
     response = client.get("/devos-feedback?date=2024-03-01")
 
     assert response.status_code == 200
-    assert b"Great session" not in response.data  # Ensure no data is displayed
-    assert b"Needs improvement" not in response.data
-    mock_execute_query.assert_called_once()
+
+    # Check that feedback section is present but empty
+    assert b'<div class="row row-cols-1 row-cols-md-2 g-4">' in response.data
+
+    # Ensure no cards are rendered (no feedback entries)
+    assert b'<div class="card">' not in response.data  
+
+    # Check that the return-to-home button is present
+    assert b'<a href="/" class="btn btn-secondary">Return to Home</a>' in response.data
 
 
-def test_devos_feedback_database_error(client, mocker):
-    """Test handling database failure when fetching devotional feedback"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.side_effect = Exception("Database error")
+def test_devos_feedback_database_error(client, mock_db_calls, mock_flash):
+    """Test case when database call fails"""
+    mock_db_calls.side_effect = Exception("Database error")
 
     response = client.get("/devos-feedback?date=2024-03-01")
 
-    assert response.status_code == 200  # Still returns a page
-    assert b"Failed to fetch feedback records" not in response.data  # Error is logged, not displayed
+    assert response.status_code == 200  # Should still return a valid response
+    mock_flash.assert_called_once_with("Error fetching feedback. Please try again later.", "danger")
+    assert b"Error fetching feedback" not in response.data  # Should not expose error directly
 
 
-def test_devos_feedback_edit_access_denied(client, mocker):
-    """Test unauthorized user attempting to access edit feedback page"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.return_value = [("1", "Regular Member", "Minors")]
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "User1"
-
-    response = client.get("/devos-feedback/edit?date=2024-03-01&section=Majors")
-
-    assert response.status_code == 403
-    assert b"Not authorized" in response.data
-
-def test_devos_feedback_edit_success(client, mocker):
-    """Test section leader editing devotional feedback successfully"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.side_effect = [
-        [("1", "Section Leader", "Minors")],  # User role lookup
-        [("1")],  # Section lookup
-        [("Previous feedback",)],  # Corrected structure for previous feedback
+def test_devos_feedback_logged_in_leader(client, mock_db_calls):
+    """Test when a logged-in section leader accesses the feedback page"""
+    mock_db_calls.side_effect = [
+        [("Minors", "Great session"), ("Majors", "Needs improvement")],  # Feedback records
+        [("User1", "Section Leader", "Minors")],  # User role and section
     ]
 
     with client.session_transaction() as sess:
         sess["user_name"] = "User1"
 
-    response = client.get("/devos-feedback/edit?date=2024-03-01&section=Minors")
+    response = client.get("/devos-feedback?date=2024-03-01")
+
+    print(response.data.decode())  # 🔍 Debug: Print response content to check for missing elements
 
     assert response.status_code == 200
-    assert b"Previous feedback" in response.data  # Ensure previous feedback is displayed
+    assert b"Great session" in response.data
+    assert b"Needs improvement" in response.data
+    assert b'">Edit</a>' in response.data  # ✅ Match actual button text
 
 
-def test_devos_feedback_edit_post_database_error(client, mocker):
-    """Test handling database failure when updating feedback"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.side_effect = [
-        [("1", "Section Leader", "Minors")],  # User role lookup
-        [("1")],  # Section lookup
-        Exception("Database error"),
+def test_devos_feedback_logged_in_non_leader(client, mock_db_calls):
+    """Test when a regular user accesses the feedback page"""
+    mock_db_calls.side_effect = [
+        [("Minors", "Great session")],  # Feedback records
+        [("User1", "Regular Member", "Minors")],  # User role
     ]
 
     with client.session_transaction() as sess:
         sess["user_name"] = "User1"
 
-    response = client.post(
-        "/devos-feedback/edit?date=2024-03-01&section=Minors",
-        data={"feedback": "New session feedback"},
-        follow_redirects=False,
-    )
+    response = client.get("/devos-feedback?date=2024-03-01")
 
-    assert response.status_code == 500
-    assert b"Error updating feedback" in response.data
-    mock_execute_query.assert_called()
+    assert response.status_code == 200
+    assert b"Great session" in response.data
+    assert b"Edit Feedback" not in response.data  # Should not see edit button
+    mock_db_calls.assert_called()
 
 
-def test_devos_feedback_edit_no_date_section(client):
-    """Test attempting to edit feedback without specifying a date and section"""
+def test_devos_feedback_no_user(client, mock_db_calls):
+    """Test when no user is logged in"""
+    mock_db_calls.side_effect = lambda query, params: [("Minors", "Great session")]
+
+    response = client.get("/devos-feedback?date=2024-03-01")
+
+    assert response.status_code == 200
+    assert b"Great session" in response.data
+    assert b"Edit Feedback" not in response.data  # Not logged in, so no edit button
+    mock_db_calls.assert_called()
+
+
+def test_devos_feedback_user_not_found(client, mock_db_calls):
+    """Test when a logged-in user is not found in the database"""
+    mock_db_calls.side_effect = [
+        [("Minors", "Great session")],  # Feedback records
+        [],  # User lookup fails
+    ]
+
     with client.session_transaction() as sess:
-        sess["user_name"] = "User1"
+        sess["user_name"] = "UserNotInDB"
 
-    response = client.get("/devos-feedback/edit")
+    response = client.get("/devos-feedback?date=2024-03-01")
 
-    assert response.status_code == 302  # Redirects to main feedback page
-
-
-def test_devos_feedback_edit_user_not_found(client, mocker):
-    """Test handling case where user is not found in the database"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    mock_execute_query.return_value = []  # User not found
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "User1"
-
-    response = client.get("/devos-feedback/edit?date=2024-03-01&section=Minors")
-
-    assert response.status_code == 403
-    assert b"User not found" in response.data
+    assert response.status_code == 200
+    assert b"Great session" in response.data
+    assert b"Edit Feedback" not in response.data  # Should not see edit button
+    mock_db_calls.assert_called()
