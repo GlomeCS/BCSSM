@@ -61,6 +61,11 @@ def init_feedback_routes(app):
         user_name = session.get('user_name')
         if not user_name:
             return redirect(url_for('index', next=request.url))
+        
+        date_str = request.args.get("date")
+        section_str = request.args.get("section")
+        if not date_str or not section_str:
+            return redirect(url_for("devos_feedback"))
 
         # Fetch user info to determine permissions
         user_info_query = """
@@ -80,18 +85,13 @@ def init_feedback_routes(app):
         }
         is_leader = user_info["role"] in ["Section Leader", "Team Leader"]
 
-        date_str = request.args.get('date')
-        section = request.args.get('section')
-        if not date_str or not section:
-            return redirect(url_for('devos_feedback'))
-
         # Check permission
-        if not is_leader and user_info["section"] != section:
+        if not is_leader and user_info["section"] != section_str:
             return "Not authorized", 403
 
         # Get the section_id for the given section name
         section_query = "SELECT id FROM sections WHERE name = :section_name;"
-        section_rows = execute_query(section_query, {"section_name": section})
+        section_rows = execute_query(section_query, {"section_name": section_str})
         if not section_rows:
             return "Section not found", 400
         section_id = section_rows[0][0]
@@ -134,6 +134,6 @@ def init_feedback_routes(app):
         return render_template(
             'devos_feedback_edit.html',
             date_str=date_str,
-            section=section,
+            section=section_str,
             feedback_text=existing_text
         )
