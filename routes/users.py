@@ -1,21 +1,29 @@
-from flask import request, jsonify, session
-from utils import get_user_duty, get_users_by_section, user_assignments
+from flask import jsonify, request, session
+
 from globals import cache
-from utils import get_all_users
+from utils import (get_all_users, get_user_duty, get_users_by_section,
+                   user_assignments)
+
 
 def init_users_routes(app):
 
     @app.route('/users-by-section')
     def users_by_section():
-        section = request.args.get('section')
-        users = get_users_by_section(section)
-        return jsonify({"users": users})
+        try:
+            section_name = request.args.get('section')
+            users = get_users_by_section(section_name)
+            return jsonify({"users": users}), 200
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch users: {str(e)}"}), 500
 
     @app.route('/user-duty')
     def user_duty():
-        user_name = request.args.get('user')
-        duty_data = get_user_duty(user_name)
-        return jsonify(duty_data)
+        try:
+            user_name = request.args.get('user')
+            duty_data = get_user_duty(user_name)
+            return jsonify(duty_data), 200
+        except Exception as e:
+            return jsonify({"error": f"Failed to fetch duty: {str(e)}"}), 500
 
     @app.route('/select-user', methods=['POST'])
     def select_user():
