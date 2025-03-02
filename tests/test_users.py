@@ -123,3 +123,30 @@ def test_logout(client):
         # Ensure session is cleared
         with client.session_transaction() as sess:
             assert sess.get("user_name") is None
+
+def test_select_user_fetches_users_if_cache_empty(client, mocker):
+    """Test select_user retrieves users from database if cache is empty"""
+    
+    # Mock cache.get to return None (simulating an empty cache)
+    mock_cache = mocker.patch("routes.users.cache")
+    mock_cache.get.return_value = None
+
+    # Mock get_all_users to return a list of users
+    mock_get_all_users = mocker.patch("routes.users.get_all_users")
+    mock_get_all_users.return_value = ["Alice", "Bob"]
+
+    # Make the request to select a user
+    response = client.post("/select-user", json={"user_name": "Alice"})
+
+    # Verify cache.get was called once
+    mock_cache.get.assert_called_once_with("valid_users")
+
+    # Verify get_all_users was called since the cache was empty
+    mock_get_all_users.assert_called_once()
+
+    # Verify cache.set was called to store the users with a 5-minute timeout
+    mock_cache.set.assert_called_once_with("valid_users", ["Alice", "Bob"], timeout=300)
+
+    # Assert the response
+    assert response.status_code == 200
+    assert response.json == {"message": "User Alice successfully selected."}
