@@ -142,3 +142,33 @@ def test_devos_feedback_user_not_found(client, mock_db_calls):
     assert b"Great session" in response.data
     assert b"Edit Feedback" not in response.data  # Should not see edit button
     mock_db_calls.assert_called()
+
+def test_get_user_info_database_error(mocker):
+    """Test get_user_info handles database failure gracefully"""
+    from routes.devos_feedback import get_user_info
+
+    # Mock execute_query to raise an exception
+    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
+    mock_execute_query.side_effect = Exception("Database error")
+
+    # Call function with a sample user
+    user_info = get_user_info("User1")
+
+    # Assert that it gracefully handles the error by returning None
+    assert user_info is None
+
+    # Normalize query formatting for comparison
+    expected_query = """
+    SELECT u.name, u.role, s.name AS section_name
+    FROM users u
+    LEFT JOIN sections s ON u.section_id = s.id
+    WHERE u.name = :user_name;
+    """.strip()
+
+    # Ensure execute_query was called with expected parameters
+    actual_call = mock_execute_query.call_args
+    assert actual_call is not None, "execute_query was never called"
+    
+    actual_query, actual_params = actual_call[0]  # Extract query and params from mock call
+    assert actual_query.strip() == expected_query, f"Query mismatch:\nExpected: {expected_query}\nActual: {actual_query}"
+    assert actual_params == {"user_name": "User1"}
