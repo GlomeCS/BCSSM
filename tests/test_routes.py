@@ -1,5 +1,7 @@
 import os
 from unittest.mock import patch
+from urllib.parse import quote
+
 
 import pytest
 
@@ -105,3 +107,23 @@ def test_duty_team_without_user(client):
     response = client.get('/duty-teams', follow_redirects=True)
     assert response.status_code == 200
     assert b'--Select a user--' in response.data
+
+def test_login_invalid_target_redirects_to_root(client, mocker):
+    """Test that login redirects to '/' when given an external target URL"""
+    mocker.patch('routes.routes.user_assignments', {'User1': {'section': 'Team1'}})
+    
+    # Mock `print` to check if the correct log message is printed
+    mock_print = mocker.patch("builtins.print")
+
+    # Simulate an invalid target (external URL)
+    invalid_target = "https://malicious-site.com"
+    encoded_target = quote(invalid_target)  # Encode the URL to simulate a real request
+
+    response = client.post(f'/login?target={encoded_target}', data={'user_name': 'User1'}, follow_redirects=False)
+
+    # Ensure response is a redirect (302) to the root ("/")
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/"
+
+    # Verify the correct debug log is printed
+    mock_print.assert_any_call("Target invalid, redirecting to '/'")
