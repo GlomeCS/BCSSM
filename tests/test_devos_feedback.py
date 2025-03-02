@@ -1,20 +1,32 @@
+import os
 import pytest
+from unittest.mock import patch
+from flask import Flask
 from app import create_app
+
+@pytest.fixture(autouse=True)
+def mock_env_vars(mocker):
+    """Mock environment variables to prevent real DB initialization."""
+    mocker.patch.dict(os.environ, {
+        "user": "test_user",
+        "password": "test_password",
+        "host": "localhost",
+        "port": "5432",
+        "database": "test_db"
+    })
 
 @pytest.fixture
 def client():
-    """Fixture to create a Flask test client"""
+    """Fixture to create a Flask test client without DB dependencies."""
     app = create_app()
     app.config["TESTING"] = True
     app.config["SECRET_KEY"] = "test_secret"
     return app.test_client()
 
-
 @pytest.fixture(autouse=True)
 def mock_db_calls(mocker):
-    """Automatically mock execute_query for all tests"""
-    mock_execute_query = mocker.patch("routes.devos_feedback.execute_query")
-    return mock_execute_query
+    """Mock database calls to prevent actual DB usage."""
+    return mocker.patch("routes.devos_feedback.execute_query")
 
 
 @pytest.fixture(autouse=True)
@@ -25,7 +37,7 @@ def mock_flash(mocker):
 
 def test_devos_feedback_success(client, mock_db_calls):
     """Test successful retrieval of feedback records"""
-    mock_db_calls.side_effect = lambda query, params: [("Minors", "Great session"), ("Majors", "Needs improvement")]
+    mock_db_calls.return_value = [("Minors", "Great session"), ("Majors", "Needs improvement")]
 
     response = client.get("/devos-feedback?date=2024-03-01")
 
