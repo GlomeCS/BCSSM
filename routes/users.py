@@ -1,4 +1,5 @@
 from flask import jsonify, request, session
+from markupsafe import escape
 
 from globals import cache
 from utils import (get_all_users, get_user_duty, get_users_by_section,
@@ -25,9 +26,14 @@ def init_users_routes(app):
         except Exception as e:
             return jsonify({"error": f"Failed to fetch duty: {str(e)}"}), 500
 
+
     @app.route('/select-user', methods=['POST'])
     def select_user():
         user_name = request.json.get('user_name')
+
+        if user_name:
+            user_name = escape(user_name)  # Escaping user input
+
         print(f"Received user_name: {user_name}")
 
         # Get valid users from cache or database
