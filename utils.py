@@ -40,12 +40,13 @@ def get_all_users():
     query = """
     SELECT 
         u.name, 
-        COALESCE(s.name, 'Unassigned') AS section,  -- Use 'Unassigned' if section is NULL
+        COALESCE(s.name, 'Unassigned') AS section,  
         u.role, 
-        COALESCE(dt.name, 'No Team') AS team       -- Use 'No Team' if team is NULL
+        COALESCE(dt.name, 'No Team') AS team 
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
-    LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id;
+    LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
+    ORDER BY SPLIT_PART(u.name, ' ', 2);
     """
     try:
         logger.info("Starting query execution for get_all_users...")
