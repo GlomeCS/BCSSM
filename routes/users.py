@@ -1,6 +1,5 @@
 from flask import jsonify, request, session
 from markupsafe import escape
-import logging
 
 from globals import cache
 from utils import (get_all_users, get_user_duty, get_users_by_section,
@@ -51,7 +50,7 @@ def init_users_routes(app):
 
         session['user_name'] = user_name
         print(f"User {user_name} successfully set in session.")
-        return {"message": f"User {user_name} successfully selected."}, 200
+        return {"message": f"User {escape(user_name)} successfully selected."}, 200
 
     @app.route('/get-selected-user')
     def get_selected_user():
