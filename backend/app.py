@@ -2,19 +2,20 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, send_from_directory
+from flask_cors import CORS
 
-from config import DevelopmentConfig, ProductionConfig, TestingConfig
-from globals import cache, db
-from routes.devos_feedback import init_feedback_routes
-from routes.routes import init_main_routes
-from routes.users import init_users_routes
-
+from backend.config import DevelopmentConfig, ProductionConfig, TestingConfig
+from backend.globals import cache, db
+from backend.routes.devos_feedback import init_feedback_routes
+from backend.routes.routes import init_main_routes
+from backend.routes.users import init_users_routes
 
 def create_app():
     load_dotenv()
 
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="static", static_url_path="/")
+    CORS(app)
     
     # Configure the app based on the environment
     env = os.environ.get('FLASK_ENV', 'development')
@@ -27,7 +28,6 @@ def create_app():
     else:
         app.config.from_object(DevelopmentConfig)
 
-
     USER = os.getenv("user")
     PASSWORD = os.getenv("password")
     HOST = os.getenv("host")
@@ -38,8 +38,7 @@ def create_app():
         raise RuntimeError("Missing required database environment variables.")
 
     connection_url = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}"
-    app.config['SQLALCHEMY_DATABASE_URI'] = (connection_url)
-
+    app.config['SQLALCHEMY_DATABASE_URI'] = connection_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
     # Prevent DB initialization during testing
@@ -54,6 +53,16 @@ def create_app():
 
     configure_logging(app)
 
+    # Serve React Frontend
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def serve_react(path):
+        """ Serve React index.html for all unknown routes (supports React Router) """
+        if path and os.path.exists(os.path.join(app.static_folder, path)):
+            return send_from_directory(app.static_folder, path)
+        app.logger.info(f"React serving index.html for path: /{path}")
+        return send_from_directory(app.static_folder, "index.html")
+
     return app
 
 def configure_logging(app=None):
@@ -62,3 +71,7 @@ def configure_logging(app=None):
 
     if app:
         app.logger.setLevel(logging.DEBUG)
+
+if __name__ == "__main__":
+    app = create_app()
+    app.run(host="0.0.0.0", port=8080, debug=True)

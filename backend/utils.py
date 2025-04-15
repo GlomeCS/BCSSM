@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import text
 
-from globals import db
+from backend.globals import db
 
 logger = logging.getLogger(__name__)
 

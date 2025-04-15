@@ -2,10 +2,12 @@ version: '3.8'
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      args:
+        CACHEBUST: "latest"  # You can change this value to force a rebuild (or use $(date +%s) in your shell)
     ports:
-      - "5001:5000"
-    environment:
-      FLASK_ENV: development
-    volumes:
-      - .:/app
+      - "8080:8080"
+    env_file:
+      - .env
+    restart: unless-stopped

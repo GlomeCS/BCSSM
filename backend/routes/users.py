@@ -1,8 +1,8 @@
 from flask import jsonify, request, session
 from markupsafe import escape
 
-from globals import cache
-from utils import (get_all_users, get_user_duty, get_users_by_section,
+from backend.globals import cache
+from backend.utils import (get_all_users, get_user_duty, get_users_by_section,
                    user_assignments)
 
 
@@ -63,6 +63,20 @@ def init_users_routes(app):
     def logout():
         session.pop('user_name', None)
         return jsonify({"message": "User logged out successfully!"})
+
+    @app.route('/get-users')
+    def get_users():
+        try:
+            # Fetch users from cache or database
+            users = cache.get('all_users')
+            if not users:
+                users = get_all_users()
+                cache.set('all_users', users, timeout=300)  # Cache for 5 minutes
+
+            return jsonify({"users": users}), 200
+        except Exception as e:
+            app.logger.error(f"Failed to fetch users: {str(e)}")
+            return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.context_processor
     def inject_user_state():
