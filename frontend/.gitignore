@@ -8,6 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 /backend/static/build/
+/backend
 
 # Node modules should never be committed
 /node_modules/

@@ -9,7 +9,7 @@ COPY frontend ./
 RUN npm run build
 
 # Stage 2: Set up Flask
-FROM python:3.9-slim
+FROM python:3.13-slim
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,7 +21,7 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 COPY backend ./backend
 
 # Copy the built React files into Flask's static folder; the trailing '/.' copies all contents.
-COPY --from=frontend-builder /app/frontend/dist/. ./backend/static/
+COPY --from=frontend-builder /app/backend/static/. ./backend/static/
 
 ENV FLASK_APP=backend.app
 ENV FLASK_RUN_HOST=0.0.0.0

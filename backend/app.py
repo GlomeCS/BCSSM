@@ -7,14 +7,14 @@ from flask_cors import CORS
 
 from backend.config import DevelopmentConfig, ProductionConfig, TestingConfig
 from backend.globals import cache, db
-from backend.routes.devos_feedback import init_feedback_routes
 from backend.routes.routes import init_main_routes
 from backend.routes.users import init_users_routes
+from backend.routes.devos_feedback import init_feedback_routes  # Add this import
 
 def create_app():
     load_dotenv()
 
-    app = Flask(__name__, static_folder="static", static_url_path="/")
+    app = Flask(__name__, static_folder="static", static_url_path="/static")
     CORS(app)
     
     # Configure the app based on the environment
@@ -48,20 +48,32 @@ def create_app():
     cache.init_app(app)
 
     init_main_routes(app)
-    init_feedback_routes(app)
     init_users_routes(app)
+    init_feedback_routes(app)
 
     configure_logging(app)
 
     # Serve React Frontend
+    # Update your serve_react function in app.py
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def serve_react(path):
         """ Serve React index.html for all unknown routes (supports React Router) """
-        if path and os.path.exists(os.path.join(app.static_folder, path)):
+        app.logger.info("React route fallback triggered for path: %s", path)
+        
+        # For API routes, pass through to other handlers
+        if path.startswith(('api/', 'get-', 'select-', 'devos-', 'duty-')):
+            return app.send_static_file('index.html')
+        
+        # Check if the requested file exists
+        requested_path = os.path.join(app.static_folder, path)
+        if os.path.exists(requested_path) and not os.path.isdir(requested_path):
             return send_from_directory(app.static_folder, path)
-        app.logger.info(f"React serving index.html for path: /{path}")
+        
+        # For all other routes, serve the index.html file to support React Router
+        app.logger.info("React serving index.html for path: /%s", path)
         return send_from_directory(app.static_folder, "index.html")
+
 
     return app
 
