@@ -7,20 +7,31 @@ from backend.globals import db
 
 logger = logging.getLogger(__name__)
 
+def execute_readonly_query(query, params=None):
+    """
+    Execute a read-only SQL query using a dedicated engine connection, avoiding session overhead.
+    Returns: list of result rows
+    """
+    try:
+        with db.engine.connect() as conn:
+            logger.info("Executing read-only query: %s with params: %s", query, params)
+            result = conn.execute(text(query), params)
+            rows = result.fetchall()
+            logger.info("Rows fetched: %s", rows)
+            return rows
+    except Exception as e:
+        logger.error(
+            "Read-only query failed. Query: %s, Params: %s, Error: %s", query, params, e
+        )
+        raise
+
 user_assignments = {}
 
 def execute_query(query, params=None):
     try:
-        db.session.begin()
-
-        # Log the query and parameters
-        logger.info("Executing query: %s with params: %s", query, params)
-
-        # Execute the query
-        result = db.session.execute(text(query), params)
-
-        # Commit for write operations
-        db.session.commit()
+        with db.session.begin():
+            logger.info("Executing query: %s with params: %s", query, params)
+            result = db.session.execute(text(query), params)
 
         # Return rows only if the query expects a result
         if result.returns_rows:
@@ -50,7 +61,7 @@ def get_all_users():
     """
     try:
         logger.info("Starting query execution for get_all_users...")
-        rows = execute_query(query)
+        rows = execute_readonly_query(query)
         logger.info("Query returned rows: %s", rows)
 
         # Extract only the names for the dropdown
@@ -81,7 +92,7 @@ def get_user_duty(user_name):
         current_day = datetime.now().weekday()
 
         # Execute the query with the user's name and current day
-        result = execute_query(query, {"user_name": user_name, "day": current_day})
+        result = execute_readonly_query(query, {"user_name": user_name, "day": current_day})
         if not result:
             return {"error": "User not found or no duty assigned"}
 
@@ -104,10 +115,10 @@ def get_all_sections():
     query = """
     SELECT name
     FROM sections
-    ORDER BY name;
+    ORDER BY display_order, name;
     """
     try:
-        result = execute_query(query)
+        result = execute_readonly_query(query)
         sections = [row[0] for row in result]
         return sections
     except Exception as e:
@@ -122,7 +133,7 @@ def get_users_by_section(section):
     WHERE s.name = :section;
     """
     try:
-        result = execute_query(query, {"section": section})
+        result = execute_readonly_query(query, {"section": section})
         users = [{"name": row[0], "role": row[1]} for row in result]
         return users
     except Exception as e:
@@ -136,7 +147,7 @@ def get_all_feedback_dates():
     ORDER BY date DESC;
     """
     try:
-        result = execute_query(query)
+        result = execute_readonly_query(query)
         dates = [row[0] for row in result]
         return dates
     except Exception as e:

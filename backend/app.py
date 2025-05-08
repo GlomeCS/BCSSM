@@ -2,7 +2,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 
 from backend.config import DevelopmentConfig, ProductionConfig, TestingConfig
@@ -10,6 +10,7 @@ from backend.globals import cache, db
 from backend.routes.routes import init_main_routes
 from backend.routes.users import init_users_routes
 from backend.routes.devos_feedback import init_feedback_routes  # Add this import
+from backend.utils import get_all_sections
 
 def create_app():
     load_dotenv()
@@ -40,6 +41,15 @@ def create_app():
     connection_url = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}"
     app.config['SQLALCHEMY_DATABASE_URI'] = connection_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+    # Configure SQLAlchemy engine connection pooling
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'pool_size': int(os.getenv('DB_POOL_SIZE', 10)),
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 20)),
+        'pool_timeout': int(os.getenv('DB_POOL_TIMEOUT', 30)),
+        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', 1800)),
+        'pool_pre_ping': True,
+    }
     
     # Prevent DB initialization during testing
     if not app.config.get("TESTING"):
@@ -51,7 +61,19 @@ def create_app():
     init_users_routes(app)
     init_feedback_routes(app)
 
+    @app.teardown_appcontext
+    def shutdown_session(exception=None):
+        db.session.remove()
+
     configure_logging(app)
+
+    # Expose section list for React frontend
+    @app.route("/api/sections")
+    @cache.cached(timeout=3600)  # cache for 1 hour
+    def api_sections():
+        """Return list of section names in configured display order."""
+        sections = get_all_sections()
+        return jsonify(sections)
 
     # Serve React Frontend
     # Update your serve_react function in app.py

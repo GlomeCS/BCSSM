@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 function Login() {
@@ -6,11 +6,10 @@ function Login() {
   const [selectedUser, setSelectedUser] = useState<string>("");
   const navigate = useNavigate(); // React Router's navigation hook
 
-  // Fetch users list from Flask backend using a relative URL
   useEffect(() => {
     fetch("/get-users")
       .then((response) => response.json())
-      .then((data) => {
+      .then((data: { users: string[] }) => {
         console.log("Fetched users:", data.users);
         setUsers(data.users || []);
       })
@@ -36,6 +35,15 @@ function Login() {
       }
 
       const data = await response.json();
+      // Store user state in localStorage
+      localStorage.setItem("is_logged_in", data.is_logged_in ? "true" : "false");
+      if (data.user_section) {
+        localStorage.setItem("user_section", data.user_section);
+      } else {
+        localStorage.removeItem("user_section");
+      }
+      localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
+
       alert(data.message);
 
       // Store user in localStorage before redirecting

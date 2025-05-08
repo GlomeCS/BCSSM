@@ -3,6 +3,7 @@ __pycache__/
 .vscode/
 .coverage
 .env
+.DS_Store
 
 # Dependencies
 /node_modules/
