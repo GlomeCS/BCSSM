@@ -115,11 +115,11 @@ const DevoFeedback: React.FC = () => {
                     <strong>{section}</strong>
                     {isLoggedIn && (isLeader || userSection === section) && (
                       feedbackText ? (
-                        <Link to={`${base}/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} className="btn btn-sm btn-primary">
+                        <Link to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} className="btn btn-sm btn-primary">
                           Edit
                         </Link>
                       ) : (
-                        <Link to={`${base}/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} className="btn btn-sm btn-success">
+                        <Link to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} className="btn btn-sm btn-success">
                           Add
                         </Link>
                       )

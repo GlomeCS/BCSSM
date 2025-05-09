@@ -26,7 +26,10 @@ const DevoFeedbackEdit: React.FC = () => {
         );
         if (!res.ok) throw new Error(res.statusText);
         const data = await res.json();
-        setFeedback(data.feedback ?? '');
+        console.log('Fetched feedback response:', data);
+        console.log('Type of data.feedback:', typeof data.feedback, data.feedback);
+        // Populate the textarea with the specific section's feedback string
+        setFeedback(data.feedback?.[section] ?? '');
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -49,7 +52,7 @@ const DevoFeedbackEdit: React.FC = () => {
         }
       );
       if (!res.ok) throw new Error(res.statusText);
-      navigate(`/devos-feedback?date=${encodeURIComponent(dateStr)}`, { replace: true });
+      navigate(`/react/devos-feedback?date=${encodeURIComponent(dateStr)}`, { replace: true });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -89,7 +92,7 @@ const DevoFeedbackEdit: React.FC = () => {
           <button
             type="button"
             className="btn btn-secondary me-2"
-            onClick={() => navigate('/react/devos-feedback')}
+            onClick={() => navigate(`/react/devos-feedback?date=${encodeURIComponent(dateStr)}`)}
             disabled={saving}
           >
             Cancel

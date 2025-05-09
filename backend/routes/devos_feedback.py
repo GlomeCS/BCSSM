@@ -60,3 +60,48 @@ def init_feedback_routes(app):
             "user": user_info,
             "is_leader": is_leader
         })
+
+    @app.route('/api/devos-feedback/edit', methods=['POST'])
+    def edit_devos_feedback():
+        # DEBUG: inspect session to verify user_id is set
+        print("DEBUG edit_devos_feedback - session contents:", dict(session))
+        # Extract query parameters
+        date_str = request.args.get('date')
+        section_name = request.args.get('section')
+        payload = request.get_json() or {}
+        new_feedback = payload.get('feedback')
+        editor_id = session.get('user_id')
+        print("DEBUG edit_devos_feedback - editor_id:", editor_id)
+        if not editor_id:
+            return jsonify({'error': 'User not authenticated'}), 401
+
+        # Validate input
+        if not date_str or not section_name or new_feedback is None:
+            return jsonify({'error': 'Missing date, section, or feedback'}), 400
+
+        # Retrieve the section ID
+        sec_query = "SELECT id FROM sections WHERE name = :section_name;"
+        sec_rows = execute_query(sec_query, {'section_name': section_name})
+        if not sec_rows:
+            return jsonify({'error': f"Section '{section_name}' not found"}), 400
+        section_id = sec_rows[0][0]
+
+        try:
+            # Upsert feedback (PostgreSQL syntax)
+            upsert_query = """
+                INSERT INTO feedback (section_id, date, feedback, last_edited_by, last_edited_at)
+                VALUES (:section_id, :date_str, :new_feedback, :editor_id, CURRENT_TIMESTAMP)
+                ON CONFLICT (section_id, date) DO UPDATE
+                  SET feedback = EXCLUDED.feedback,
+                      last_edited_by = EXCLUDED.last_edited_by,
+                      last_edited_at = EXCLUDED.last_edited_at;
+            """
+            execute_query(upsert_query, {
+                'section_id': section_id,
+                'date_str': date_str,
+                'new_feedback': new_feedback,
+                'editor_id': editor_id
+            })
+            return jsonify({'success': True}), 200
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
