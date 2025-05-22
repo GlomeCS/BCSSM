@@ -23,7 +23,7 @@ function Navbar() {
                 <div className="collapse navbar-collapse" id="navbarNav">
                     <ul className="navbar-nav ms-auto">
                         <li className="nav-item"><a className="nav-link" href="/">Home</a></li>
-                        <li className="nav-item"><a className="nav-link" href="/duty-teams">Duty Teams</a></li>
+                        <li className="nav-item"><a className="nav-link" href="/duties">Duties</a></li>
                         <li className="nav-item"><a className="nav-link" href="/react/devos-feedback">Devos Feedback</a></li>
                         <li className="nav-item">
                             <button className="btn btn-danger nav-link text-white border-0" 

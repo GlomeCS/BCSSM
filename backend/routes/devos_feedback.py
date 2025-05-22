@@ -63,9 +63,7 @@ def init_feedback_routes(app):
 
     @app.route('/api/devos-feedback/edit', methods=['POST'])
     def edit_devos_feedback():
-        # DEBUG: inspect session to verify user_id is set
-        print("DEBUG edit_devos_feedback - session contents:", dict(session))
-        # Extract query parameters
+        """Edit feedback for a specific date and section."""
         date_str = request.args.get('date')
         section_name = request.args.get('section')
         payload = request.get_json() or {}

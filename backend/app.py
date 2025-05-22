@@ -10,6 +10,8 @@ from backend.globals import cache, db
 from backend.routes.routes import init_main_routes
 from backend.routes.users import init_users_routes
 from backend.routes.devos_feedback import init_feedback_routes  # Add this import
+from backend.routes.duties import init_duties_routes
+
 from backend.utils import get_all_sections
 
 def create_app():
@@ -60,6 +62,7 @@ def create_app():
     init_main_routes(app)
     init_users_routes(app)
     init_feedback_routes(app)
+    init_duties_routes(app)
 
     @app.teardown_appcontext
     def shutdown_session(exception=None):

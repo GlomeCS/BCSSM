@@ -111,6 +111,72 @@ def get_user_duty(user_name):
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
         return {"error": f"Failed to fetch duty for user: {e}"}
 
+
+def get_todays_duties(user_name):
+    """
+    Fetch all duties scheduled for today, including member lists and a flag indicating
+    whether the given user is part of each duty.
+    Returns: list of dicts with keys id, name, duty_description, members, is_current_user.
+    """
+    # Determine current day of week (0=Monday, 6=Sunday)
+    current_day = datetime.now().weekday()
+    query = '''
+    WITH computed_cycle AS (
+      -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
+      SELECT ((CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
+    ),
+    today_schedule AS (
+      SELECT DISTINCT ON (ds.duty_id)
+        ds.duty_id,
+        ds.duty_team_id
+      FROM public.duty_schedule ds, computed_cycle cc
+      WHERE ds.day = :day
+        AND ds.cycle_week = cc.cycle_week
+      ORDER BY ds.duty_id, ds.duty_team_id
+    )
+    SELECT
+      d.id,
+      d.name,
+      d.duty_description,
+      array_agg(
+        jsonb_build_object(
+          'name', u.name,
+          'week', u.week
+        )
+        ORDER BY
+          CASE u.week
+            WHEN 'Both' THEN 0
+            WHEN 'Week A' THEN 1
+            WHEN 'Week B' THEN 2
+            ELSE 3
+          END,
+          u.name
+      ) AS members,
+      bool_or(u.name = :user_name)            AS is_current_user
+    FROM today_schedule ts
+    JOIN public.duties d
+      ON ts.duty_id = d.id
+    LEFT JOIN public.users u
+      ON u.duty_team_id = ts.duty_team_id
+    GROUP BY d.id, d.name, d.duty_description
+    ORDER BY d.name;
+    '''
+    try:
+        rows = execute_readonly_query(query, {"day": current_day, "user_name": user_name})
+        duties = []
+        for row in rows:
+            duties.append({
+                "id": row[0],
+                "name": row[1],
+                "duty_description": row[2],
+                "members": row[3] or [],
+                "is_current_user": row[4],
+            })
+        return duties
+    except Exception as e:
+        logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
+        return []
+
 def get_all_sections():
     query = """
     SELECT name
