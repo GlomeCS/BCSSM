@@ -1,8 +1,7 @@
 # backend/routes/duties.py
 
-from datetime import datetime
-from flask import request, session, jsonify
-from backend.utils import get_todays_duties
+from flask import session, jsonify
+from backend.bcssm_backend.utils import get_todays_duties
 
 def init_duties_routes(app):
     @app.route('/api/duties/today', methods=['GET'])

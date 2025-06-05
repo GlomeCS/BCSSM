@@ -1,8 +1,8 @@
 from urllib.parse import urlparse
 
-from flask import redirect, request, session, url_for, jsonify
+from flask import redirect, request, session, jsonify
 from markupsafe import escape
-from backend.utils import get_all_users, get_user_duty, user_assignments
+from backend.bcssm_backend.utils import get_user_duty, user_assignments
 
 
 def init_main_routes(app):

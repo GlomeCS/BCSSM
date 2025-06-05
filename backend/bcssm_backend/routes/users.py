@@ -2,8 +2,8 @@ from flask import jsonify, request, session
 from markupsafe import escape
 
 from backend.globals import cache
-from backend.utils import (get_all_users, get_user_duty, get_users_by_section,
-                   user_assignments, execute_query)
+from backend.bcssm_backend.utils import (get_all_users, get_user_duty,
+                               get_users_by_section,execute_query)
 
 
 def init_users_routes(app):

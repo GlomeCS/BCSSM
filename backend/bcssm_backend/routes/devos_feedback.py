@@ -1,6 +1,6 @@
 from datetime import datetime
 from flask import request, session, jsonify
-from backend.utils import execute_query
+from backend.bcssm_backend.utils import execute_query
 
 def get_feedback_by_date(date_str):
     """Fetch feedback from the database for a given date."""

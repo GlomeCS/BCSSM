@@ -1,6 +1,6 @@
 import pytest
 from flask import Flask
-from routes.users import init_users_routes
+from backend.bcssm_backend.routes.users import init_users_routes
 
 
 @pytest.fixture
@@ -14,7 +14,7 @@ def client():
 
 def test_users_by_section_success(client, mocker):
     """Test users_by_section returns expected users"""
-    mock_get_users_by_section = mocker.patch("routes.users.get_users_by_section")
+    mock_get_users_by_section = mocker.patch("backend.bcssm_backend.routes.users.get_users_by_section")
     mock_get_users_by_section.return_value = [{"name": "Alice", "role": "Leader"}]
 
     response = client.get("/users-by-section?section=Minors")
@@ -25,7 +25,7 @@ def test_users_by_section_success(client, mocker):
 
 def test_users_by_section_failure(client, mocker):
     """Test users_by_section handles exceptions correctly"""
-    mock_get_users_by_section = mocker.patch("routes.users.get_users_by_section")
+    mock_get_users_by_section = mocker.patch("backend.bcssm_backend.routes.users.get_users_by_section")
     mock_get_users_by_section.side_effect = Exception("Database error")
 
     response = client.get("/users-by-section?section=Minors")
@@ -39,7 +39,7 @@ def test_users_by_section_failure(client, mocker):
 
 def test_user_duty_success(client, mocker):
     """Test user_duty returns expected duty data"""
-    mock_get_user_duty = mocker.patch("routes.users.get_user_duty")
+    mock_get_user_duty = mocker.patch("backend.bcssm_backend.routes.users.get_user_duty")
     mock_get_user_duty.return_value = {"user": "Alice", "duty": "Cleaning"}
 
     response = client.get("/user-duty?user=Alice")
@@ -50,7 +50,7 @@ def test_user_duty_success(client, mocker):
 
 def test_user_duty_failure(client, mocker):
     """Test user_duty handles exceptions correctly"""
-    mock_get_user_duty = mocker.patch("routes.users.get_user_duty")
+    mock_get_user_duty = mocker.patch("backend.bcssm_backend.routes.users.get_user_duty")
     mock_get_user_duty.side_effect = Exception("Database error")
 
     response = client.get("/user-duty?user=Alice")
@@ -63,7 +63,7 @@ def test_user_duty_failure(client, mocker):
 
 def test_select_user_success(client, mocker):
     """Test select_user sets user in session"""
-    mock_cache = mocker.patch("routes.users.cache")
+    mock_cache = mocker.patch("backend.bcssm_backend.routes.users.cache")
     mock_cache.get.return_value = ["Alice", "Bob"]
 
     with client.application.test_request_context():
@@ -78,7 +78,7 @@ def test_select_user_success(client, mocker):
 
 def test_select_user_invalid_user(client, mocker):
     """Test select_user rejects invalid user"""
-    mock_cache = mocker.patch("routes.users.cache")
+    mock_cache = mocker.patch("backend.bcssm_backend.routes.users.cache")
     mock_cache.get.return_value = ["Alice", "Bob"]
 
     with client.application.test_request_context():
@@ -128,11 +128,11 @@ def test_select_user_fetches_users_if_cache_empty(client, mocker):
     """Test select_user retrieves users from database if cache is empty"""
     
     # Mock cache.get to return None (simulating an empty cache)
-    mock_cache = mocker.patch("routes.users.cache")
+    mock_cache = mocker.patch("backend.bcssm_backend.routes.users.cache")
     mock_cache.get.return_value = None
 
     # Mock get_all_users to return a list of users
-    mock_get_all_users = mocker.patch("routes.users.get_all_users")
+    mock_get_all_users = mocker.patch("backend.bcssm_backend.routes.users.get_all_users")
     mock_get_all_users.return_value = ["Alice", "Bob"]
 
     # Make the request to select a user

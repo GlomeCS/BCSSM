@@ -7,12 +7,12 @@ from flask_cors import CORS
 
 from backend.config import DevelopmentConfig, ProductionConfig, TestingConfig
 from backend.globals import cache, db
-from backend.routes.routes import init_main_routes
-from backend.routes.users import init_users_routes
-from backend.routes.devos_feedback import init_feedback_routes  # Add this import
-from backend.routes.duties import init_duties_routes
+from backend.bcssm_backend.routes.routes import init_main_routes
+from backend.bcssm_backend.routes.users import init_users_routes
+from backend.bcssm_backend.routes.devos_feedback import init_feedback_routes
+from backend.bcssm_backend.routes.duties import init_duties_routes
 
-from backend.utils import get_all_sections
+from backend.bcssm_backend.utils import get_all_sections
 
 def create_app():
     load_dotenv()
