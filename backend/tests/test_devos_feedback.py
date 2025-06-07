@@ -110,7 +110,7 @@ def test_route_feedback_error(client, patch_helpers):
     fake_fb.return_value = (None, "err")
     resp = client.get("/api/devos-feedback?date=2025-06-07")
     assert resp.status_code == 500
-    assert resp.get_json() == {"error": "err"}
+    assert resp.get_json() == {"error": "Internal server error"}
 
 # ─── 6) Integration tests for POST /api/devos-feedback/edit ────────────────────
 def test_edit_unauthenticated(client):
