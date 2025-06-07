@@ -45,7 +45,7 @@ def test_get_feedback_by_date_exception(mock_execute_query):
     mock_execute_query.side_effect = Exception("DB fail")
     result, error = get_feedback_by_date("2025-06-07")
     assert result is None
-    assert "DB fail" in error
+    assert error == "An error occurred while fetching feedback"
 
 # ─── 4) Unit tests for get_user_info ────────────────────────────────────────────
 def test_get_user_info_found(mock_execute_query):

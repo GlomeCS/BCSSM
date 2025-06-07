@@ -17,7 +17,8 @@ def get_feedback_by_date(date_str):
         daily_feedback = {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
         return daily_feedback, None  # Always return two values
     except Exception as e:
-        return None, str(e)  # Return None for feedback, and an error message
+        logger.error("Error in get_feedback_by_date for date %s: %s", date_str, e)
+        return None, "An error occurred while fetching feedback"  # Return None for feedback, and a generic error message
 
 
 def get_user_info(user_name):
