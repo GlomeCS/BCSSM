@@ -28,6 +28,15 @@ jobs:
         if [ -f backend/requirements.txt ]; then
           pip install -r backend/requirements.txt
         fi
+
+    - name: Set database environment variables
+      run: |
+        echo "user=test_user" >> $GITHUB_ENV
+        echo "password=test_password" >> $GITHUB_ENV
+        echo "host=localhost" >> $GITHUB_ENV
+        echo "port=5432" >> $GITHUB_ENV
+        echo "database=test_db" >> $GITHUB_ENV
+
     - name: Set PYTHONPATH
       run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
     - name: Lint with flake8

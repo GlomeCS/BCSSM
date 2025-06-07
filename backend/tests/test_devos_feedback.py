@@ -3,7 +3,6 @@ from backend.bcssm_backend import create_app
 from backend.bcssm_backend.routes.devos_feedback import (
     get_feedback_by_date,
     get_user_info,
-    init_feedback_routes,
 )
 from urllib.parse import quote
 from unittest.mock import MagicMock
