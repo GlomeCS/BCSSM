@@ -90,10 +90,17 @@ def create_app():
         if path.startswith(('api/', 'get-', 'select-', 'devos-', 'duty-')):
             return app.send_static_file('index.html')
         
-        # Check if the requested file exists
-        requested_path = os.path.join(app.static_folder, path)
-        if os.path.exists(requested_path) and not os.path.isdir(requested_path):
-            return send_from_directory(app.static_folder, path)
+        # Sanitize input path to prevent directory traversal
+        safe_path = os.path.normpath(path)
+        # Strip any leading slashes or backslashes
+        safe_path = safe_path.lstrip("/\\")
+        # If the normalized path attempts to go above the static folder, reset to empty
+        if safe_path.startswith(".."):
+            safe_path = ""
+        requested_path = os.path.join(app.static_folder, safe_path)
+        # (sanitized requested_path set above)
+        if os.path.isfile(requested_path):
+            return send_from_directory(app.static_folder, safe_path)
         
         # For all other routes, serve the index.html file to support React Router
         app.logger.info("React serving index.html for path: /%s", path)
@@ -110,5 +117,7 @@ def configure_logging(app=None):
         app.logger.setLevel(logging.DEBUG)
 
 if __name__ == "__main__":
-    app = create_app()
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    app = create_app()    
+    # Enable debug mode only in development environment
+    debug_mode = os.getenv("FLASK_ENV") == "development"
+    app.run(host="0.0.0.0", port=8080, debug=debug_mode)

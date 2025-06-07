@@ -2,6 +2,9 @@ from datetime import datetime
 from flask import request, session, jsonify
 from backend.bcssm_backend.utils import execute_query
 
+import logging
+logger = logging.getLogger(__name__)
+
 def get_feedback_by_date(date_str):
     """Fetch feedback from the database for a given date."""
     query = """
@@ -52,7 +55,8 @@ def init_feedback_routes(app):
         # Get feedback records
         daily_feedback, error = get_feedback_by_date(date_str)
         if daily_feedback is None:
-            return jsonify({"error": error}), 500
+            logger.error("Error fetching feedback for date %s: %s", date_str, error)
+            return jsonify({"error": "Internal server error"}), 500
 
         return jsonify({
             "date": date_str,
