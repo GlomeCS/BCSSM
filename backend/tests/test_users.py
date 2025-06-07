@@ -1,152 +1,184 @@
 import pytest
-from flask import Flask
+from backend.bcssm_backend import create_app
 from backend.bcssm_backend.routes.users import init_users_routes
+from flask import session
+from unittest.mock import MagicMock
 
-
+# ─── 0) Fixture: create app with testing config and register routes ────────────
 @pytest.fixture
-def client():
-    """Flask test client fixture"""
-    app = Flask(__name__)
-    app.secret_key = "test_secret"
-    init_users_routes(app)
+def app(monkeypatch):
+    monkeypatch.setenv("FLASK_ENV", "testing")
+    app = create_app()
+    # init_users_routes(app)  # routes already registered by create_app()
+    return app
+
+# ─── 1) Fixture: test client ─────────────────────────────────────────────────────
+@pytest.fixture
+def client(app):
     return app.test_client()
 
+# ─── 2) Fixture: patch underlying helpers and cache ──────────────────────────────
+@pytest.fixture(autouse=True)
+def patch_helpers(monkeypatch):
+    fake_get_by_section = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.get_users_by_section",
+        fake_get_by_section
+    )
+    fake_get_duty = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.get_user_duty",
+        fake_get_duty
+    )
+    fake_get_all = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.get_all_users",
+        fake_get_all
+    )
+    fake_exec = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.execute_query",
+        fake_exec
+    )
+    fake_cache = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.cache",
+        fake_cache
+    )
+    return {
+        "by_section": fake_get_by_section,
+        "duty": fake_get_duty,
+        "all_users": fake_get_all,
+        "execute": fake_exec,
+        "cache": fake_cache
+    }
 
-def test_users_by_section_success(client, mocker):
-    """Test users_by_section returns expected users"""
-    mock_get_users_by_section = mocker.patch("backend.bcssm_backend.routes.users.get_users_by_section")
-    mock_get_users_by_section.return_value = [{"name": "Alice", "role": "Leader"}]
+# ─── 3) GET /users-by-section ────────────────────────────────────────────────────
+def test_users_by_section_success(client, patch_helpers):
+    patch_helpers["by_section"].return_value = [{"name": "Alice", "role": "Leader"}]
 
-    response = client.get("/users-by-section?section=Minors")
-    assert response.status_code == 200
-    assert response.is_json
-    assert response.json == {"users": [{"name": "Alice", "role": "Leader"}]}
+    resp = client.get("/users-by-section?section=Minors")
+    assert resp.status_code == 200
+    assert resp.is_json
+    assert resp.get_json() == {"users": [{"name": "Alice", "role": "Leader"}]}
+    patch_helpers["by_section"].assert_called_once_with("Minors")
 
+def test_users_by_section_error(client, patch_helpers):
+    patch_helpers["by_section"].side_effect = Exception("DB error")
 
-def test_users_by_section_failure(client, mocker):
-    """Test users_by_section handles exceptions correctly"""
-    mock_get_users_by_section = mocker.patch("backend.bcssm_backend.routes.users.get_users_by_section")
-    mock_get_users_by_section.side_effect = Exception("Database error")
+    resp = client.get("/users-by-section?section=Minors")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "error" in data
 
-    response = client.get("/users-by-section?section=Minors")
+# ─── 4) GET /user-duty ────────────────────────────────────────────────────────────
+def test_user_duty_success(client, patch_helpers):
+    patch_helpers["duty"].return_value = {"user": "Alice", "duty": "Cleaning"}
 
-    assert response.status_code == 500
-    assert response.mimetype == "application/json"  # Ensure it's JSON
-    assert response.json is not None
-    assert "error" in response.json
+    resp = client.get("/user-duty?user=Alice")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"user": "Alice", "duty": "Cleaning"}
+    patch_helpers["duty"].assert_called_once_with("Alice")
 
+def test_user_duty_error(client, patch_helpers):
+    patch_helpers["duty"].side_effect = Exception("Oops")
 
+    resp = client.get("/user-duty?user=Alice")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "error" in data
 
-def test_user_duty_success(client, mocker):
-    """Test user_duty returns expected duty data"""
-    mock_get_user_duty = mocker.patch("backend.bcssm_backend.routes.users.get_user_duty")
-    mock_get_user_duty.return_value = {"user": "Alice", "duty": "Cleaning"}
+# ─── 5) POST /select-user ───────────────────────────────────────────────────────
+def test_select_user_from_cache(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].get.return_value = ["Alice", "Bob"]
+    ph["execute"].return_value = [(42, "Section Leader", "Minors")]
 
-    response = client.get("/user-duty?user=Alice")
-    assert response.status_code == 200
-    assert response.is_json
-    assert response.json == {"user": "Alice", "duty": "Cleaning"}
+    resp = client.post("/select-user", json={"user_name": "Alice"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["message"] == "User Alice successfully selected."
+    # Should include full login state
+    assert data["is_logged_in"] is True
+    assert data["is_leader"] is True
+    assert data["user_section"] == "Minors"
+    # user_id is stored in session, not returned in JSON
 
-
-def test_user_duty_failure(client, mocker):
-    """Test user_duty handles exceptions correctly"""
-    mock_get_user_duty = mocker.patch("backend.bcssm_backend.routes.users.get_user_duty")
-    mock_get_user_duty.side_effect = Exception("Database error")
-
-    response = client.get("/user-duty?user=Alice")
-
-    assert response.status_code == 500
-    assert response.mimetype == "application/json"  # Ensure it's JSON
-    assert response.json is not None
-    assert "error" in response.json
-
-
-def test_select_user_success(client, mocker):
-    """Test select_user sets user in session"""
-    mock_cache = mocker.patch("backend.bcssm_backend.routes.users.cache")
-    mock_cache.get.return_value = ["Alice", "Bob"]
-
-    with client.application.test_request_context():
-        response = client.post("/select-user", json={"user_name": "Alice"})
-        assert response.status_code == 200
-        assert response.json == {"message": "User Alice successfully selected."}
-
-        # Ensure session updates properly
-        with client.session_transaction() as sess:
-            assert sess.get("user_name") == "Alice"
-
-
-def test_select_user_invalid_user(client, mocker):
-    """Test select_user rejects invalid user"""
-    mock_cache = mocker.patch("backend.bcssm_backend.routes.users.cache")
-    mock_cache.get.return_value = ["Alice", "Bob"]
-
-    with client.application.test_request_context():
-        response = client.post("/select-user", json={"user_name": "Charlie"})
-        assert response.status_code == 400
-        assert response.json == {"message": "Invalid user selected."}
-
-        # Ensure session is not modified
-        with client.session_transaction() as sess:
-            assert sess.get("user_name") is None
-
-
-def test_get_selected_user(client):
-    """Test get_selected_user returns the logged-in user"""
     with client.session_transaction() as sess:
-        sess["user_name"] = "Alice"
+        assert sess["user_name"] == "Alice"
+        assert sess["user_id"] == 42
+        assert sess["user_section"] == "Minors"
+        assert sess["is_leader"] is True
 
-    response = client.get("/get-selected-user")
-    assert response.status_code == 200
-    assert response.is_json
-    assert response.json == {"user": "Alice"}
+    ph["cache"].get.assert_called_once_with("valid_users")
+    ph["execute"].assert_called_once()
 
+def test_select_user_invalid(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].get.return_value = ["Alice", "Bob"]
 
-def test_get_selected_user_no_user(client):
-    """Test get_selected_user when no user is logged in"""
-    response = client.get("/get-selected-user")
-    assert response.status_code == 200
-    assert response.is_json
-    assert response.json == {"user": None}
+    resp = client.post("/select-user", json={"user_name": "Charlie"})
+    assert resp.status_code == 400
+    assert resp.get_json() == {"message": "Invalid user selected."}
 
+    with client.session_transaction() as sess:
+        assert sess.get("user_name") is None
 
-def test_logout(client):
-    """Test logout removes user from session"""
-    with client.application.test_request_context(), client.session_transaction() as sess:
-        sess["user_name"] = "Alice"
+def test_select_user_loads_cache_when_empty(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].get.return_value = None
+    ph["all_users"].return_value = ["Alice", "Bob"]
+    ph["execute"].return_value = [(5, "Member", "Majors")]
 
-        response = client.post("/logout")
-        assert response.status_code == 200
-        assert response.is_json
-        assert response.json == {"message": "User logged out successfully!"}
+    resp = client.post("/select-user", json={"user_name": "Bob"})
+    assert resp.status_code == 200
 
-        # Ensure session is cleared
-        with client.session_transaction() as sess:
-            assert sess.get("user_name") is None
+    ph["cache"].get.assert_called_once_with("valid_users")
+    ph["all_users"].assert_called_once()
+    ph["cache"].set.assert_called_once_with("valid_users", ["Alice", "Bob"], timeout=300)
 
-def test_select_user_fetches_users_if_cache_empty(client, mocker):
-    """Test select_user retrieves users from database if cache is empty"""
-    
-    # Mock cache.get to return None (simulating an empty cache)
-    mock_cache = mocker.patch("backend.bcssm_backend.routes.users.cache")
-    mock_cache.get.return_value = None
+# ─── 6) GET /get-selected-user ───────────────────────────────────────────────────
+def test_get_selected_user(client):
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Zed"
+    resp = client.get("/get-selected-user")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"user": "Zed"}
 
-    # Mock get_all_users to return a list of users
-    mock_get_all_users = mocker.patch("backend.bcssm_backend.routes.users.get_all_users")
-    mock_get_all_users.return_value = ["Alice", "Bob"]
+def test_get_selected_user_none(client):
+    resp = client.get("/get-selected-user")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"user": None}
 
-    # Make the request to select a user
-    response = client.post("/select-user", json={"user_name": "Alice"})
+# ─── 7) GET /get-users ────────────────────────────────────────────────────────────
+def test_get_users_from_cache(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].get.return_value = ["Alice", "Bob"]
 
-    # Verify cache.get was called once
-    mock_cache.get.assert_called_once_with("valid_users")
+    resp = client.get("/get-users")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"users": ["Alice", "Bob"]}
+    ph["cache"].get.assert_called_once_with("all_users")
+    ph["all_users"].assert_not_called()
 
-    # Verify get_all_users was called since the cache was empty
-    mock_get_all_users.assert_called_once()
+def test_get_users_loads_when_cache_empty(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].get.return_value = None
+    ph["all_users"].return_value = ["X", "Y"]
 
-    # Verify cache.set was called to store the users with a 5-minute timeout
-    mock_cache.set.assert_called_once_with("valid_users", ["Alice", "Bob"], timeout=300)
+    resp = client.get("/get-users")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"users": ["X", "Y"]}
+    ph["cache"].get.assert_called_once_with("all_users")
+    ph["all_users"].assert_called_once()
+    ph["cache"].set.assert_called_once_with("all_users", ["X", "Y"], timeout=300)
 
-    # Assert the response
-    assert response.status_code == 200
-    assert response.json == {"message": "User Alice successfully selected."}
+# ─── 8) POST /logout ─────────────────────────────────────────────────────────────
+def test_logout(client, patch_helpers):
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Someone"
+    resp = client.post("/logout")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"message": "User logged out successfully!"}
+    with client.session_transaction() as sess:
+        assert sess.get("user_name") is None

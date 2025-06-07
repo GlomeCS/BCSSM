@@ -1,170 +1,167 @@
-import os
 import pytest
 from backend.bcssm_backend import create_app
+from backend.bcssm_backend.routes.devos_feedback import (
+    get_feedback_by_date,
+    get_user_info,
+    init_feedback_routes,
+)
+from urllib.parse import quote
+from unittest.mock import MagicMock
 
-@pytest.fixture(autouse=True)
-def mock_env_vars(mocker):
-    """Mock environment variables to prevent real DB initialization."""
-    mocker.patch.dict(os.environ, {
-        "user": "test_user",
-        "password": "test_password",
-        "host": "localhost",
-        "port": "5432",
-        "database": "test_db"
-    })
-
+# ─── 0) Fixture: use TestingConfig and register routes ──────────────────────────
 @pytest.fixture
-def client():
-    """Fixture to create a Flask test client without DB dependencies."""
+def app(monkeypatch):
+    monkeypatch.setenv("FLASK_ENV", "testing")
     app = create_app()
-    app.config["TESTING"] = True
-    app.config["SECRET_KEY"] = "test_secret"
+    # routes for devos_feedback are already registered by create_app()
+    # init_feedback_routes(app)
+    return app
+
+# ─── 1) Fixture: test client ─────────────────────────────────────────────────────
+@pytest.fixture
+def client(app):
     return app.test_client()
 
+# ─── 2) Patch execute_query in devos_feedback ───────────────────────────────────
 @pytest.fixture(autouse=True)
-def mock_db_calls(mocker):
-    """Mock database calls to prevent actual DB usage."""
-    return mocker.patch("backend.bcssm_backend.routes.devos_feedback.execute_query")
+def mock_execute_query(monkeypatch):
+    mock_exec = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.devos_feedback.execute_query",
+        mock_exec
+    )
+    return mock_exec
 
+# ─── 3) Unit tests for get_feedback_by_date ──────────────────────────────────────
+def test_get_feedback_by_date_success(mock_execute_query):
+    mock_execute_query.return_value = [("Minis", "Great job"), ("Majors", None)]
+    result, error = get_feedback_by_date("2025-06-07")
+    assert error is None
+    assert result == {
+        "Minis": "Great job",
+        "Majors": "No feedback available"
+    }
 
+def test_get_feedback_by_date_exception(mock_execute_query):
+    mock_execute_query.side_effect = Exception("DB fail")
+    result, error = get_feedback_by_date("2025-06-07")
+    assert result is None
+    assert "DB fail" in error
+
+# ─── 4) Unit tests for get_user_info ────────────────────────────────────────────
+def test_get_user_info_found(mock_execute_query):
+    mock_execute_query.return_value = [("Alice", "Leader", "Minis")]
+    info = get_user_info("Alice")
+    assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
+
+def test_get_user_info_not_found(mock_execute_query):
+    mock_execute_query.return_value = []
+    info = get_user_info("Bob")
+    assert info is None
+
+def test_get_user_info_exception(mock_execute_query):
+    mock_execute_query.side_effect = Exception("Oops")
+    info = get_user_info("Alice")
+    assert info is None
+
+# ─── 5) Integration tests for GET /api/devos-feedback ───────────────────────────
 @pytest.fixture(autouse=True)
-def mock_flash(mocker):
-    """Mock Flask's flash function to prevent side effects in tests"""
-    return mocker.patch("flask.flash")
+def patch_helpers(monkeypatch):
+    fake_fb = MagicMock(return_value=({}, None))
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.devos_feedback.get_feedback_by_date",
+        fake_fb
+    )
+    fake_ui = MagicMock(return_value=None)
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.devos_feedback.get_user_info",
+        fake_ui
+    )
+    return fake_fb, fake_ui
 
+def test_route_default_date(client, patch_helpers):
+    fake_fb, fake_ui = patch_helpers
+    resp = client.get("/api/devos-feedback")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "date" in data
+    assert data["feedback"] == {}
+    assert data["user"] is None
+    assert data["is_leader"] is None
 
-def test_devos_feedback_success(client, mock_db_calls):
-    """Test successful retrieval of feedback records"""
-    mock_db_calls.return_value = [("Minors", "Great session"), ("Majors", "Needs improvement")]
-
-    response = client.get("/api/devos-feedback?date=2024-03-01")
-
-    assert response.status_code == 200
-    assert b"Great session" in response.data
-    assert b"Needs improvement" in response.data
-    mock_db_calls.assert_called_once()
-
-
-def test_devos_feedback_no_data(client, mock_db_calls):
-    """Test case when no feedback exists"""
-    mock_db_calls.side_effect = lambda query, params: []  # Simulate no feedback
-
-    response = client.get("/api/devos-feedback?date=2024-03-01")
-
-    assert response.status_code == 200
-
-    # Check that feedback section is present but empty
-    assert b'<div class="row row-cols-1 row-cols-md-2 g-4">' in response.data
-
-    # Ensure no cards are rendered (no feedback entries)
-    assert b'<div class="card">' not in response.data
-
-    # Check that the return-to-home button is present
-    assert b'<a href="/" class="btn btn-secondary">Return to Home</a>' in response.data
-
-
-def test_devos_feedback_database_error(client, mock_db_calls, mock_flash):
-    """Test case when database call fails"""
-    mock_db_calls.side_effect = Exception("Database error")
-
-    response = client.get("/api/devos-feedback?date=2024-03-01")
-
-    assert response.status_code == 200  # Should still return a valid response
-    mock_flash.assert_called_once_with("Error fetching feedback. Please try again later.", "danger")
-    assert b"Error fetching feedback" not in response.data  # Should not expose error directly
-
-
-def test_devos_feedback_logged_in_leader(client, mock_db_calls):
-    """Test when a logged-in section leader accesses the feedback page"""
-    mock_db_calls.side_effect = [
-        [("Minors", "Great session"), ("Majors", "Needs improvement")],  # Feedback records
-        [("User1", "Section Leader", "Minors")],  # User role and section
-    ]
+def test_route_with_date_and_leader(client, patch_helpers):
+    fake_fb, fake_ui = patch_helpers
+    fake_fb.return_value = ({"X": "Y"}, None)
+    fake_ui.return_value = {"name": "A", "role": "Section Leader", "section": "S"}
 
     with client.session_transaction() as sess:
-        sess["user_name"] = "User1"
+        sess["user_name"] = "A"
 
-    response = client.get("/api/devos-feedback?date=2024-03-01")
+    date_str = "2025-06-07"
+    resp = client.get(f"/api/devos-feedback?date={quote(date_str)}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["date"] == date_str
+    assert data["feedback"] == {"X": "Y"}
+    assert data["user"] == {"name": "A", "role": "Section Leader", "section": "S"}
+    assert data["is_leader"] is True
 
-    assert response.status_code == 200
-    assert b"Great session" in response.data
-    assert b"Needs improvement" in response.data
-    assert b'">Edit</a>' in response.data  # ✅ Match actual button text
+def test_route_feedback_error(client, patch_helpers):
+    fake_fb, _ = patch_helpers
+    fake_fb.return_value = (None, "err")
+    resp = client.get("/api/devos-feedback?date=2025-06-07")
+    assert resp.status_code == 500
+    assert resp.get_json() == {"error": "err"}
 
+# ─── 6) Integration tests for POST /api/devos-feedback/edit ────────────────────
+def test_edit_unauthenticated(client):
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 401
+    assert resp.get_json() == {"error": "User not authenticated"}
 
-def test_devos_feedback_logged_in_non_leader(client, mock_db_calls):
-    """Test when a regular user accesses the feedback page"""
-    mock_db_calls.side_effect = [
-        [("Minors", "Great session")],  # Feedback records
-        [("User1", "Regular Member", "Minors")],  # User role
-    ]
-
+def test_edit_missing_params(client):
     with client.session_transaction() as sess:
-        sess["user_name"] = "User1"
+        sess["user_id"] = 1
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 400
+    assert "Missing date, section, or feedback" in resp.get_json()["error"]
 
-    response = client.get("/api/devos-feedback?date=2024-03-01")
-
-    assert response.status_code == 200
-    assert b"Great session" in response.data
-    assert b"Edit Feedback" not in response.data  # Should not see edit button
-    mock_db_calls.assert_called()
-
-
-def test_devos_feedback_no_user(client, mock_db_calls):
-    """Test when no user is logged in"""
-    mock_db_calls.side_effect = lambda query, params: [("Minors", "Great session")]
-
-    response = client.get("/api/devos-feedback?date=2024-03-01")
-
-    assert response.status_code == 200
-    assert b"Great session" in response.data
-    assert b"Edit Feedback" not in response.data  # Not logged in, so no edit button
-    mock_db_calls.assert_called()
-
-
-def test_devos_feedback_user_not_found(client, mock_db_calls):
-    """Test when a logged-in user is not found in the database"""
-    mock_db_calls.side_effect = [
-        [("Minors", "Great session")],  # Feedback records
-        [],  # User lookup fails
-    ]
-
+def test_edit_section_not_found(client, mock_execute_query):
     with client.session_transaction() as sess:
-        sess["user_name"] = "UserNotInDB"
+        sess["user_id"] = 1
+    mock_execute_query.return_value = []
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 400
+    assert "Section 'Minis' not found" in resp.get_json()["error"]
 
-    response = client.get("/api/devos-feedback?date=2024-03-01")
+def test_edit_success(client, mock_execute_query):
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+    calls = []
+    def side_effect(query, params=None):
+        calls.append((query, params))
+        return [(1,)] if len(calls) == 1 else None
+    mock_execute_query.side_effect = side_effect
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "New"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True}
+    assert len(calls) == 2
+    assert calls[0][0].strip().startswith("SELECT id FROM sections")
+    assert "INSERT INTO feedback" in calls[1][0]
 
-    assert response.status_code == 200
-    assert b"Great session" in response.data
-    assert b"Edit Feedback" not in response.data  # Should not see edit button
-    mock_db_calls.assert_called()
-
-def test_get_user_info_database_error(mocker):
-    """Test get_user_info handles database failure gracefully"""
-    from backend.bcssm_backend.routes.devos_feedback import get_user_info
-
-    # Mock execute_query to raise an exception
-    mock_execute_query = mocker.patch("backend.bcssm_backend.routes.devos_feedback.execute_query")
-    mock_execute_query.side_effect = Exception("Database error")
-
-    # Call function with a sample user
-    user_info = get_user_info("User1")
-
-    # Assert that it gracefully handles the error by returning None
-    assert user_info is None
-
-    # Normalize query formatting for comparison
-    expected_query = """
-    SELECT u.name, u.role, s.name AS section_name
-    FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE u.name = :user_name;
-    """.strip()
-
-    # Ensure execute_query was called with expected parameters
-    actual_call = mock_execute_query.call_args
-    assert actual_call is not None, "execute_query was never called"
-    
-    actual_query, actual_params = actual_call[0]  # Extract query and params from mock call
-    assert actual_query.strip() == expected_query, f"Query mismatch:\nExpected: {expected_query}\nActual: {actual_query}"
-    assert actual_params == {"user_name": "User1"}
+def test_edit_upsert_error(client, mock_execute_query):
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+    def side_effect(query, params=None):
+        if "SELECT id FROM sections" in query:
+            return [(5,)]
+        raise Exception("oops")
+    mock_execute_query.side_effect = side_effect
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "X"})
+    assert resp.status_code == 500
+    assert "oops" in resp.get_json()["error"]
