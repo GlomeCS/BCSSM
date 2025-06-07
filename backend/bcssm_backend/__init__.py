@@ -97,8 +97,15 @@ def create_app():
         # If the normalized path attempts to go above the static folder, reset to empty
         if safe_path.startswith(".."):
             safe_path = ""
+        # Construct the full requested path
         requested_path = os.path.join(app.static_folder, safe_path)
-        # (sanitized requested_path set above)
+        # Normalize the full requested path
+        requested_path = os.path.normpath(requested_path)
+        # Ensure the requested path is confined to the static folder
+        if not requested_path.startswith(app.static_folder + os.sep):
+            app.logger.warning("Path traversal attempt detected: %s", path)
+            safe_path = "index.html"
+            requested_path = os.path.join(app.static_folder, safe_path)
         if os.path.isfile(requested_path):
             return send_from_directory(app.static_folder, safe_path)
         

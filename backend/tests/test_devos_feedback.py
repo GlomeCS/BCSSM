@@ -163,4 +163,4 @@ def test_edit_upsert_error(client, mock_execute_query):
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
     assert resp.status_code == 500
-    assert "oops" in resp.get_json()["error"]
+    assert "Internal server error" in resp.get_json()["error"]

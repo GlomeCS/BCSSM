@@ -44,26 +44,30 @@ def get_user_info(user_name):
 def init_feedback_routes(app):
     @app.route('/api/devos-feedback', methods=['GET'])
     def get_devos_feedback_data():
-        # Get date from query param or use today
-        date_str = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
+        try:
+            # Get date from query param or use today
+            date_str = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
 
-        # Get current user from session
-        user_name = session.get('user_name')
-        user_info = get_user_info(user_name) if user_name else None
-        is_leader = user_info and user_info["role"] in ["Section Leader", "Team Leader", "Admin"]
+            # Get current user from session
+            user_name = session.get('user_name')
+            user_info = get_user_info(user_name) if user_name else None
+            is_leader = user_info and user_info["role"] in ["Section Leader", "Team Leader", "Admin"]
 
-        # Get feedback records
-        daily_feedback, error = get_feedback_by_date(date_str)
-        if daily_feedback is None:
-            logger.error("Error fetching feedback for date %s: %s", date_str, error)
+            # Get feedback records
+            daily_feedback, error = get_feedback_by_date(date_str)
+            if daily_feedback is None:
+                logger.error("Error fetching feedback for date %s: %s", date_str, error)
+                return jsonify({"error": "Internal server error"}), 500
+
+            return jsonify({
+                "date": date_str,
+                "feedback": daily_feedback,
+                "user": user_info,
+                "is_leader": is_leader
+            })
+        except Exception as e:
+            logger.exception("Unhandled exception in get_devos_feedback_data: %s", e)
             return jsonify({"error": "Internal server error"}), 500
-
-        return jsonify({
-            "date": date_str,
-            "feedback": daily_feedback,
-            "user": user_info,
-            "is_leader": is_leader
-        })
 
     @app.route('/api/devos-feedback/edit', methods=['POST'])
     def edit_devos_feedback():
@@ -106,4 +110,5 @@ def init_feedback_routes(app):
             })
             return jsonify({'success': True}), 200
         except Exception as e:
-            return jsonify({'error': str(e)}), 500
+            logger.exception("Error editing feedback for date %s, section %s: %s", date_str, section_name, e)
+            return jsonify({'error': 'Internal server error'}), 500
