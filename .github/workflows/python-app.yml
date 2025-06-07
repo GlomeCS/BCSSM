@@ -23,8 +23,20 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 pytest coverage
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install flake8 pytest coverage python-dotenv
+        # Install project requirements from the backend directory
+        if [ -f backend/requirements.txt ]; then
+          pip install -r backend/requirements.txt
+        fi
+
+    - name: Set database environment variables
+      run: |
+        echo "user=test_user" >> $GITHUB_ENV
+        echo "password=test_password" >> $GITHUB_ENV
+        echo "host=localhost" >> $GITHUB_ENV
+        echo "port=5432" >> $GITHUB_ENV
+        echo "database=test_db" >> $GITHUB_ENV
+
     - name: Set PYTHONPATH
       run: echo "PYTHONPATH=$PYTHONPATH:$(pwd)" >> $GITHUB_ENV
     - name: Lint with flake8

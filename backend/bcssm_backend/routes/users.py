@@ -1,9 +1,9 @@
 from flask import jsonify, request, session
 from markupsafe import escape
 
-from globals import cache
-from utils import (get_all_users, get_user_duty, get_users_by_section,
-                   user_assignments)
+from backend.globals import cache
+from backend.bcssm_backend.utils import (get_all_users, get_user_duty,
+                               get_users_by_section,execute_query)
 
 
 def init_users_routes(app):
@@ -36,8 +36,6 @@ def init_users_routes(app):
         if user_name:
             user_name = escape(user_name)  # Escaping user input
 
-        print(f"Received user_name: {user_name}")
-
         # Get valid users from cache or database
         valid_users = cache.get('valid_users')
         if not valid_users:
@@ -49,8 +47,34 @@ def init_users_routes(app):
             return {"message": "Invalid user selected."}, 400
 
         session['user_name'] = user_name
-        print(f"User {user_name} successfully set in session.")
-        return {"message": f"User {escape(user_name)} successfully selected."}, 200
+
+        # Fetch full user record for ID, role, and section
+        user_rows = execute_query(
+            "SELECT u.id, u.role, s.name AS section_name "
+            "FROM users u "
+            "LEFT JOIN sections s ON u.section_id = s.id "
+            "WHERE u.name = :user_name",
+            {'user_name': user_name}
+        )
+        if not user_rows:
+            return jsonify({'error': 'User record not found'}), 500
+        user_row = user_rows[0]
+        # Unpack tuple: (id, role, section_name)
+        user_id, role, section_name = user_row
+
+        session['user_id'] = user_id
+        is_leader = role in ["Section Leader", "Team Leader", "Admin"]
+        session['user_section'] = section_name
+        session['is_leader'] = is_leader
+
+        # Return JSON including user state
+        response = jsonify({
+            "message": f"User {escape(user_name)} successfully selected.",
+            "is_logged_in": True,
+            "user_section": session['user_section'],
+            "is_leader": session['is_leader']
+        })
+        return response, 200
 
     @app.route('/get-selected-user')
     def get_selected_user():
@@ -64,20 +88,35 @@ def init_users_routes(app):
         session.pop('user_name', None)
         return jsonify({"message": "User logged out successfully!"})
 
+    @app.route('/get-users')
+    def get_users():
+        try:
+            # Fetch users from cache or database
+            users = cache.get('all_users')
+            if not users:
+                users = get_all_users()
+                cache.set('all_users', users, timeout=300)  # Cache for 5 minutes
+
+            return jsonify({"users": users}), 200
+        except Exception as e:
+            app.logger.error(f"Failed to fetch users: {str(e)}")
+            return jsonify({"error": "An internal error has occurred."}), 500
+
     @app.context_processor
     def inject_user_state():
         user_name = session.get('user_name', None)
         if user_name:
-            user_info = user_assignments.get(user_name, {})
-            is_leader = user_info.get('role', 'Team Member') in ["Section Leader", "Team Leader", "Admin"]
             return {
                 'is_logged_in': True,
-                'user_section': user_info.get('section'),
-                'is_leader': is_leader
+                'user_section': session.get('user_section'),
+                'is_leader': session.get('is_leader'),
+                'user_id': session.get('user_id')
             }
         else:
             return {
                 'is_logged_in': False,
                 'user_section': None,
-                'is_leader': False
+                'is_leader': False,
+                'user_id': None
             }
+        

@@ -1,20 +1,24 @@
 from urllib.parse import urlparse
 
-from flask import redirect, render_template, request, session, url_for
+from flask import redirect, request, session, jsonify
 from markupsafe import escape
-from utils import get_all_users, get_user_duty, user_assignments
+from backend.bcssm_backend.utils import get_user_duty, user_assignments
 
 
 def init_main_routes(app):
 
     @app.route('/')
     def index():
-        users = get_all_users()  # Fetch all users to populate the dropdown
-        next_url = request.args.get('next', '/')
-        return render_template('index.html', users=users, next = next_url)
+        """ React will handle routing; this route serves the app. """
+        return app.send_static_file("index.html")
             
-    @app.route('/login', methods=['POST'])
+    @app.route('/login', methods=['GET', 'POST'])
     def login():
+        if request.method == 'GET':
+            # For GET requests, simply redirect to the homepage
+            return redirect('/')
+
+        # Handle POST request for user login:
         user_name = request.form.get('user_name')
         user_name = escape(user_name)  # Escape to prevent XSS
         print(f"Received user_name: {user_name}")  # Debug log
@@ -28,15 +32,15 @@ def init_main_routes(app):
                 print(f"Redirecting to: {target}")  # Debug log
                 return redirect(target, code=302)
             print("Target invalid, redirecting to '/'")  # Debug log
-            return redirect('/', code=302)
+            return redirect('/')
         print("User not found, redirecting to index")  # Debug log
-        return redirect(url_for('index'))
+        return redirect('/')
 
     @app.route('/duty-teams')
     def duty_team():
         user_name = session.get('user_name')
         if not user_name:
-            return redirect(url_for('index'))  # Redirect to index if no user is selected
+            return jsonify({"error": "User not logged in"}), 401
 
         # Get duty data for the user
         duty_data = get_user_duty(user_name)
@@ -47,4 +51,4 @@ def init_main_routes(app):
         else:
             duty_message = duty_data.get('duty', 'No duty assigned')  # This depends on your duty data structure
 
-        return render_template('duty_teams.html', user=user_name, duty_message=duty_message)
+        return jsonify({"user": user_name, "duty_message": duty_message})

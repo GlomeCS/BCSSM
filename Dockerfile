@@ -1,33 +1,31 @@
-# Use the official Python image from the Docker Hub
-FROM python:3.9-slim
+# Stage 1: Build the React frontend
+FROM node:23-slim AS frontend-builder
+WORKDIR /app/frontend
 
-# Set the working directory in the container
+ARG CACHEBUST=1
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm install
+COPY frontend ./
+RUN npm run build
+
+# Stage 2: Set up Flask
+FROM python:3.13-slim
 WORKDIR /app
 
-# Install system dependencies (including PostgreSQL development libraries)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    build-essential \
-    libpq-dev \
-    postgresql \
-    && rm -rf /var/lib/apt/lists/*
+    gcc build-essential libpq-dev && rm -rf /var/lib/apt/lists/*
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+COPY backend/requirements.txt .
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Install the dependencies
-RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend ./backend
 
-# Copy the rest of the application code into the container
-COPY . .
+# Copy the built React files into Flask's static folder; the trailing '/.' copies all contents.
+COPY --from=frontend-builder /app/backend/static/. ./backend/static/
 
-# Set environment variables
-ENV FLASK_APP=app.py
+ENV FLASK_APP=backend.app
 ENV FLASK_RUN_HOST=0.0.0.0
 
-# Expose the port the app runs on
-EXPOSE 5000
+EXPOSE 8080
 
-# Run the application
-CMD ["flask", "run"]
+CMD ["flask", "run", "--host=0.0.0.0", "--port=8080"]

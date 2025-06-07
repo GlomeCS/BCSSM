@@ -3,24 +3,35 @@ from datetime import datetime
 
 from sqlalchemy import text
 
-from globals import db
+from backend.globals import db
 
 logger = logging.getLogger(__name__)
+
+def execute_readonly_query(query, params=None):
+    """
+    Execute a read-only SQL query using a dedicated engine connection, avoiding session overhead.
+    Returns: list of result rows
+    """
+    try:
+        with db.engine.connect() as conn:
+            logger.info("Executing read-only query: %s with params: %s", query, params)
+            result = conn.execute(text(query), params)
+            rows = result.fetchall()
+            logger.info("Rows fetched: %s", rows)
+            return rows
+    except Exception as e:
+        logger.error(
+            "Read-only query failed. Query: %s, Params: %s, Error: %s", query, params, e
+        )
+        raise
 
 user_assignments = {}
 
 def execute_query(query, params=None):
     try:
-        db.session.begin()
-
-        # Log the query and parameters
-        logger.info("Executing query: %s with params: %s", query, params)
-
-        # Execute the query
-        result = db.session.execute(text(query), params)
-
-        # Commit for write operations
-        db.session.commit()
+        with db.session.begin():
+            logger.info("Executing query: %s with params: %s", query, params)
+            result = db.session.execute(text(query), params)
 
         # Return rows only if the query expects a result
         if result.returns_rows:
@@ -50,7 +61,7 @@ def get_all_users():
     """
     try:
         logger.info("Starting query execution for get_all_users...")
-        rows = execute_query(query)
+        rows = execute_readonly_query(query)
         logger.info("Query returned rows: %s", rows)
 
         # Extract only the names for the dropdown
@@ -81,7 +92,7 @@ def get_user_duty(user_name):
         current_day = datetime.now().weekday()
 
         # Execute the query with the user's name and current day
-        result = execute_query(query, {"user_name": user_name, "day": current_day})
+        result = execute_readonly_query(query, {"user_name": user_name, "day": current_day})
         if not result:
             return {"error": "User not found or no duty assigned"}
 
@@ -100,14 +111,80 @@ def get_user_duty(user_name):
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
         return {"error": f"Failed to fetch duty for user: {e}"}
 
+
+def get_todays_duties(user_name):
+    """
+    Fetch all duties scheduled for today, including member lists and a flag indicating
+    whether the given user is part of each duty.
+    Returns: list of dicts with keys id, name, duty_description, members, is_current_user.
+    """
+    # Determine current day of week (0=Monday, 6=Sunday)
+    current_day = datetime.now().weekday()
+    query = '''
+    WITH computed_cycle AS (
+      -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
+      SELECT ((CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
+    ),
+    today_schedule AS (
+      SELECT DISTINCT ON (ds.duty_id)
+        ds.duty_id,
+        ds.duty_team_id
+      FROM public.duty_schedule ds, computed_cycle cc
+      WHERE ds.day = :day
+        AND ds.cycle_week = cc.cycle_week
+      ORDER BY ds.duty_id, ds.duty_team_id
+    )
+    SELECT
+      d.id,
+      d.name,
+      d.duty_description,
+      array_agg(
+        jsonb_build_object(
+          'name', u.name,
+          'week', u.week
+        )
+        ORDER BY
+          CASE u.week
+            WHEN 'Both' THEN 0
+            WHEN 'Week A' THEN 1
+            WHEN 'Week B' THEN 2
+            ELSE 3
+          END,
+          u.name
+      ) AS members,
+      bool_or(u.name = :user_name)            AS is_current_user
+    FROM today_schedule ts
+    JOIN public.duties d
+      ON ts.duty_id = d.id
+    LEFT JOIN public.users u
+      ON u.duty_team_id = ts.duty_team_id
+    GROUP BY d.id, d.name, d.duty_description
+    ORDER BY d.name;
+    '''
+    try:
+        rows = execute_readonly_query(query, {"day": current_day, "user_name": user_name})
+        duties = []
+        for row in rows:
+            duties.append({
+                "id": row[0],
+                "name": row[1],
+                "duty_description": row[2],
+                "members": row[3] or [],
+                "is_current_user": row[4],
+            })
+        return duties
+    except Exception as e:
+        logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
+        return []
+
 def get_all_sections():
     query = """
     SELECT name
     FROM sections
-    ORDER BY name;
+    ORDER BY display_order, name;
     """
     try:
-        result = execute_query(query)
+        result = execute_readonly_query(query)
         sections = [row[0] for row in result]
         return sections
     except Exception as e:
@@ -122,7 +199,7 @@ def get_users_by_section(section):
     WHERE s.name = :section;
     """
     try:
-        result = execute_query(query, {"section": section})
+        result = execute_readonly_query(query, {"section": section})
         users = [{"name": row[0], "role": row[1]} for row in result]
         return users
     except Exception as e:
@@ -136,7 +213,7 @@ def get_all_feedback_dates():
     ORDER BY date DESC;
     """
     try:
-        result = execute_query(query)
+        result = execute_readonly_query(query)
         dates = [row[0] for row in result]
         return dates
     except Exception as e:

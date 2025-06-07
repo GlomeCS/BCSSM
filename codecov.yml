@@ -1,0 +1,10 @@
+coverage:
+  status:
+    # Require this % on the overall project
+    project:
+      default:
+        target: 85%      # ← your desired minimum overall coverage
+    # Require this % on the diff/patch in each PR
+    patch:
+      default:
+        target: 85%      # ← your desired minimum for new or changed code
