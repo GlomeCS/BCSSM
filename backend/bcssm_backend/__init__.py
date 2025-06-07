@@ -91,22 +91,13 @@ def create_app():
             return app.send_static_file('index.html')
         
         # Sanitize input path to prevent directory traversal
-        safe_path = os.path.normpath(path)
-        # Strip any leading slashes or backslashes
-        safe_path = safe_path.lstrip("/\\")
-        # If the normalized path attempts to go above the static folder, reset to empty
-        if safe_path.startswith(".."):
-            safe_path = ""
-        # Construct the full requested path
-        requested_path = os.path.join(app.static_folder, safe_path)
-        # Normalize the full requested path
-        requested_path = os.path.normpath(requested_path)
-        # Ensure the requested path is confined to the static folder
-        if not requested_path.startswith(app.static_folder + os.sep):
+        # Resolve the absolute path and sanitize user input
+        safe_path = os.path.realpath(os.path.join(app.static_folder, path))
+        # Ensure the resolved path is confined to the static folder
+        if not safe_path.startswith(os.path.realpath(app.static_folder) + os.sep):
             app.logger.warning("Path traversal attempt detected: %s", path)
-            safe_path = "index.html"
-            requested_path = os.path.join(app.static_folder, safe_path)
-        if os.path.isfile(requested_path):
+            safe_path = os.path.join(app.static_folder, "index.html")
+        if os.path.isfile(safe_path):
             return send_from_directory(app.static_folder, safe_path)
         
         # For all other routes, serve the index.html file to support React Router
