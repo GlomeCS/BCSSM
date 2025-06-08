@@ -39,34 +39,29 @@ function Home() {
   }, [navigate]);
 
   return (
-    <div>
-      <Navbar /> {/* Reusable navigation bar */}
-      <div className="container text-center mt-5">
-        <h1 className="mb-4">Welcome to Ballyholme CSSM 2025!!! 🎉</h1>
-        {currentUser ? (
-          <>
-            <p id="currentUser">
-              Current User: <strong>{currentUser}</strong>
-            </p>
-            <h2 className="mt-4">Your Duty</h2>
-            <div id="content">
-              {loading ? (
-                <p>Loading duty info...</p>
-              ) : dutyMessage ? (
-                <div className="alert alert-success text-center">
-                  {dutyMessage}
-                </div>
-              ) : (
-                <div className="alert alert-warning text-center">
-                  No duty assigned today. Please check the duty assignments.
-                </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <p>Redirecting to login...</p>
+    <div className="home-page">
+      <Navbar />
+      <header className="hero">
+        <div className="hero-content">
+          <h1>Welcome to Ballyholme CSSM 2025</h1>
+        </div>
+      </header>
+      <section className="info-section">
+        {currentUser && (
+          <p className="user-info">
+            Good morning/afternoon/evening <strong>{currentUser}</strong>
+          </p>
         )}
-      </div>
+        <div className="duty-card">
+          {loading ? (
+            <p>Loading your duty info...</p>
+          ) : dutyMessage ? (
+            <p>Your duty today is {dutyMessage}</p>
+          ) : (
+            <p>No duty assigned today.</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

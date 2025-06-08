@@ -15,6 +15,7 @@ const DevoFeedback: React.FC = () => {
   const [userSection, setUserSection] = useState<string | null>(null);
   const [isLeader, setIsLeader] = useState<boolean>(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const base = import.meta.env.VITE_BASE_URL || '';
 
   useEffect(() => {
@@ -53,12 +54,14 @@ const DevoFeedback: React.FC = () => {
         setUserSection(dataParsed.user.section);
         setIsLeader(dataParsed.is_leader);
         setIsLoggedIn(true);
+        setLoading(false);
       })
       .catch(error => {
         console.error('Error fetching or parsing devos-feedback:', error);
         // Fallback to default state on error
         setFeedback({});
         setDate(currentDateStr);
+        setLoading(false);
       });
   }, [currentDateStr]);
 
@@ -78,71 +81,99 @@ const DevoFeedback: React.FC = () => {
     setSearchParams({ date: newDate });
   };
 
-  if (!sections.length) {
+  if (loading || !sections.length) {
     return (
-      <div className="container mt-5 pt-5 text-center">
-        <p>Loading sections…</p>
-      </div>
+      <>
+        <Navbar />
+        <div className="devo-feedback-page">
+          <div className="loading-container">
+            <div className="loading-spinner"></div>
+            <p className="loading-text">Loading sections...</p>
+          </div>
+        </div>
+      </>
     );
   }
 
   return (
     <>
       <Navbar />
-      <div className="container mt-4 pt-5">
-        <div className="text-center mb-4">
-          <h1>Devo's Feedback</h1>
-        </div>
-        <div className="d-flex justify-content-center mb-4">
-          <form method="GET" className="d-flex align-items-center">
+      <div className="devo-feedback-page">
+        <header className="page-header">
+          <div className="page-header-content">
+            <h1 className="page-title">Devo's Feedback</h1>
+            <p className="page-subtitle">Share your thoughts and feedback from today's devotions</p>
+          </div>
+        </header>
+
+        <section className="date-selector-section">
+          <div className="date-selector-container">
+            <label htmlFor="date-input" className="date-label">
+              📅 Select Date
+            </label>
             <input
+              id="date-input"
               type="date"
               value={date}
               onChange={handleDateChange}
-              className="form-control me-2"
-              style={{ maxWidth: '200px' }}
+              className="date-input"
             />
-          </form>
-        </div>
+          </div>
+        </section>
 
-        <div className="row row-cols-1 row-cols-md-2 g-4 justify-content-center">
-          {sections.map(section => {
-            const feedbackText = feedback[section] ?? null;
-            return (
-              <div className="col" key={section}>
-                <div className="card h-100">
-                  <div className="card-header d-flex justify-content-between align-items-center">
-                    <strong>{section}</strong>
+        <section className="feedback-grid-section">
+          <div className="feedback-grid">
+            {sections.map(section => {
+              const feedbackText = feedback[section] ?? null;
+              const hasContent = Boolean(feedbackText?.trim());
+              
+              return (
+                <div className="feedback-card" key={section}>
+                  <div className="feedback-card-header">
+                    <h3 className="section-title">{section}</h3>
                     {isLoggedIn && (isLeader || userSection === section) && (
-                      feedbackText ? (
-                        <Link to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} className="btn btn-sm btn-primary">
-                          Edit
-                        </Link>
-                      ) : (
-                        <Link to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} className="btn btn-sm btn-success">
-                          Add
-                        </Link>
-                      )
+                      <div className="action-buttons">
+                        {hasContent ? (
+                          <Link 
+                            to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} 
+                            className="action-btn edit-btn"
+                          >
+                            ✏️ Edit
+                          </Link>
+                        ) : (
+                          <Link 
+                            to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`} 
+                            className="action-btn add-btn"
+                          >
+                            ➕ Add
+                          </Link>
+                        )}
+                      </div>
                     )}
                   </div>
-                  <div className="card-body">
-                    {feedbackText ? (
-                      <p className="card-text" style={{ whiteSpace: 'pre-wrap' }}>
-                        {feedbackText}
-                      </p>
+                  <div className="feedback-card-body">
+                    {hasContent ? (
+                      <div className="feedback-content">
+                        <p className="feedback-text">{feedbackText}</p>
+                      </div>
                     ) : (
-                      <p className="text-muted fst-italic">No feedback submitted yet.</p>
+                      <div className="no-feedback">
+                        <div className="no-feedback-icon">💭</div>
+                        <p className="no-feedback-text">No feedback submitted yet.</p>
+                      </div>
                     )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </section>
 
-        <div className="mt-4 text-center">
-          <Link to="/" className="btn btn-secondary">Return to Home</Link>
-        </div>
+        <footer className="page-footer">
+          <Link to="/" className="home-btn">
+            🏠 Return to Home
+          </Link>
+        </footer>
       </div>
     </>
   );
