@@ -129,24 +129,66 @@ def test_api_sections_returns_data(mock_get_all_sections, mock_db_cache, clean_e
 
 from unittest.mock import patch
 
-@patch('backend.bcssm_backend.send_from_directory')
-def test_serve_react_index_for_unknown_route(mock_send, monkeypatch, clean_env, mock_db_cache):
-    """Test that unknown routes fall back to React index.html."""
+@patch('backend.bcssm_backend.load_dotenv')
+def test_serve_react_for_prefix_routes(mock_load_dotenv, monkeypatch, mock_db_cache, clean_env):
+    """Test that routes starting with API or other prefixes are served via send_static_file."""
+    # Set environment
     monkeypatch.setenv("FLASK_ENV", "production")
     monkeypatch.setenv("user", "test_user")
     monkeypatch.setenv("password", "test_password")
     monkeypatch.setenv("host", "localhost")
     monkeypatch.setenv("database", "test_db")
-
+    # Initialize app
     mock_db, mock_cache = mock_db_cache
     app = create_app()
+    # Patch send_static_file on the app instance
+    app.send_static_file = MagicMock(return_value="served index.html via send_static_file")
+    # Test each prefix
+    for path in ["/api/foo", "/get-bar", "/select-baz", "/devos-xyz", "/duty-123"]:
+        response = app.test_client().get(path)
+        app.send_static_file.assert_called_with("index.html")
+        assert response.get_data(as_text=True) == "served index.html via send_static_file"
 
-    # Mock send_from_directory to return a sentinel response
-    mock_send.return_value = "sent index.html"
+@patch('backend.bcssm_backend.send_from_directory')
+@patch('backend.bcssm_backend.load_dotenv')
+def test_directory_traversal_fallback(mock_load_dotenv, mock_send, monkeypatch, mock_db_cache, clean_env):
+    """Test that directory traversal attempts fallback to index.html via send_from_directory."""
+    # Set environment
+    monkeypatch.setenv("FLASK_ENV", "production")
+    monkeypatch.setenv("user", "test_user")
+    monkeypatch.setenv("password", "test_password")
+    monkeypatch.setenv("host", "localhost")
+    monkeypatch.setenv("database", "test_db")
+    # Simulate missing file and commonpath indicating traversal
+    monkeypatch.setattr(os.path, "isfile", lambda path: False)
+    # Initialize app
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    # Configure mock return
+    mock_send.return_value = "served index.html via send_from_directory"
+    # Attempt traversal
+    response = app.test_client().get("../etc/passwd")
+    mock_send.assert_called_once_with(app.static_folder, "index.html")
+    assert response.get_data(as_text=True) == "served index.html via send_from_directory"
 
-    response = app.test_client().get("/some/unknown/path")
-
-    # Ensure send_from_directory was called to serve index.html
-    mock_send.assert_called_once_with(app.static_folder, 'index.html')
-    # Verify the response content
-    assert response.get_data(as_text=True) == "sent index.html"
+@patch('backend.bcssm_backend.send_from_directory')
+@patch('backend.bcssm_backend.load_dotenv')
+def test_serve_existing_static_file_branch(mock_load_dotenv, mock_send, monkeypatch, mock_db_cache, clean_env):
+    """Test that existing static files are served via send_from_directory."""
+    # Set environment
+    monkeypatch.setenv("FLASK_ENV", "production")
+    monkeypatch.setenv("user", "test_user")
+    monkeypatch.setenv("password", "test_password")
+    monkeypatch.setenv("host", "localhost")
+    monkeypatch.setenv("database", "test_db")
+    # Simulate file exists
+    monkeypatch.setattr(os.path, "isfile", lambda path: True)
+    # Initialize app
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    # Configure mock return
+    mock_send.return_value = "served main.css"
+    # Request an existing file
+    response = app.test_client().get("/main.css")
+    mock_send.assert_called_once_with(app.static_folder, "main.css")
+    assert response.get_data(as_text=True) == "served main.css"
