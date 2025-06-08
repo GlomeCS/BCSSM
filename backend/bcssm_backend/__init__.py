@@ -1,6 +1,8 @@
 import logging
 import os
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
@@ -17,7 +19,14 @@ from backend.bcssm_backend.utils import get_all_sections
 def create_app():
     load_dotenv()
 
-    app = Flask(__name__, static_folder="static", static_url_path="/static")
+    # Determine the absolute path to the static directory alongside this file
+    here = Path(__file__).parent
+    static_dir = here / "static"
+    app = Flask(
+        __name__,
+        static_folder=str(static_dir),
+        static_url_path="/static"
+    )
     CORS(app)
     
     # Configure the app based on the environment
@@ -90,22 +99,14 @@ def create_app():
         if path.startswith(('api/', 'get-', 'select-', 'devos-', 'duty-')):
             return app.send_static_file('index.html')
         
-        # Sanitize input path to prevent directory traversal
-        from werkzeug.utils import secure_filename
-        sanitized_path = secure_filename(path)
-        safe_path = os.path.realpath(os.path.join(app.static_folder, sanitized_path))
-        # Ensure the resolved path is confined to the static folder
-        if not safe_path.startswith(os.path.realpath(app.static_folder) + os.sep):
-            app.logger.warning("Path traversal attempt detected: %s", path)
-            safe_path = os.path.join(app.static_folder, "index.html")
-        else:
-            # Ensure the relative path does not contain any traversal sequences
-            relative_path = os.path.relpath(safe_path, app.static_folder)
-            if ".." in relative_path.split(os.sep):
-                app.logger.warning("Invalid path detected: %s", path)
-                safe_path = os.path.join(app.static_folder, "index.html")
-        if os.path.isfile(safe_path):
-            return send_from_directory(app.static_folder, os.path.basename(safe_path))
+        # Normalize and sanitize the path to allow subdirectories
+        safe_path = os.path.normpath(path).lstrip("/\\")
+        # Prevent directory traversal above static_folder
+        if safe_path.startswith(".."):
+            safe_path = ""
+        requested_path = os.path.join(app.static_folder, safe_path)
+        if os.path.isfile(requested_path):
+            return send_from_directory(app.static_folder, safe_path)
         
         # For all other routes, serve the index.html file to support React Router
         app.logger.info("React serving index.html for path: /%s", path)
