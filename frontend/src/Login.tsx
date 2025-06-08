@@ -4,24 +4,37 @@ import { useNavigate } from "react-router-dom";
 function Login() {
   const [users, setUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
-  const navigate = useNavigate(); // React Router's navigation hook
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [error, setError] = useState<string>("");
+  const navigate = useNavigate();
 
   useEffect(() => {
+    setIsLoadingUsers(true);
     fetch("/get-users")
       .then((response) => response.json())
       .then((data: { users: string[] }) => {
         console.log("Fetched users:", data.users);
         setUsers(data.users || []);
+        setError("");
       })
-      .catch((error) => console.error("Error fetching users:", error));
+      .catch((error) => {
+        console.error("Error fetching users:", error);
+        setError("Failed to load users. Please refresh the page.");
+      })
+      .finally(() => {
+        setIsLoadingUsers(false);
+      });
   }, []);
 
-  // Handle user selection using relative URL
   const handleLogin = async () => {
     if (!selectedUser) {
-      alert("Please select a user!");
+      setError("Please select a user!");
       return;
     }
+
+    setIsLoading(true);
+    setError("");
 
     try {
       const response = await fetch("/select-user", {
@@ -35,6 +48,7 @@ function Login() {
       }
 
       const data = await response.json();
+      
       // Store user state in localStorage
       localStorage.setItem("is_logged_in", data.is_logged_in ? "true" : "false");
       if (data.user_section) {
@@ -43,40 +57,105 @@ function Login() {
         localStorage.removeItem("user_section");
       }
       localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
-
-      alert(data.message);
-
-      // Store user in localStorage before redirecting
       localStorage.setItem("currentUser", selectedUser);
 
-      // Redirect to home page
+      // Navigate to home page
       navigate("/");
     } catch (error) {
       console.error("Error selecting user:", error);
-      alert("Failed to select user. Please try again.");
+      setError("Failed to select user. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="container text-center">
-      <h1>Select Your User</h1>
-      <div className="input-group mb-3 justify-content-center">
-        <select
-          className="form-select"
-          style={{ width: "50%" }}
-          value={selectedUser}
-          onChange={(e) => setSelectedUser(e.target.value)}
-        >
-          <option value="">--Select a user--</option>
-          {users.map((user) => (
-            <option key={user} value={user}>
-              {user}
-            </option>
-          ))}
-        </select>
-        <button className="btn btn-primary ms-3" onClick={handleLogin}>
-          Confirm
-        </button>
+    <div className="login-page">
+      <div className="login-container">
+        {/* Header Section */}
+        <div className="login-header">
+          <div className="login-header-content">
+            <h1 className="login-title">Welcome Back</h1>
+            <p className="login-subtitle">Select your profile to continue</p>
+          </div>
+        </div>
+
+        {/* Main Login Form */}
+        <div className="login-form">
+          {error && (
+            <div className="error-message">
+              <span className="error-icon">⚠️</span>
+              <span className="error-text">{error}</span>
+            </div>
+          )}
+
+          <div className="form-group">
+            <label className="form-label">
+              <span className="label-icon">👤</span>
+              Choose User
+            </label>
+            
+            {isLoadingUsers ? (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <span className="loading-text">Loading users...</span>
+              </div>
+            ) : (
+              <div className="select-container">
+                <select
+                  className="user-select"
+                  value={selectedUser}
+                  onChange={(e) => {
+                    setSelectedUser(e.target.value);
+                    setError("");
+                  }}
+                  disabled={isLoading}
+                >
+                  <option value="">Select your profile...</option>
+                  {users.map((user) => (
+                    <option key={user} value={user}>
+                      {user}
+                    </option>
+                  ))}
+                </select>
+                <div className="select-arrow">
+                  <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
+                    <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="form-actions">
+            <button
+              className="login-btn"
+              onClick={handleLogin}
+              disabled={!selectedUser || isLoading || isLoadingUsers}
+            >
+              {isLoading ? (
+                <>
+                  <div className="button-spinner"></div>
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  <span>Continue</span>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M1 8H15M15 8L8 1M15 8L8 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="login-footer">
+          <p className="footer-text">
+            This system is protected by copyright and trademark laws under the laws of the United Kingdom. Unauthorized use is prohibited.
+          </p>
+        </div>
       </div>
     </div>
   );
