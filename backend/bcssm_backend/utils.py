@@ -40,9 +40,8 @@ def execute_query(query, params=None):
             rows = result.fetchall()
             logger.info("Raw rows fetched: %s", rows)
             return rows
-        else:
-            logger.info("Query executed successfully with no rows returned.")
-            return None
+        logger.info("Query executed successfully with no rows returned.")
+        return None
 
     except Exception as e:
         db.session.rollback()
@@ -124,43 +123,46 @@ def get_todays_duties(user_name):
     current_day = datetime.now().weekday()
     query = '''
     WITH computed_cycle AS (
-      -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
-      SELECT (ABS(CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
+    -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
+    SELECT (ABS(CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
     ),
     today_schedule AS (
-      SELECT DISTINCT ON (ds.duty_id)
+    SELECT DISTINCT ON (ds.duty_id)
         ds.duty_id,
         ds.duty_team_id
-      FROM public.duty_schedule ds, computed_cycle cc
-      WHERE ds.day = :day
+    FROM public.duty_schedule ds, computed_cycle cc
+    WHERE ds.day = :day
         AND ds.cycle_week = cc.cycle_week
-      ORDER BY ds.duty_id, ds.duty_team_id
+    ORDER BY ds.duty_id, ds.duty_team_id
     )
     SELECT
-      d.id,
-      d.name,
-      d.duty_description,
-      array_agg(
+    d.id,
+    d.name,
+    d.duty_description,
+    dt.name AS team_name,
+    array_agg(
         jsonb_build_object(
-          'name', u.name,
-          'week', u.week
+        'name', u.name,
+        'week', u.week
         )
         ORDER BY
-          CASE u.week
+        CASE u.week
             WHEN 'Both' THEN 0
             WHEN 'Week A' THEN 1
             WHEN 'Week B' THEN 2
             ELSE 3
-          END,
-          u.name
-      ) AS members,
-      bool_or(u.name = :user_name)            AS is_current_user
+        END,
+        u.name
+    ) AS members,
+    bool_or(u.name = :user_name) AS is_current_user
     FROM today_schedule ts
     JOIN public.duties d
-      ON ts.duty_id = d.id
+    ON ts.duty_id = d.id
+    JOIN public.duty_teams dt
+    ON ts.duty_team_id = dt.id
     LEFT JOIN public.users u
-      ON u.duty_team_id = ts.duty_team_id
-    GROUP BY d.id, d.name, d.duty_description
+    ON u.duty_team_id = ts.duty_team_id
+    GROUP BY d.id, d.name, d.duty_description, dt.name
     ORDER BY d.name;
     '''
     try:
@@ -171,9 +173,10 @@ def get_todays_duties(user_name):
                 "id": row[0],
                 "name": row[1],
                 "duty_description": row[2],
-                "members": row[3] or [],
-                "is_current_user": row[4],
-            })
+                "team_name": row[3],
+                "members": row[4] or [],
+                "is_current_user": row[5],
+        })
         return duties
     except Exception as e:
         logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)

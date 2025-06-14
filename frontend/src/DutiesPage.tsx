@@ -8,6 +8,7 @@ type Duty = {
   description: string;
   members: { name: string; week: string }[];
   isCurrentUser: boolean;
+  teamName?: string; // Added to support team number display
 };
 
 type ScheduleDay = {
@@ -56,6 +57,7 @@ export default function DutiesPage() {
           description: d.duty_description,
           members: d.members,
           isCurrentUser: d.is_current_user,
+          teamName: d.team_name, // Use team_name from API
         }));
         
         console.log("Mapped duties for UI:", mapped);
@@ -88,6 +90,20 @@ export default function DutiesPage() {
     fetchDuties();
     fetchSchedule();
   }, [navigate]);
+
+  // Extract team number from team name (format: "Duty Team 1", "Duty Team 2", etc.)
+  const getTeamNumber = (teamName?: string): string => {
+    console.log('getTeamNumber called with:', teamName);
+    if (!teamName) {
+      console.log('No team name provided');
+      return '';
+    }
+    const match = teamName.match(/Duty Team (\d+)/i);
+    console.log('Regex match result:', match);
+    const result = match ? match[1] : '';
+    console.log('Extracted team number:', result);
+    return result;
+  };
 
   // Get current date for display
   const getCurrentDate = () => {
@@ -174,30 +190,37 @@ export default function DutiesPage() {
                 
                 {myDuties.length > 0 ? (
                   <div className="duties-grid">
-                    {myDuties.map((duty) => (
-                      <div key={duty.id} className="duty-card your-duty-card">
-                        <div className="duty-card-header">
-                          <h3 className="duty-name">{duty.name}</h3>
-                          <div className="duty-badge your-duty-badge">Your Duty</div>
-                        </div>
-                        <div className="duty-card-body">
-                          <p className="duty-description">{duty.description}</p>
-                          {duty.members.length > 0 && (
-                            <div className="duty-members">
-                              <div className="members-label">👥 Team Members:</div>
-                              <div className="members-list">
-                                {duty.members.map((member, index) => (
-                                  <div key={index} className="member-item">
-                                    <span className="member-name">{member.name}</span>
-                                    <span className="member-week">{member.week}</span>
-                                  </div>
-                                ))}
-                              </div>
+                    {myDuties.map((duty) => {
+                      console.log('Processing my duty:', duty);
+                      const teamNumber = getTeamNumber(duty.teamName);
+                      console.log('Team number for my duty:', teamNumber);
+                      return (
+                        <div key={duty.id} className="duty-card your-duty-card">
+                          <div className="duty-card-header">
+                            <h3 className="duty-name">{duty.name}</h3>
+                            <div className="duty-badge your-duty-badge">
+                              {teamNumber ? `Team ${teamNumber} Duty` : 'Your Duty'}
                             </div>
-                          )}
+                          </div>
+                          <div className="duty-card-body">
+                            <p className="duty-description">{duty.description}</p>
+                            {duty.members.length > 0 && (
+                              <div className="duty-members">
+                                <div className="members-label">👥 Team Members:</div>
+                                <div className="members-list-compact">
+                                  {duty.members.map((member, index) => (
+                                    <span key={index} className="member-tag">
+                                      <span className="member-name">{member.name}</span>
+                                      <span className="member-week">{member.week}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="no-duties-message">
@@ -219,30 +242,37 @@ export default function DutiesPage() {
                 
                 {otherDuties.length > 0 ? (
                   <div className="duties-grid">
-                    {otherDuties.map((duty) => (
-                      <div key={duty.id} className="duty-card other-duty-card">
-                        <div className="duty-card-header">
-                          <h3 className="duty-name">{duty.name}</h3>
-                          <div className="duty-badge other-duty-badge">Team Duty</div>
-                        </div>
-                        <div className="duty-card-body">
-                          <p className="duty-description">{duty.description}</p>
-                          {duty.members.length > 0 && (
-                            <div className="duty-members">
-                              <div className="members-label">👥 Assigned to:</div>
-                              <div className="members-list">
-                                {duty.members.map((member, index) => (
-                                  <div key={index} className="member-item">
-                                    <span className="member-name">{member.name}</span>
-                                    <span className="member-week">{member.week}</span>
-                                  </div>
-                                ))}
-                              </div>
+                    {otherDuties.map((duty) => {
+                      console.log('Processing other duty:', duty);
+                      const teamNumber = getTeamNumber(duty.teamName);
+                      console.log('Team number for other duty:', teamNumber);
+                      return (
+                        <div key={duty.id} className="duty-card other-duty-card">
+                          <div className="duty-card-header">
+                            <h3 className="duty-name">{duty.name}</h3>
+                            <div className="duty-badge other-duty-badge">
+                              {teamNumber ? `Team ${teamNumber} Duty` : 'Team Duty'}
                             </div>
-                          )}
+                          </div>
+                          <div className="duty-card-body">
+                            <p className="duty-description">{duty.description}</p>
+                            {duty.members.length > 0 && (
+                              <div className="duty-members">
+                                <div className="members-label">👥 Assigned to:</div>
+                                <div className="members-list-compact">
+                                  {duty.members.map((member, index) => (
+                                    <span key={index} className="member-tag">
+                                      <span className="member-name">{member.name}</span>
+                                      <span className="member-week">{member.week}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="no-duties-message">
@@ -538,6 +568,50 @@ export default function DutiesPage() {
           font-size: 14px;
         }
 
+        /* New compact member styles */
+        .members-list-compact {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .member-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #f1f5f9;
+          color: #475569;
+          padding: 4px 8px;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 500;
+          border: 1px solid #e2e8f0;
+          transition: background-color 0.2s ease;
+        }
+
+        .member-tag:hover {
+          background: #e2e8f0;
+        }
+
+        .member-name {
+          color: #1e293b;
+        }
+
+        .member-week {
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 400;
+          padding: 2px 4px;
+          background: #e2e8f0;
+          border-radius: 4px;
+        }
+
+        /* Remove old member item styles */
+        .member-item {
+          display: none;
+        }
+
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
@@ -592,6 +666,17 @@ export default function DutiesPage() {
           .week-badge-small {
             font-size: 10px;
             padding: 2px 4px;
+          }
+
+          .member-tag {
+            font-size: 12px;
+            padding: 3px 6px;
+            gap: 4px;
+          }
+
+          .member-week {
+            font-size: 11px;
+            padding: 1px 3px;
           }
         }
       `}</style>

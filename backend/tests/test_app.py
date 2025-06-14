@@ -40,7 +40,7 @@ def test_create_app_with_valid_env_vars(clean_env, mock_db_cache):
     app = create_app()
 
     assert isinstance(app, Flask)
-    assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql://test_user:test_password@localhost:5432/test_db'
+    assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql://test_user:test_password@localhost:6543/test_db'
     assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is False
 
     # ✅ Only check init_app if NOT in testing mode
@@ -91,7 +91,7 @@ def test_create_app_config(clean_env, mock_db_cache, monkeypatch, env, expected_
 
     app = create_app()
 
-    expected_db_uri = f"postgresql://test_user:test_password@localhost:5432/test_db"
+    expected_db_uri = f"postgresql://test_user:test_password@localhost:6543/test_db"
 
     assert app.config["ENV"] == expected_env  # Check the environment variable was applied
     assert app.config["DEBUG"] == expected_debug  # Check DEBUG mode

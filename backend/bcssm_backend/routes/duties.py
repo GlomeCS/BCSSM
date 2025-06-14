@@ -9,6 +9,7 @@ def init_duties_routes(app):
           - id (UUID string)
           - name
           - duty_description
+          - team_name
           - members (list of user names)
           - is_current_user (bool)
         """
