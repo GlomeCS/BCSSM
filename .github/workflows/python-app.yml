@@ -34,7 +34,7 @@ jobs:
         echo "user=test_user" >> $GITHUB_ENV
         echo "password=test_password" >> $GITHUB_ENV
         echo "host=localhost" >> $GITHUB_ENV
-        echo "port=5432" >> $GITHUB_ENV
+        echo "port=6543" >> $GITHUB_ENV
         echo "database=test_db" >> $GITHUB_ENV
 
     - name: Set PYTHONPATH
