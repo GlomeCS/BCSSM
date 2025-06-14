@@ -1,5 +1,10 @@
-from flask import session, jsonify, request
-from backend.bcssm_backend.utils import get_todays_duties, get_duty_schedule
+import logging
+
+from flask import jsonify, session
+
+from backend.bcssm_backend.utils import get_duty_schedule, get_todays_duties
+
+logger = logging.getLogger(__name__)
 
 def init_duties_routes(app):
     @app.route('/api/duties/today', methods=['GET'])
@@ -51,4 +56,5 @@ def init_duties_routes(app):
             schedule = get_duty_schedule()
             return jsonify({"schedule": schedule}), 200
         except Exception as e:
-            return jsonify({'error': f'Failed to fetch duty schedule: {str(e)}'}), 500
+            logging.error("Error fetching duty schedule: %s", str(e))
+            return jsonify({'error': 'An internal error occurred while fetching the duty schedule.'}), 500

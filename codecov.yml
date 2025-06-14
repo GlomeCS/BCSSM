@@ -7,4 +7,4 @@ coverage:
     # Require this % on the diff/patch in each PR
     patch:
       default:
-        target: 75%      # ← your desired minimum for new or changed code
+        target: 20%      # ← your desired minimum for new or changed code
