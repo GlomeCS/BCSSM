@@ -1,13 +1,19 @@
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
-
+from functools import lru_cache
 
 from sqlalchemy import text
 
-from backend.globals import db
+from backend.globals import db, cache
 
 logger = logging.getLogger(__name__)
+
+@lru_cache(maxsize=128)
+def get_current_cycle_week():
+    """Pre-calculate cycle week to avoid repeated computation"""
+    days_since_start = (datetime.now().date() - datetime(2025, 7, 7).date()).days
+    return (days_since_start // 7) % 2
 
 def execute_readonly_query(query, params=None):
     """
@@ -48,7 +54,12 @@ def execute_query(query, params=None):
         logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
         raise e
 
+@cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_all_users():
+    """
+    Optimized query with better ordering and caching.
+    Assumes users table has first_name and last_name columns or a computed last_name.
+    """
     query = """
     SELECT 
         u.name, 
@@ -58,7 +69,13 @@ def get_all_users():
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    ORDER BY SPLIT_PART(u.name, ' ', 2);
+    ORDER BY 
+        CASE 
+            WHEN POSITION(' ' IN u.name) > 0 
+            THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
+            ELSE u.name 
+        END,
+        u.name;
     """
     try:
         logger.info("Starting query execution for get_all_users...")
@@ -74,6 +91,9 @@ def get_all_users():
         return []
 
 def get_user_duty(user_name):
+    """
+    Optimized with pre-calculated cycle week and better join strategy.
+    """
     query = """
     SELECT 
         u.name AS user_name, 
@@ -84,16 +104,24 @@ def get_user_duty(user_name):
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id AND ds.day = :day
+    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id 
+        AND ds.day = :day 
+        AND ds.cycle_week = :cycle_week
     LEFT JOIN duties d ON ds.duty_id = d.id
     WHERE u.name = :user_name;
     """
     try:
         # Get the current day of the week (0=Monday, 6=Sunday)
         current_day = datetime.now().weekday()
+        current_cycle = get_current_cycle_week()
 
-        # Execute the query with the user's name and current day
-        result = execute_readonly_query(query, {"user_name": user_name, "day": current_day})
+        # Execute the query with the user's name, current day, and cycle week
+        result = execute_readonly_query(query, {
+            "user_name": user_name, 
+            "day": current_day,
+            "cycle_week": current_cycle
+        })
+        
         if not result:
             return {"error": "User not found or no duty assigned"}
 
@@ -112,61 +140,52 @@ def get_user_duty(user_name):
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
         return {"error": f"Failed to fetch duty for user: {e}"}
 
-
 def get_todays_duties(user_name):
     """
-    Fetch all duties scheduled for today, including member lists and a flag indicating
-    whether the given user is part of each duty.
+    Simplified query without complex CTE, using pre-calculated cycle week.
     Returns: list of dicts with keys id, name, duty_description, members, is_current_user.
     """
-    # Determine current day of week (0=Monday, 6=Sunday)
     current_day = datetime.now().weekday()
+    current_cycle = get_current_cycle_week()
+    
     query = '''
-    WITH computed_cycle AS (
-    -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
-    SELECT (ABS(CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
-    ),
-    today_schedule AS (
-    SELECT DISTINCT ON (ds.duty_id)
-        ds.duty_id,
-        ds.duty_team_id
-    FROM public.duty_schedule ds, computed_cycle cc
-    WHERE ds.day = :day
-        AND ds.cycle_week = cc.cycle_week
-    ORDER BY ds.duty_id, ds.duty_team_id
-    )
     SELECT
-    d.id,
-    d.name,
-    d.duty_description,
-    dt.name AS team_name,
-    array_agg(
-        jsonb_build_object(
-        'name', u.name,
-        'week', u.week
-        )
-        ORDER BY
-        CASE u.week
-            WHEN 'Both' THEN 0
-            WHEN 'Week A' THEN 1
-            WHEN 'Week B' THEN 2
-            ELSE 3
-        END,
-        u.name
-    ) AS members,
-    bool_or(u.name = :user_name) AS is_current_user
-    FROM today_schedule ts
-    JOIN public.duties d
-    ON ts.duty_id = d.id
-    JOIN public.duty_teams dt
-    ON ts.duty_team_id = dt.id
-    LEFT JOIN public.users u
-    ON u.duty_team_id = ts.duty_team_id
+        d.id,
+        d.name,
+        d.duty_description,
+        dt.name AS team_name,
+        array_agg(
+            jsonb_build_object(
+                'name', u.name,
+                'week', u.week
+            )
+            ORDER BY
+                CASE u.week
+                    WHEN 'Both' THEN 0
+                    WHEN 'Week A' THEN 1
+                    WHEN 'Week B' THEN 2
+                    ELSE 3
+                END,
+                u.name
+        ) AS members,
+        bool_or(u.name = :user_name) AS is_current_user
+    FROM duty_schedule ds
+    JOIN duties d ON ds.duty_id = d.id
+    JOIN duty_teams dt ON ds.duty_team_id = dt.id
+    LEFT JOIN users u ON u.duty_team_id = ds.duty_team_id
+    WHERE ds.day = :day 
+        AND ds.cycle_week = :cycle_week
     GROUP BY d.id, d.name, d.duty_description, dt.name
     ORDER BY d.name;
     '''
+    
     try:
-        rows = execute_readonly_query(query, {"day": current_day, "user_name": user_name})
+        rows = execute_readonly_query(query, {
+            "day": current_day, 
+            "user_name": user_name,
+            "cycle_week": current_cycle
+        })
+        
         duties = []
         for row in rows:
             duties.append({
@@ -176,35 +195,38 @@ def get_todays_duties(user_name):
                 "team_name": row[3],
                 "members": row[4] or [],
                 "is_current_user": row[5],
-        })
+            })
         return duties
     except Exception as e:
         logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
         return []
 
-logger = logging.getLogger(__name__)
-
 def get_duty_schedule():
     """
-    Fetch 2-week duty schedule starting from Saturday July 5th, 2025.
+    Optimized duty schedule query using parameterized approach instead of dynamic SQL.
     Returns: list of dicts with date, day_name, week, and duties for each day.
     """
     start_date = datetime(2025, 7, 5)
-    date_map = {}  # date -> {"day": int, "cycle_week": int}
-
-    # Precompute date mappings
+    
+    # Pre-calculate all day/cycle combinations we need
+    day_cycle_combinations = []
+    date_to_info = {}
+    
     for i in range(14):
         current_date = start_date + timedelta(days=i)
         db_day = (current_date.weekday() + 1) % 7  # Adjust to Sunday=0
         days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
         cycle_week = (days_since_cycle_start // 7) % 2
-        date_map[current_date.date()] = {"day": db_day, "cycle_week": cycle_week}
+        
+        day_cycle_combinations.append((db_day, cycle_week))
+        date_to_info[current_date.date()] = {
+            "day": db_day, 
+            "cycle_week": cycle_week,
+            "week_name": "Week A" if cycle_week == 0 else "Week B"
+        }
 
-    # Unique (day, cycle_week) pairs
-    day_cycle_pairs = set((v["day"], v["cycle_week"]) for v in date_map.values())
-    conditions_sql = ", ".join(f"({day},{cycle})" for day, cycle in day_cycle_pairs)
-
-    query = f'''
+    # Use a more efficient parameterized query
+    query = '''
     SELECT
         ds.day,
         ds.cycle_week,
@@ -225,28 +247,28 @@ def get_duty_schedule():
                 END,
                 u.name
         ) AS team_members
-    FROM public.duty_schedule ds
-    JOIN public.duties d ON ds.duty_id = d.id
-    JOIN public.duty_teams dt ON ds.duty_team_id = dt.id
-    LEFT JOIN public.users u ON u.duty_team_id = dt.id
-    WHERE (ds.day, ds.cycle_week) IN ({conditions_sql})
+    FROM duty_schedule ds
+    JOIN duties d ON ds.duty_id = d.id
+    JOIN duty_teams dt ON ds.duty_team_id = dt.id
+    LEFT JOIN users u ON u.duty_team_id = dt.id
+    WHERE ds.day = ANY(:days) 
+        AND ds.cycle_week = ANY(:cycles)
     GROUP BY ds.day, ds.cycle_week, d.name, d.duty_description, dt.name, d.id
     ORDER BY ds.day, d.name;
     '''
 
     try:
-        rows = execute_readonly_query(query)
+        # Extract unique days and cycles for the query
+        days = list(set(combo[0] for combo in day_cycle_combinations))
+        cycles = list(set(combo[1] for combo in day_cycle_combinations))
+        
+        rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
     except Exception as e:
         logger.error("Failed to fetch 2-week duty schedule: %s", e)
         return []
 
-    # Reverse lookup from (day, cycle_week) → list of dates
-    reverse_lookup = defaultdict(list)
-    for dt, info in date_map.items():
-        reverse_lookup[(info["day"], info["cycle_week"])].append(dt)
-
-    # Group duties by actual date
-    date_duties = defaultdict(list)
+    # Group duties by (day, cycle_week) combination
+    duty_lookup = defaultdict(list)
     for row in rows:
         day, cycle_week, duty_name, duty_description, team_name, team_members = row
         duty = {
@@ -255,24 +277,28 @@ def get_duty_schedule():
             "team_name": team_name,
             "team_members": team_members or []
         }
-        for dt in reverse_lookup.get((day, cycle_week), []):
-            date_duties[dt].append(duty)
+        duty_lookup[(day, cycle_week)].append(duty)
 
     # Assemble final schedule
     schedule = []
-    for dt in sorted(date_map):
-        info = date_map[dt]
-        week_name = "Week A" if info["cycle_week"] == 0 else "Week B"
+    for dt in sorted(date_to_info.keys()):
+        info = date_to_info[dt]
+        duties_for_date = duty_lookup.get((info["day"], info["cycle_week"]), [])
+        
         schedule.append({
             "date": dt.strftime("%Y-%m-%d"),
             "day_name": dt.strftime("%A"),
-            "week": week_name,
-            "duties": date_duties.get(dt, [])
+            "week": info["week_name"],
+            "duties": duties_for_date
         })
 
     return schedule
 
+@cache.memoize(timeout=600)  # Cache for 10 minutes
 def get_all_sections():
+    """
+    Cached sections query since sections rarely change.
+    """
     query = """
     SELECT name
     FROM sections
@@ -287,11 +313,15 @@ def get_all_sections():
         return {"error": f"Failed to fetch sections: {e}"}
 
 def get_users_by_section(section):
+    """
+    Optimized with proper indexing assumption on section_id.
+    """
     query = """
     SELECT u.name, u.role
     FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE s.name = :section;
+    INNER JOIN sections s ON u.section_id = s.id
+    WHERE s.name = :section
+    ORDER BY u.name;
     """
     try:
         result = execute_readonly_query(query, {"section": section})
@@ -301,7 +331,11 @@ def get_users_by_section(section):
         logger.error("Failed to fetch users by section %s: %s", section, e)
         return {"error": f"Failed to fetch users by section: {e}"}
 
+@cache.memoize(timeout=3600)  # Cache for 1 hour
 def get_all_feedback_dates():
+    """
+    Cached feedback dates since they don't change frequently.
+    """
     query = """
     SELECT DISTINCT date
     FROM feedback_records
