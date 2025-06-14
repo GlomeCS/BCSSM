@@ -16,3 +16,4 @@ psycopg2==2.9.10
 pytest-mock==3.14.1
 MarkupSafe==3.0.2
 Flask-Cors==6.0.0
+gunicorn==23.0.0

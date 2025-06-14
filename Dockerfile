@@ -1,15 +1,14 @@
 # Stage 1: Build the React frontend
-FROM node:23-slim AS frontend-builder
+FROM node:24-slim AS frontend-builder
 WORKDIR /app/frontend
 
 ARG CACHEBUST=1
 COPY frontend/package.json frontend/package-lock.json ./
-# Copy all frontend source files into the working directory
 COPY frontend/. ./
 RUN npm install
 RUN npm run build
 
-# Stage 2: Set up Flask
+# Stage 2: Set up Flask with Gunicorn
 FROM python:3.13-slim
 WORKDIR /app
 
@@ -21,12 +20,14 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
 
+# Copy built frontend into Flask static directory
 RUN rm -rf backend/bcssm_backend/static/*
 COPY --from=frontend-builder /app/frontend/dist/. ./backend/bcssm_backend/static/
 
+# Environment config
 ENV FLASK_APP=backend.bcssm_backend:create_app
-ENV FLASK_RUN_HOST=0.0.0.0
 
 EXPOSE 8080
 
-CMD ["flask", "run", "--host=0.0.0.0", "--port=8080"]
+# Run the app using Gunicorn
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "--access-logfile", "-", "--error-logfile", "-", "backend.bcssm_backend:create_app()"]
