@@ -5,9 +5,12 @@ services:
     build:
       context: .
       args:
-        CACHEBUST: "latest"  # You can change this value to force a rebuild (or use $(date +%s) in your shell)
+        CACHEBUST: "latest"
     ports:
       - "8080:8080"
     env_file:
       - .env
+    environment:
+      # Ensures Flask doesn't auto-reload in Gunicorn container
+      FLASK_ENV: production
     restart: unless-stopped
