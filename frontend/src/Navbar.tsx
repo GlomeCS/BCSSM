@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 function Navbar() {
     const navigate = useNavigate();
@@ -57,15 +57,15 @@ function Navbar() {
     return (
         <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
             <div className="navbar-container">
-                <a href="/" className="navbar-brand">
+                <Link to="/" className="navbar-brand">
                     Ballyholme CSSM Helper
-                </a>
+                </Link>
 
                 {/* Desktop Menu */}
                 <ul className="navbar-menu">
-                    <li><a href="/" className="nav-link">Home</a></li>
-                    <li><a href="/duties" className="nav-link">Duties</a></li>
-                    <li><a href="/react/devos-feedback" className="nav-link">Devos Feedback</a></li>
+                    <li><Link to="/" className="nav-link">Home</Link></li>
+                    <li><Link to="/duties" className="nav-link">Duties</Link></li>
+                    <li><Link to="/react/devos-feedback" className="nav-link">Devos Feedback</Link></li>
                     <li>
                         <button onClick={handleLogout} className="logout-btn">
                             Logout
@@ -91,19 +91,19 @@ function Navbar() {
                 <div className={`mobile-menu ${isMenuOpen ? 'active' : ''}`}>
                     <ul className="mobile-menu-list">
                         <li>
-                            <a href="/" className="mobile-nav-link" onClick={closeMenu}>
+                            <Link to="/" className="mobile-nav-link" onClick={closeMenu}>
                                 🏠 Home
-                            </a>
+                            </Link>
                         </li>
                         <li>
-                            <a href="/duties" className="mobile-nav-link" onClick={closeMenu}>
+                            <Link to="/duties" className="mobile-nav-link" onClick={closeMenu}>
                                 📋 Duties
-                            </a>
+                            </Link>
                         </li>
                         <li>
-                            <a href="/react/devos-feedback" className="mobile-nav-link" onClick={closeMenu}>
+                            <Link to="/react/devos-feedback" className="mobile-nav-link" onClick={closeMenu}>
                                 💬 Devos Feedback
-                            </a>
+                            </Link>
                         </li>
                         <li>
                             <button onClick={handleLogout} className="mobile-logout-btn">
