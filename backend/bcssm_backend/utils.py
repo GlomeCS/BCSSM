@@ -1,5 +1,7 @@
 import logging
 from datetime import datetime, timedelta
+from collections import defaultdict
+
 
 from sqlalchemy import text
 
@@ -123,7 +125,7 @@ def get_todays_duties(user_name):
     query = '''
     WITH computed_cycle AS (
       -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
-      SELECT ((CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
+      SELECT (ABS(CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
     ),
     today_schedule AS (
       SELECT DISTINCT ON (ds.duty_id)
@@ -177,90 +179,94 @@ def get_todays_duties(user_name):
         logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
         return []
 
+logger = logging.getLogger(__name__)
+
 def get_duty_schedule():
     """
     Fetch 2-week duty schedule starting from Saturday July 5th, 2025.
     Returns: list of dicts with date, day_name, week, and duties for each day.
     """
-    # Start date: Saturday, July 5th, 2025
     start_date = datetime(2025, 7, 5)
-    
-    schedule = []
-    
-    for day_offset in range(14):  # 2 weeks = 14 days
-        current_date = start_date + timedelta(days=day_offset)
-        
-        # Calculate day of week (0=Monday, 6=Sunday) for database query
-        # But Saturday = 5, so we need to adjust
-        db_day = current_date.weekday()
-        if db_day == 6:  # Sunday
-            db_day = 0
-        else:
-            db_day = (db_day + 1) % 7
-        
-        # Determine which week (A or B) based on cycle
-        # Week starting July 7th, 2025 (Monday) is Week A (cycle 0)
+    date_map = {}  # date -> {"day": int, "cycle_week": int}
+
+    # Precompute date mappings
+    for i in range(14):
+        current_date = start_date + timedelta(days=i)
+        db_day = (current_date.weekday() + 1) % 7  # Adjust to Sunday=0
         days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
         cycle_week = (days_since_cycle_start // 7) % 2
-        week_name = "Week A" if cycle_week == 0 else "Week B"
-        
-        # Query for duties on this specific day
-        query = '''
-        SELECT DISTINCT
-            d.name AS duty_name,
-            d.duty_description,
-            dt.name AS team_name,
-            array_agg(
-                jsonb_build_object(
-                    'name', u.name,
-                    'week', u.week
-                )
-                ORDER BY
-                    CASE u.week
-                        WHEN 'Both' THEN 0
-                        WHEN 'Week A' THEN 1
-                        WHEN 'Week B' THEN 2
-                        ELSE 3
-                    END,
-                    u.name
-            ) AS team_members
-        FROM public.duty_schedule ds
-        JOIN public.duties d ON ds.duty_id = d.id
-        JOIN public.duty_teams dt ON ds.duty_team_id = dt.id
-        LEFT JOIN public.users u ON u.duty_team_id = dt.id
-        WHERE ds.day = :day AND ds.cycle_week = :cycle_week
-        GROUP BY d.name, d.duty_description, dt.name, d.id
-        ORDER BY d.name;
-        '''
-        
-        try:
-            rows = execute_readonly_query(query, {"day": db_day, "cycle_week": cycle_week})
-            duties = []
-            for row in rows:
-                duties.append({
-                    "duty_name": row[0],
-                    "duty_description": row[1],
-                    "team_name": row[2],
-                    "team_members": row[3] or []
-                })
-            
-            schedule.append({
-                "date": current_date.strftime("%Y-%m-%d"),
-                "day_name": current_date.strftime("%A"),
-                "week": week_name,
-                "duties": duties
-            })
-            
-        except Exception as e:
-            logger.error("Failed to fetch duties for date %s: %s", current_date.strftime("%Y-%m-%d"), e)
-            # Add empty day to schedule to maintain continuity
-            schedule.append({
-                "date": current_date.strftime("%Y-%m-%d"),
-                "day_name": current_date.strftime("%A"),
-                "week": week_name,
-                "duties": []
-            })
-    
+        date_map[current_date.date()] = {"day": db_day, "cycle_week": cycle_week}
+
+    # Unique (day, cycle_week) pairs
+    day_cycle_pairs = set((v["day"], v["cycle_week"]) for v in date_map.values())
+    conditions_sql = ", ".join(f"({day},{cycle})" for day, cycle in day_cycle_pairs)
+
+    query = f'''
+    SELECT
+        ds.day,
+        ds.cycle_week,
+        d.name AS duty_name,
+        d.duty_description,
+        dt.name AS team_name,
+        array_agg(
+            jsonb_build_object(
+                'name', u.name,
+                'week', u.week
+            )
+            ORDER BY
+                CASE u.week
+                    WHEN 'Both' THEN 0
+                    WHEN 'Week A' THEN 1
+                    WHEN 'Week B' THEN 2
+                    ELSE 3
+                END,
+                u.name
+        ) AS team_members
+    FROM public.duty_schedule ds
+    JOIN public.duties d ON ds.duty_id = d.id
+    JOIN public.duty_teams dt ON ds.duty_team_id = dt.id
+    LEFT JOIN public.users u ON u.duty_team_id = dt.id
+    WHERE (ds.day, ds.cycle_week) IN ({conditions_sql})
+    GROUP BY ds.day, ds.cycle_week, d.name, d.duty_description, dt.name, d.id
+    ORDER BY ds.day, d.name;
+    '''
+
+    try:
+        rows = execute_readonly_query(query)
+    except Exception as e:
+        logger.error("Failed to fetch 2-week duty schedule: %s", e)
+        return []
+
+    # Reverse lookup from (day, cycle_week) → list of dates
+    reverse_lookup = defaultdict(list)
+    for dt, info in date_map.items():
+        reverse_lookup[(info["day"], info["cycle_week"])].append(dt)
+
+    # Group duties by actual date
+    date_duties = defaultdict(list)
+    for row in rows:
+        day, cycle_week, duty_name, duty_description, team_name, team_members = row
+        duty = {
+            "duty_name": duty_name,
+            "duty_description": duty_description,
+            "team_name": team_name,
+            "team_members": team_members or []
+        }
+        for dt in reverse_lookup.get((day, cycle_week), []):
+            date_duties[dt].append(duty)
+
+    # Assemble final schedule
+    schedule = []
+    for dt in sorted(date_map):
+        info = date_map[dt]
+        week_name = "Week A" if info["cycle_week"] == 0 else "Week B"
+        schedule.append({
+            "date": dt.strftime("%Y-%m-%d"),
+            "day_name": dt.strftime("%A"),
+            "week": week_name,
+            "duties": date_duties.get(dt, [])
+        })
+
     return schedule
 
 def get_all_sections():
