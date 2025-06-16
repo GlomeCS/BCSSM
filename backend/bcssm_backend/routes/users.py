@@ -191,7 +191,7 @@ def init_users_routes(app):
             app.logger.error(f"Cache health check failed: {str(e)}")
             return jsonify({
                 "cache_status": "unhealthy",
-                "error": str(e)
+                "error": "An internal error has occurred."
             }), 500
 
     @app.route('/clear-cache', methods=['POST'])
