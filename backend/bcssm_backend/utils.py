@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import lru_cache
+import hashlib
 
 from sqlalchemy import text
 
@@ -14,6 +15,11 @@ def get_current_cycle_week():
     """Pre-calculate cycle week to avoid repeated computation"""
     days_since_start = (datetime.now().date() - datetime(2025, 7, 7).date()).days
     return (days_since_start // 7) % 2
+
+def generate_cache_key(*args, **kwargs):
+    """Generate a consistent cache key from function arguments"""
+    key_data = str(args) + str(sorted(kwargs.items()))
+    return hashlib.md5(key_data.encode()).hexdigest()
 
 def execute_readonly_query(query, params=None):
     """
@@ -54,12 +60,19 @@ def execute_query(query, params=None):
         logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
         raise e
 
-@cache.memoize(timeout=300)  # Cache for 5 minutes
 def get_all_users():
     """
-    Optimized query with better ordering and caching.
-    Assumes users table has first_name and last_name columns or a computed last_name.
+    Optimized query with Redis caching and better ordering.
+    Cache timeout: 15 minutes (users don't change frequently)
     """
+    cache_key = 'users:all:list'
+    
+    # Try to get from cache first
+    cached_users = cache.get(cache_key)
+    if cached_users is not None:
+        logger.info("Retrieved users from cache")
+        return cached_users
+    
     query = """
     SELECT 
         u.name, 
@@ -83,8 +96,13 @@ def get_all_users():
         logger.info("Query returned rows: %s", rows)
 
         # Extract only the names for the dropdown
-        user_names = [row[0] for row in rows]  # Extract only the name (first column)
+        user_names = [row[0] for row in rows]
         logger.info("Fetched user names: %s", user_names)
+        
+        # Cache the results
+        cache.set(cache_key, user_names, timeout=900)  # 15 minutes
+        logger.info("Cached users list")
+        
         return user_names
     except Exception as e:
         logger.error("Failed to fetch users: %s", e)
@@ -92,8 +110,21 @@ def get_all_users():
 
 def get_user_duty(user_name):
     """
-    Optimized with pre-calculated cycle week and better join strategy.
+    Optimized with Redis caching and pre-calculated cycle week.
+    Cache timeout: 10 minutes (duty assignments change daily)
     """
+    current_day = datetime.now().weekday()
+    current_cycle = get_current_cycle_week()
+    
+    # Create cache key that includes day and cycle for accurate caching
+    cache_key = f'user:duty:{user_name}:day{current_day}:cycle{current_cycle}'
+    
+    # Try to get from cache first
+    cached_duty = cache.get(cache_key)
+    if cached_duty is not None:
+        logger.info("Retrieved user duty from cache for %s", user_name)
+        return cached_duty
+    
     query = """
     SELECT 
         u.name AS user_name, 
@@ -111,10 +142,6 @@ def get_user_duty(user_name):
     WHERE u.name = :user_name;
     """
     try:
-        # Get the current day of the week (0=Monday, 6=Sunday)
-        current_day = datetime.now().weekday()
-        current_cycle = get_current_cycle_week()
-
         # Execute the query with the user's name, current day, and cycle week
         result = execute_readonly_query(query, {
             "user_name": user_name, 
@@ -123,30 +150,49 @@ def get_user_duty(user_name):
         })
         
         if not result:
-            return {"error": "User not found or no duty assigned"}
-
-        # Extract the user's duty information
-        row = result[0]
-        duty_data = {
-            "user": row[0],  # user_name
-            "section": row[1],  # section name
-            "role": row[2],  # role
-            "team": row[3],  # team name
-            "duty": row[4],  # duty name
-        }
+            duty_data = {"error": "User not found or no duty assigned"}
+        else:
+            # Extract the user's duty information
+            row = result[0]
+            duty_data = {
+                "user": row[0],  # user_name
+                "section": row[1],  # section name
+                "role": row[2],  # role
+                "team": row[3],  # team name
+                "duty": row[4],  # duty name
+            }
+        
+        # Cache the results (even errors, to avoid repeated failed queries)
+        cache.set(cache_key, duty_data, timeout=600)  # 10 minutes
+        logger.info("Cached user duty for %s", user_name)
+        
         return duty_data
 
     except Exception as e:
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
-        return {"error": f"Failed to fetch duty for user: {e}"}
+        error_data = {"error": f"Failed to fetch duty for user: {e}"}
+        
+        # Cache errors for shorter time to allow recovery
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
 
 def get_todays_duties(user_name):
     """
-    Simplified query without complex CTE, using pre-calculated cycle week.
-    Returns: list of dicts with keys id, name, duty_description, members, is_current_user.
+    Cached today's duties with day-specific cache key.
+    Cache timeout: 30 minutes (duties are daily but don't change frequently)
     """
     current_day = datetime.now().weekday()
     current_cycle = get_current_cycle_week()
+    
+    # Cache key includes day and cycle for accuracy
+    cache_key = f'duties:today:day{current_day}:cycle{current_cycle}:user{user_name}'
+    
+    # Try to get from cache first
+    cached_duties = cache.get(cache_key)
+    if cached_duties is not None:
+        logger.info("Retrieved today's duties from cache")
+        return cached_duties
     
     query = '''
     SELECT
@@ -196,16 +242,35 @@ def get_todays_duties(user_name):
                 "members": row[4] or [],
                 "is_current_user": row[5],
             })
+        
+        # Cache the results
+        cache.set(cache_key, duties, timeout=1800)  # 30 minutes
+        logger.info("Cached today's duties")
+        
         return duties
     except Exception as e:
         logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
+        
+        # Cache empty result for short time to avoid repeated failures
+        cache.set(cache_key, [], timeout=60)  # 1 minute
+        
         return []
 
 def get_duty_schedule():
     """
-    Optimized duty schedule query using parameterized approach instead of dynamic SQL.
-    Returns: list of dicts with date, day_name, week, and duties for each day.
+    Cached duty schedule with date-based cache key.
+    Cache timeout: 2 hours (schedule doesn't change frequently)
     """
+    # Create cache key based on current date to ensure freshness
+    today = datetime.now().date()
+    cache_key = f'duties:schedule:14day:{today}'
+    
+    # Try to get from cache first
+    cached_schedule = cache.get(cache_key)
+    if cached_schedule is not None:
+        logger.info("Retrieved duty schedule from cache")
+        return cached_schedule
+    
     start_date = datetime(2025, 7, 5)
     
     # Pre-calculate all day/cycle combinations we need
@@ -265,6 +330,10 @@ def get_duty_schedule():
         rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
     except Exception as e:
         logger.error("Failed to fetch 2-week duty schedule: %s", e)
+        
+        # Cache empty result for short time to avoid repeated failures
+        cache.set(cache_key, [], timeout=60)  # 1 minute
+        
         return []
 
     # Group duties by (day, cycle_week) combination
@@ -292,13 +361,25 @@ def get_duty_schedule():
             "duties": duties_for_date
         })
 
+    # Cache the results
+    cache.set(cache_key, schedule, timeout=7200)  # 2 hours
+    logger.info("Cached duty schedule")
+
     return schedule
 
-@cache.memoize(timeout=600)  # Cache for 10 minutes
 def get_all_sections():
     """
-    Cached sections query since sections rarely change.
+    Cached sections query with long timeout since sections rarely change.
+    Cache timeout: 1 hour
     """
+    cache_key = 'sections:all:list'
+    
+    # Try to get from cache first
+    cached_sections = cache.get(cache_key)
+    if cached_sections is not None:
+        logger.info("Retrieved sections from cache")
+        return cached_sections
+    
     query = """
     SELECT name
     FROM sections
@@ -307,15 +388,34 @@ def get_all_sections():
     try:
         result = execute_readonly_query(query)
         sections = [row[0] for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, sections, timeout=3600)  # 1 hour
+        logger.info("Cached sections list")
+        
         return sections
     except Exception as e:
         logger.error("Failed to fetch sections: %s", e)
-        return {"error": f"Failed to fetch sections: {e}"}
+        error_data = {"error": f"Failed to fetch sections: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
 
 def get_users_by_section(section):
     """
-    Optimized with proper indexing assumption on section_id.
+    Cached users by section query.
+    Cache timeout: 30 minutes
     """
+    cache_key = f'users:section:{section}'
+    
+    # Try to get from cache first
+    cached_users = cache.get(cache_key)
+    if cached_users is not None:
+        logger.info("Retrieved users by section from cache for %s", section)
+        return cached_users
+    
     query = """
     SELECT u.name, u.role
     FROM users u
@@ -326,16 +426,34 @@ def get_users_by_section(section):
     try:
         result = execute_readonly_query(query, {"section": section})
         users = [{"name": row[0], "role": row[1]} for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, users, timeout=1800)  # 30 minutes
+        logger.info("Cached users by section for %s", section)
+        
         return users
     except Exception as e:
         logger.error("Failed to fetch users by section %s: %s", section, e)
-        return {"error": f"Failed to fetch users by section: {e}"}
+        error_data = {"error": f"Failed to fetch users by section: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
 
-@cache.memoize(timeout=3600)  # Cache for 1 hour
 def get_all_feedback_dates():
     """
-    Cached feedback dates since they don't change frequently.
+    Cached feedback dates with long timeout since they don't change frequently.
+    Cache timeout: 2 hours
     """
+    cache_key = 'feedback:dates:all'
+    
+    # Try to get from cache first
+    cached_dates = cache.get(cache_key)
+    if cached_dates is not None:
+        logger.info("Retrieved feedback dates from cache")
+        return cached_dates
+    
     query = """
     SELECT DISTINCT date
     FROM feedback_records
@@ -344,7 +462,17 @@ def get_all_feedback_dates():
     try:
         result = execute_readonly_query(query)
         dates = [row[0] for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, dates, timeout=7200)  # 2 hours
+        logger.info("Cached feedback dates")
+        
         return dates
     except Exception as e:
         logger.error("Failed to fetch feedback dates: %s", e)
-        return {"error": f"Failed to fetch feedback dates: {e}"}
+        error_data = {"error": f"Failed to fetch feedback dates: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data

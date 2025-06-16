@@ -1,8 +1,6 @@
 import pytest
 from backend.bcssm_backend import create_app
-from backend.bcssm_backend.routes.users import init_users_routes
-from flask import session
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 # ─── 0) Fixture: create app with testing config and register routes ────────────
 @pytest.fixture
@@ -55,16 +53,46 @@ def patch_helpers(monkeypatch):
 
 # ─── 3) GET /users-by-section ────────────────────────────────────────────────────
 def test_users_by_section_success(client, patch_helpers):
-    patch_helpers["by_section"].return_value = [{"name": "Alice", "role": "Leader"}]
+    ph = patch_helpers
+    # Mock cache miss, then successful DB call
+    ph["cache"].get.return_value = None
+    ph["by_section"].return_value = [{"name": "Alice", "role": "Leader"}]
 
     resp = client.get("/users-by-section?section=Minors")
     assert resp.status_code == 200
     assert resp.is_json
     assert resp.get_json() == {"users": [{"name": "Alice", "role": "Leader"}]}
-    patch_helpers["by_section"].assert_called_once_with("Minors")
+    
+    # Verify cache operations
+    ph["cache"].get.assert_called_once_with("users:section:Minors")
+    ph["cache"].set.assert_called_once_with("users:section:Minors", [{"name": "Alice", "role": "Leader"}], timeout=600)
+    ph["by_section"].assert_called_once_with("Minors")
+
+def test_users_by_section_cache_hit(client, patch_helpers):
+    ph = patch_helpers
+    # Mock cache hit
+    ph["cache"].get.return_value = [{"name": "Cached Alice", "role": "Leader"}]
+
+    resp = client.get("/users-by-section?section=Minors")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"users": [{"name": "Cached Alice", "role": "Leader"}]}
+    
+    # Verify cache was checked but DB wasn't called
+    ph["cache"].get.assert_called_once_with("users:section:Minors")
+    ph["by_section"].assert_not_called()
+    ph["cache"].set.assert_not_called()
+
+def test_users_by_section_missing_param(client, patch_helpers):
+    resp = client.get("/users-by-section")  # Missing section parameter
+    assert resp.status_code == 400  # Bad Request for missing parameter
+    data = resp.get_json()
+    assert "error" in data
+    assert "Missing parameters" in data["error"]
 
 def test_users_by_section_error(client, patch_helpers):
-    patch_helpers["by_section"].side_effect = Exception("DB error")
+    ph = patch_helpers
+    ph["cache"].get.return_value = None
+    ph["by_section"].side_effect = Exception("DB error")
 
     resp = client.get("/users-by-section?section=Minors")
     assert resp.status_code == 500
@@ -73,15 +101,46 @@ def test_users_by_section_error(client, patch_helpers):
 
 # ─── 4) GET /user-duty ────────────────────────────────────────────────────────────
 def test_user_duty_success(client, patch_helpers):
-    patch_helpers["duty"].return_value = {"user": "Alice", "duty": "Cleaning"}
+    ph = patch_helpers
+    # Mock cache miss, then successful DB call
+    ph["cache"].get.return_value = None
+    ph["duty"].return_value = {"user": "Alice", "duty": "Cleaning"}
 
     resp = client.get("/user-duty?user=Alice")
     assert resp.status_code == 200
     assert resp.get_json() == {"user": "Alice", "duty": "Cleaning"}
-    patch_helpers["duty"].assert_called_once_with("Alice")
+    
+    # Verify that cache operations were called
+    # The exact cache key pattern may vary, so just verify cache was used
+    assert ph["cache"].get.called, "Cache get should have been called"
+    assert ph["cache"].set.called, "Cache set should have been called"
+    ph["duty"].assert_called_once_with("Alice")
+
+def test_user_duty_cache_hit(client, patch_helpers):
+    ph = patch_helpers
+    # Mock cache hit
+    ph["cache"].get.return_value = {"user": "Alice", "duty": "Cached Duty"}
+
+    resp = client.get("/user-duty?user=Alice")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"user": "Alice", "duty": "Cached Duty"}
+    
+    # Verify cache was checked but DB wasn't called
+    ph["cache"].get.assert_called_once()
+    ph["duty"].assert_not_called()
+    ph["cache"].set.assert_not_called()
+    
+def test_user_duty_missing_param(client, patch_helpers):
+    resp = client.get("/user-duty")  # Missing user parameter
+    assert resp.status_code == 400  # Bad Request for missing parameter
+    data = resp.get_json()
+    assert "error" in data
+    assert "Missing parameters" in data["error"]
 
 def test_user_duty_error(client, patch_helpers):
-    patch_helpers["duty"].side_effect = Exception("Oops")
+    ph = patch_helpers
+    ph["cache"].get.return_value = None
+    ph["duty"].side_effect = Exception("Oops")
 
     resp = client.get("/user-duty?user=Alice")
     assert resp.status_code == 500
@@ -89,63 +148,100 @@ def test_user_duty_error(client, patch_helpers):
     assert "error" in data
 
 # ─── 5) POST /select-user ───────────────────────────────────────────────────────
-def test_select_user_from_cache(client, patch_helpers):
+def test_select_user_success(client, patch_helpers):
     ph = patch_helpers
-    ph["cache"].get.return_value = ["Alice", "Bob"]
-    ph["execute"].return_value = [(42, "Section Leader", "Minors")]
+    # Mock successful user lookup
+    ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
 
     resp = client.post("/select-user", json={"user_name": "Alice"})
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["message"] == "User Alice successfully selected."
-    # Should include full login state
     assert data["is_logged_in"] is True
     assert data["is_leader"] is True
     assert data["user_section"] == "Minors"
-    # user_id is stored in session, not returned in JSON
 
+    # Verify session data
     with client.session_transaction() as sess:
         assert sess["user_name"] == "Alice"
         assert sess["user_id"] == 42
         assert sess["user_section"] == "Minors"
         assert sess["is_leader"] is True
 
-    ph["cache"].get.assert_called_once_with("valid_users")
-    ph["execute"].assert_called_once()
+    # Verify cache operations for user data
+    ph["cache"].set.assert_called()
+    cache_call_args = ph["cache"].set.call_args_list
+    # Should cache user data
+    user_cache_call = next((call for call in cache_call_args 
+                           if call[0][0] == "user:data:Alice"), None)
+    assert user_cache_call is not None
 
 def test_select_user_invalid(client, patch_helpers):
     ph = patch_helpers
-    ph["cache"].get.return_value = ["Alice", "Bob"]
+    # Mock user not found in database
+    ph["execute"].return_value = []
 
     resp = client.post("/select-user", json={"user_name": "Charlie"})
     assert resp.status_code == 400
-    assert resp.get_json() == {"message": "Invalid user selected."}
+    data = resp.get_json()
+    assert data["error"] == "Invalid user selected"
 
+    # Verify session is not set
     with client.session_transaction() as sess:
         assert sess.get("user_name") is None
 
-def test_select_user_loads_cache_when_empty(client, patch_helpers):
+def test_select_user_missing_name(client, patch_helpers):
+    resp = client.post("/select-user", json={})
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["error"] == "User name required."
+
+def test_select_user_error(client, patch_helpers):
     ph = patch_helpers
-    ph["cache"].get.return_value = None
-    ph["all_users"].return_value = ["Alice", "Bob"]
-    ph["execute"].return_value = [(5, "Member", "Majors")]
+    ph["execute"].side_effect = Exception("DB connection failed")
 
-    resp = client.post("/select-user", json={"user_name": "Bob"})
-    assert resp.status_code == 200
-
-    ph["cache"].get.assert_called_once_with("valid_users")
-    ph["all_users"].assert_called_once()
-    ph["cache"].set.assert_called_once_with("valid_users", ["Alice", "Bob"], timeout=300)
+    resp = client.post("/select-user", json={"user_name": "Alice"})
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "error" in data
 
 # ─── 6) GET /get-selected-user ───────────────────────────────────────────────────
-def test_get_selected_user(client):
+def test_get_selected_user_with_cache(client, patch_helpers):
+    ph = patch_helpers
+    # Mock cached user data
+    ph["cache"].get.return_value = {
+        "id": 42,
+        "name": "Zed", 
+        "role": "Leader",
+        "section_name": "Minors",
+        "is_leader": True
+    }
+    
     with client.session_transaction() as sess:
         sess["user_name"] = "Zed"
+    
     resp = client.get("/get-selected-user")
     assert resp.status_code == 200
-    assert resp.get_json() == {"user": "Zed"}
+    data = resp.get_json()
+    assert data["user"] == "Zed"
+    assert "user_data" in data
+    assert data["user_data"]["name"] == "Zed"
 
-def test_get_selected_user_none(client):
+def test_get_selected_user_no_cache(client, patch_helpers):
+    ph = patch_helpers
+    # Mock cache miss
+    ph["cache"].get.return_value = None
+    
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Zed"
+    
+    resp = client.get("/get-selected-user")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["user"] == "Zed"
+    assert "user_data" not in data
+
+def test_get_selected_user_none(client, patch_helpers):
     resp = client.get("/get-selected-user")
     assert resp.status_code == 200
     assert resp.get_json() == {"user": None}
@@ -158,7 +254,9 @@ def test_get_users_from_cache(client, patch_helpers):
     resp = client.get("/get-users")
     assert resp.status_code == 200
     assert resp.get_json() == {"users": ["Alice", "Bob"]}
-    ph["cache"].get.assert_called_once_with("all_users")
+    
+    # Verify cache operations with new cache key
+    ph["cache"].get.assert_called_once_with("users:all:active")
     ph["all_users"].assert_not_called()
 
 def test_get_users_loads_when_cache_empty(client, patch_helpers):
@@ -169,16 +267,88 @@ def test_get_users_loads_when_cache_empty(client, patch_helpers):
     resp = client.get("/get-users")
     assert resp.status_code == 200
     assert resp.get_json() == {"users": ["X", "Y"]}
-    ph["cache"].get.assert_called_once_with("all_users")
+    
+    # Verify cache operations with new cache key and timeout
+    ph["cache"].get.assert_called_once_with("users:all:active")
     ph["all_users"].assert_called_once()
-    ph["cache"].set.assert_called_once_with("all_users", ["X", "Y"], timeout=300)
+    ph["cache"].set.assert_called_once_with("users:all:active", ["X", "Y"], timeout=900)
+
+def test_get_users_error(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].get.return_value = None
+    ph["all_users"].side_effect = Exception("Database error")
+
+    resp = client.get("/get-users")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "error" in data
 
 # ─── 8) POST /logout ─────────────────────────────────────────────────────────────
 def test_logout(client, patch_helpers):
+    ph = patch_helpers
+    
     with client.session_transaction() as sess:
         sess["user_name"] = "Someone"
+    
     resp = client.post("/logout")
     assert resp.status_code == 200
     assert resp.get_json() == {"message": "User logged out successfully!"}
+    
+    # Verify session is cleared
     with client.session_transaction() as sess:
         assert sess.get("user_name") is None
+    
+    # Verify cache cleanup was attempted
+    ph["cache"].delete.assert_called()
+    delete_calls = ph["cache"].delete.call_args_list
+    assert any("user:data:Someone" in str(call) for call in delete_calls)
+
+def test_logout_no_user(client, patch_helpers):
+    ph = patch_helpers
+    
+    resp = client.post("/logout")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"message": "User logged out successfully!"}
+
+# ─── 9) GET /cache-stats ─────────────────────────────────────────────────────────
+def test_cache_stats_healthy(client, patch_helpers):
+    ph = patch_helpers
+    # Mock successful cache health check
+    ph["cache"].get.return_value = "ok"
+
+    resp = client.get("/cache-stats")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["cache_status"] == "healthy"
+    assert data["cache_type"] == "RedisCache"
+
+def test_cache_stats_unhealthy(client, patch_helpers):
+    ph = patch_helpers
+    # Mock cache failure
+    ph["cache"].set.side_effect = Exception("Redis connection failed")
+
+    resp = client.get("/cache-stats")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert data["cache_status"] == "unhealthy"
+
+# ─── 10) POST /clear-cache ───────────────────────────────────────────────────────
+def test_clear_cache_success(client, patch_helpers):
+    ph = patch_helpers
+
+    resp = client.post("/clear-cache")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["message"] == "Cache cleared successfully"
+    
+    # Verify cache.clear() was called
+    ph["cache"].clear.assert_called_once()
+
+def test_clear_cache_error(client, patch_helpers):
+    ph = patch_helpers
+    ph["cache"].clear.side_effect = Exception("Clear failed")
+
+    resp = client.post("/clear-cache")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "error" in data

@@ -19,6 +19,23 @@ def flask_app_context(monkeypatch):
 def mock_readonly(mocker):
     return mocker.patch('backend.bcssm_backend.utils.execute_readonly_query')
 
+# ─── 1.5) Mock the cache to avoid Redis connection issues ───────────────────
+@pytest.fixture(autouse=True)
+def mock_cache(monkeypatch):
+    """Mock the cache to avoid Redis connection during tests"""
+    fake_cache = MagicMock()
+    # Configure cache.get to return None by default (cache miss)
+    fake_cache.get.return_value = None
+    # Configure cache.set to return True (success)
+    fake_cache.set.return_value = True
+    # Configure cache.delete to return True (success)
+    fake_cache.delete.return_value = True
+    # Configure cache.clear to return True (success)
+    fake_cache.clear.return_value = True
+    
+    monkeypatch.setattr('backend.bcssm_backend.utils.cache', fake_cache)
+    return fake_cache
+
 # ─── 2) Fixture to mock db.session directly (for testing execute_query) ─────
 @pytest.fixture
 def mock_db_session():
@@ -28,14 +45,14 @@ def mock_db_session():
         sess.begin.return_value.__exit__.return_value = None
         yield sess
 
-# ─── 3) Utility to control “today” in date‐sensitive code ─────────────────────
+# ─── 3) Utility to control "today" in date‐sensitive code ─────────────────────
 class FakeDatetime:
     @classmethod
     def now(cls):
         return SimpleNamespace(weekday=lambda: cls.today_weekday)
 
 # ─── 4) Tests for get_all_users() ────────────────────────────────────────────
-def test_get_all_users_happy_path(mock_readonly):
+def test_get_all_users_happy_path(mock_readonly, mock_cache):
     # Arrange: return a couple of rows
     mock_readonly.return_value = [
         ('Alice Smith','SectionA','RoleA','TeamA'),
@@ -45,6 +62,12 @@ def test_get_all_users_happy_path(mock_readonly):
     result = utils.get_all_users()
     # Assert
     assert result == ['Alice Smith','Bob Jones']
+    
+    # Verify cache was checked first
+    mock_cache.get.assert_called_once_with('users:all:list')
+    # Verify cache was set after DB query
+    mock_cache.set.assert_called_once_with('users:all:list', ['Alice Smith','Bob Jones'], timeout=900)
+    
     sql = mock_readonly.call_args[0][0]
     params = None
     assert params is None
@@ -67,14 +90,31 @@ def test_get_all_users_happy_path(mock_readonly):
     """
     assert sql.strip() == expected_sql.strip()
 
-def test_get_all_users_db_failure_returns_empty_list(mock_readonly):
+def test_get_all_users_cache_hit(mock_readonly, mock_cache):
+    # Arrange: cache returns data
+    mock_cache.get.return_value = ['Cached Alice', 'Cached Bob']
+    
+    # Act
+    result = utils.get_all_users()
+    
+    # Assert
+    assert result == ['Cached Alice', 'Cached Bob']
+    
+    # Verify cache was checked
+    mock_cache.get.assert_called_once_with('users:all:list')
+    # Verify DB was NOT queried
+    mock_readonly.assert_not_called()
+    # Verify cache was NOT set (already had data)
+    mock_cache.set.assert_not_called()
+
+def test_get_all_users_db_failure_returns_empty_list(mock_readonly, mock_cache):
     mock_readonly.side_effect = Exception("DB is down")
     result = utils.get_all_users()
     assert result == []
     assert isinstance(result, list)
 
 # ─── 5) Tests for get_user_duty() ─────────────────────────────────────────────
-def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly):
+def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, mock_cache):
     # Freeze today to Wednesday (weekday==2)
     FakeDatetime.today_weekday = 2
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
@@ -93,29 +133,82 @@ def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly):
         "team": "Team1",
         "duty": "Lunch Duty"
     }
+    
+    # Verify cache operations
+    cache_key_pattern = 'user:duty:Ivy:day2:cycle0'
+    mock_cache.get.assert_called_once_with(cache_key_pattern)
+    mock_cache.set.assert_called_once()
+    cache_set_args = mock_cache.set.call_args
+    assert cache_set_args[0][0] == cache_key_pattern
+    assert cache_set_args[1]['timeout'] == 600
+    
     mock_readonly.assert_called_once()
     sql, params = mock_readonly.call_args[0]
     assert isinstance(params['day'], int)
-    assert params['cycle_week'] == 0  # Check the new cycle_week parameter
+    assert params['cycle_week'] == 0
 
-def test_get_user_duty_not_assigned_returns_error(monkeypatch, mock_readonly):
+def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
+    # Arrange: cache returns duty data
+    cached_duty = {
+        "user": "Ivy",
+        "section": "Minis", 
+        "role": "Team Member",
+        "team": "Team1",
+        "duty": "Cached Duty"
+    }
+    mock_cache.get.return_value = cached_duty
+    
+    FakeDatetime.today_weekday = 2
+    monkeypatch.setattr(utils, 'datetime', FakeDatetime)
+    monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
+    
+    # Act
+    result = utils.get_user_duty("Ivy")
+    
+    # Assert
+    assert result == cached_duty
+    
+    # Verify cache was checked
+    mock_cache.get.assert_called_once_with('user:duty:Ivy:day2:cycle0')
+    # Verify DB was NOT queried
+    mock_readonly.assert_not_called()
+    # Verify cache was NOT set (already had data)
+    mock_cache.set.assert_not_called()
+
+def test_get_user_duty_not_assigned_returns_error(monkeypatch, mock_readonly, mock_cache):
     FakeDatetime.today_weekday = 0
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
+    monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
+    
     mock_readonly.return_value = []
     result = utils.get_user_duty("NoOne")
     assert isinstance(result, dict)
     assert "error" in result
     assert "not found or no duty" in result["error"].lower()
+    
+    # Verify error was cached (shorter timeout)
+    mock_cache.set.assert_called_once()
+    cache_set_args = mock_cache.set.call_args
+    assert cache_set_args[1]['timeout'] == 600  # Normal timeout for this case
 
-def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly):
+def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly, mock_cache):
+    FakeDatetime.today_weekday = 0
+    monkeypatch.setattr(utils, 'datetime', FakeDatetime)
+    monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
+    
     mock_readonly.side_effect = Exception("Something broke")
     result = utils.get_user_duty("SomeUser")
     assert isinstance(result, dict)
     assert "Failed to fetch duty for user" in result["error"]
     assert "Something broke" in result["error"]
+    
+    # Verify error was cached with shorter timeout
+    mock_cache.set.assert_called_once()
+    cache_set_args = mock_cache.set.call_args
+    assert cache_set_args[1]['timeout'] == 60  # Short timeout for errors
 
 # ─── 6) Tests for get_users_by_section() ───────────────────────────────────
-def test_get_users_by_section_returns_list_of_dicts(mock_readonly):
+def test_get_users_by_section_returns_list_of_dicts(mock_readonly, mock_cache):
     mock_readonly.return_value = [
         ("Alice","Section Leader"),
         ("Bob","Team Member")
@@ -126,6 +219,15 @@ def test_get_users_by_section_returns_list_of_dicts(mock_readonly):
         {"name": "Alice", "role": "Section Leader"},
         {"name": "Bob",   "role": "Team Member"},
     ]
+    
+    # Verify cache operations
+    mock_cache.get.assert_called_once_with('users:section:Minis')
+    mock_cache.set.assert_called_once_with(
+        'users:section:Minis', 
+        [{"name": "Alice", "role": "Section Leader"}, {"name": "Bob", "role": "Team Member"}],
+        timeout=1800
+    )
+    
     sql, params = mock_readonly.call_args[0]
     expected_sql = """
     SELECT u.name, u.role
@@ -137,7 +239,7 @@ def test_get_users_by_section_returns_list_of_dicts(mock_readonly):
     assert sql.strip() == expected_sql.strip()
     assert params == {"section": "Minis"}
 
-def test_get_users_by_section_db_error_returns_error(mock_readonly):
+def test_get_users_by_section_db_error_returns_error(mock_readonly, mock_cache):
     mock_readonly.side_effect = Exception("DB error on section query")
     result = utils.get_users_by_section("Minis")
     assert isinstance(result, dict)
@@ -145,25 +247,25 @@ def test_get_users_by_section_db_error_returns_error(mock_readonly):
     assert "DB error on section query" in result["error"]
 
 # ─── 7) Tests for get_all_sections() ───────────────────────────────────────
-def test_get_all_sections_with_records(mock_readonly):
+def test_get_all_sections_with_records(mock_readonly, mock_cache):
     mock_readonly.return_value = [("Minis",), ("Micros",), ("Majors",)]
     result = utils.get_all_sections()
     assert result == ["Minis", "Micros", "Majors"]
+    
+    # Verify cache operations
+    mock_cache.get.assert_called_once_with('sections:all:list')
+    mock_cache.set.assert_called_once_with('sections:all:list', ["Minis", "Micros", "Majors"], timeout=3600)
+    
     sql = mock_readonly.call_args[0][0]
-    # expected_sql = """
-    # SELECT name
-    # FROM sections
-    # ORDER BY display_order, name;
-    # """
     assert "ORDER BY display_order, name" in sql.strip()
     assert sql.strip().startswith("SELECT name")
 
-def test_get_all_sections_no_records(mock_readonly):
+def test_get_all_sections_no_records(mock_readonly, mock_cache):
     mock_readonly.return_value = []
     result = utils.get_all_sections()
     assert result == []
 
-def test_get_all_sections_exception(mock_readonly):
+def test_get_all_sections_exception(mock_readonly, mock_cache):
     mock_readonly.side_effect = Exception("Database failure")
     result = utils.get_all_sections()
     assert isinstance(result, dict)
@@ -171,10 +273,15 @@ def test_get_all_sections_exception(mock_readonly):
     assert "Database failure" in result["error"]
 
 # ─── 8) Tests for get_all_feedback_dates() ──────────────────────────────────
-def test_get_all_feedback_dates_with_records(mock_readonly):
+def test_get_all_feedback_dates_with_records(mock_readonly, mock_cache):
     mock_readonly.return_value = [("2025-06-01",), ("2025-05-25",)]
     result = utils.get_all_feedback_dates()
     assert result == ["2025-06-01", "2025-05-25"]
+    
+    # Verify cache operations
+    mock_cache.get.assert_called_once_with('feedback:dates:all')
+    mock_cache.set.assert_called_once_with('feedback:dates:all', ["2025-06-01", "2025-05-25"], timeout=7200)
+    
     sql = mock_readonly.call_args[0][0]
     expected_sql = """
     SELECT DISTINCT date
@@ -183,12 +290,12 @@ def test_get_all_feedback_dates_with_records(mock_readonly):
     """
     assert sql.strip() == expected_sql.strip()
 
-def test_get_all_feedback_dates_no_records(mock_readonly):
+def test_get_all_feedback_dates_no_records(mock_readonly, mock_cache):
     mock_readonly.return_value = []
     result = utils.get_all_feedback_dates()
     assert result == []
 
-def test_get_all_feedback_dates_exception(mock_readonly):
+def test_get_all_feedback_dates_exception(mock_readonly, mock_cache):
     mock_readonly.side_effect = Exception("Database error")
     result = utils.get_all_feedback_dates()
     assert isinstance(result, dict)
@@ -226,9 +333,8 @@ def test_execute_query_failure_triggers_rollback(mock_db_session):
         utils.execute_query("DELETE FROM users")
     mock_db_session.rollback.assert_called_once()
 
-
 # Add test for get_todays_duties to verify cycle_week usage
-def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly):
+def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly, mock_cache):
     # Mock datetime and cycle week
     FakeDatetime.today_weekday = 1  # Tuesday
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
@@ -239,6 +345,11 @@ def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly):
     ]
     
     result = utils.get_todays_duties("Alice")
+    
+    # Verify cache operations
+    cache_key_pattern = 'duties:today:day1:cycle1:userAlice'
+    mock_cache.get.assert_called_once_with(cache_key_pattern)
+    mock_cache.set.assert_called_once()
     
     # Verify the query was called with correct parameters
     sql, params = mock_readonly.call_args[0]
@@ -251,32 +362,33 @@ def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly):
     assert "WHERE ds.day = :day" in sql
     assert "AND ds.cycle_week = :cycle_week" in sql
 
-# Add cache testing
-@pytest.fixture(autouse=True)
-def clear_cache():
-    """Clear cache before and after each test to avoid side effects"""
-    from backend.globals import cache
-    cache.clear()
-    yield
-    cache.clear()
-
-def test_caching_behavior(mock_readonly):
+def test_caching_behavior(mock_readonly, mock_cache):
     """Test that caching works correctly"""
     mock_readonly.return_value = [('Alice Smith','SectionA','RoleA','TeamA')]
     
     # First call should hit the database
     result1 = utils.get_all_users()
     assert mock_readonly.call_count == 1
+    assert mock_cache.get.call_count == 1
+    assert mock_cache.set.call_count == 1
     
-    # Second call should use cache (but we cleared cache in fixture, so this will still call DB)
-    # In a real scenario with cache enabled, this would be 0 additional calls
+    # Reset mock to simulate cache hit
+    mock_cache.reset_mock()
+    mock_cache.get.return_value = ['Alice Smith']  # Simulate cache hit
+    mock_readonly.reset_mock()
+    
+    # Second call should use cache
     result2 = utils.get_all_users()
     
-    assert result1 == result2
-    assert result1 == ['Alice Smith']
+    # Verify cache was checked but DB wasn't called
+    assert mock_cache.get.call_count == 1
+    assert mock_readonly.call_count == 0  # No DB call
+    assert mock_cache.set.call_count == 0  # No cache set (data was already cached)
+    
+    assert result2 == ['Alice Smith']
 
 # Test the new get_duty_schedule optimization
-def test_get_duty_schedule_uses_parameterized_query(mock_readonly):
+def test_get_duty_schedule_uses_parameterized_query(mock_readonly, mock_cache):
     """Test that get_duty_schedule uses the new parameterized approach"""
     mock_readonly.return_value = [
         (1, 0, "Kitchen Duty", "Clean kitchen", "Team A", [{"name": "Alice", "week": "Both"}])
@@ -288,6 +400,12 @@ def test_get_duty_schedule_uses_parameterized_query(mock_readonly):
     assert isinstance(result, list)
     assert len(result) == 14  # 2 weeks
     
+    # Verify cache operations
+    mock_cache.get.assert_called_once()
+    cache_key = mock_cache.get.call_args[0][0]
+    assert cache_key.startswith('duties:schedule:14day:')
+    mock_cache.set.assert_called_once()
+    
     # Check that the query uses ANY() for parameterization instead of dynamic SQL
     sql, params = mock_readonly.call_args[0]
     assert "ANY(:days)" in sql
@@ -296,7 +414,8 @@ def test_get_duty_schedule_uses_parameterized_query(mock_readonly):
     assert "cycles" in params
     
     # Ensure no dynamic SQL concatenation
-    assert "(" not in str(params['days'])  # Should be a list, not concatenated string
+    assert isinstance(params['days'], list)
+    assert isinstance(params['cycles'], list)
 
 def test_get_current_cycle_week_calculation():
     """Test the cycle week calculation helper"""
