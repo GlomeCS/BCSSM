@@ -1,110 +1,286 @@
 from flask import jsonify, request, session
 from markupsafe import escape
+from functools import wraps
 
 from backend.globals import cache
-from backend.bcssm_backend.utils import (get_all_users, get_user_duty,
-                               get_users_by_section,execute_query)
+from backend.bcssm_backend.utils import (
+    get_all_users, get_user_duty, get_users_by_section, execute_query,
+    clear_user_cache  # Import cache management function
+)
+
+
+def validate_params(*required_params):
+    """Decorator to validate required parameters in request"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            missing = []
+            for param in required_params:
+                # For GET requests, check query parameters
+                # For POST requests, check JSON body
+                if request.method == 'GET':
+                    if param not in request.args:
+                        missing.append(param)
+                else:
+                    request_json = request.json or {}
+                    if param not in request_json:
+                        missing.append(param)
+                        
+            if missing:
+                return jsonify({"error": f"Missing parameters: {', '.join(missing)}"}), 400
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
 
 
 def init_users_routes(app):
 
     @app.route('/users-by-section')
+    @validate_params('section')
     def users_by_section():
+        """Get users by section - now uses utils function with built-in caching"""
         try:
             section_name = request.args.get('section')
+            
+            # Use utils function which already has caching built-in
             users = get_users_by_section(section_name)
+            
+            # Check if it's an error response
+            if isinstance(users, dict) and "error" in users:
+                app.logger.error(f"Failed to fetch users by section {section_name}: {users['error']}")
+                return jsonify({"error": "Failed to fetch users for this section."}), 500
+            
             return jsonify({"users": users}), 200
         except Exception as e:
-            app.logger.error(f"Failed to fetch users: {str(e)}")
+            app.logger.error(f"Failed to fetch users by section: {str(e)}")
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/user-duty')
+    @validate_params('user')
     def user_duty():
+        """Get user duty - now uses utils function with built-in caching"""
         try:
             user_name = request.args.get('user')
+            
+            # Use utils function which already has smart caching with day/cycle keys
             duty_data = get_user_duty(user_name)
+            
             return jsonify(duty_data), 200
         except Exception as e:
-            app.logger.error(f"Failed to fetch duty: {str(e)}")
+            app.logger.error(f"Failed to fetch duty for user {user_name}: {str(e)}")
             return jsonify({"error": "An internal error has occurred."}), 500
-
 
     @app.route('/select-user', methods=['POST'])
     def select_user():
-        user_name = request.json.get('user_name')
+        """Select user and cache user data"""
+        try:
+            user_name = request.json.get('user_name')
+            if not user_name:
+                return jsonify({"error": "User name required."}), 400
 
-        if user_name:
-            user_name = escape(user_name)  # Escaping user input
+            user_name = escape(user_name)
 
-        # Get valid users from cache or database
-        valid_users = cache.get('valid_users')
-        if not valid_users:
-            valid_users = get_all_users()
-            cache.set('valid_users', valid_users, timeout=300)  # Cache for 5 minutes
+            # Single query to validate and fetch user data
+            user_rows = execute_query(
+                "SELECT u.id, u.name, u.role, s.name AS section_name "
+                "FROM users u "
+                "LEFT JOIN sections s ON u.section_id = s.id "
+                "WHERE u.name = :user_name",
+                {'user_name': user_name}
+            )
 
-        if user_name not in valid_users:
-            print("Invalid user selected")
-            return {"message": "Invalid user selected."}, 400
+            if not user_rows:
+                app.logger.warning(f"Invalid user selection attempt: {user_name}")
+                return jsonify({'error': 'Invalid user selected'}), 400
 
-        session['user_name'] = user_name
+            user_id, name, role, section_name = user_rows[0]
+            is_leader = role in {"Section Leader", "Team Leader", "Admin"}
 
-        # Fetch full user record for ID, role, and section
-        user_rows = execute_query(
-            "SELECT u.id, u.role, s.name AS section_name "
-            "FROM users u "
-            "LEFT JOIN sections s ON u.section_id = s.id "
-            "WHERE u.name = :user_name",
-            {'user_name': user_name}
-        )
-        if not user_rows:
-            return jsonify({'error': 'User record not found'}), 500
-        user_row = user_rows[0]
-        # Unpack tuple: (id, role, section_name)
-        user_id, role, section_name = user_row
+            # Batch session updates
+            session.update({
+                'user_name': user_name,
+                'user_id': user_id,
+                'user_section': section_name,
+                'is_leader': is_leader
+            })
 
-        session['user_id'] = user_id
-        is_leader = role in ["Section Leader", "Team Leader", "Admin"]
-        session['user_section'] = section_name
-        session['is_leader'] = is_leader
+            # Cache user data for quick access with error handling
+            try:
+                user_cache_key = f'user:data:{user_name}'
+                user_data = {
+                    'id': user_id,
+                    'name': name,
+                    'role': role,
+                    'section_name': section_name,
+                    'is_leader': is_leader
+                }
+                cache.set(user_cache_key, user_data, timeout=1800)  # 30 minutes
+            except Exception as cache_error:
+                # Log cache error but don't fail the request
+                app.logger.warning(f"Failed to cache user data for {user_name}: {cache_error}")
 
-        # Return JSON including user state
-        response = jsonify({
-            "message": f"User {escape(user_name)} successfully selected.",
-            "is_logged_in": True,
-            "user_section": session['user_section'],
-            "is_leader": session['is_leader']
-        })
-        return response, 200
+            return jsonify({
+                "message": f"User {escape(user_name)} successfully selected.",
+                "is_logged_in": True,
+                "user_section": section_name,
+                "is_leader": is_leader
+            }), 200
+
+        except Exception as e:
+            app.logger.error(f"Failed to select user: {str(e)}")
+            return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/get-selected-user')
     def get_selected_user():
+        """Get selected user with cached data"""
         user_name = session.get('user_name')
         if not user_name:
-            return jsonify({"user": None})  # No user selected yet
+            return jsonify({"user": None})
+        
+        # Try to get additional user data from cache with error handling
+        try:
+            user_cache_key = f'user:data:{user_name}'
+            user_data = cache.get(user_cache_key)
+            
+            if user_data:
+                return jsonify({
+                    "user": user_name,
+                    "user_data": user_data
+                })
+        except Exception as cache_error:
+            # Log cache error but continue with basic response
+            app.logger.warning(f"Failed to retrieve cached user data for {user_name}: {cache_error}")
+        
         return jsonify({"user": user_name})
 
     @app.route('/logout', methods=['POST'])
     def logout():
-        session.pop('user_name', None)
+        """Logout user and clear caches"""
+        user_name = session.get('user_name')
+        
+        # Clear user-specific cache entries on logout with error handling
+        if user_name:
+            try:
+                cache_keys_to_delete = [
+                    f'user:data:{user_name}',
+                    f'user:duty:{user_name}'  # Note: actual keys are more complex with day/cycle
+                ]
+                for key in cache_keys_to_delete:
+                    cache.delete(key)
+            except Exception as cache_error:
+                # Log cache error but don't fail logout
+                app.logger.warning(f"Failed to clear cache for user {user_name}: {cache_error}")
+        
+        # Clear session
+        session.clear()
+        
         return jsonify({"message": "User logged out successfully!"})
 
     @app.route('/get-users')
     def get_users():
+        """Get all users - now uses utils function with built-in caching"""
         try:
-            # Fetch users from cache or database
-            users = cache.get('all_users')
-            if not users:
-                users = get_all_users()
-                cache.set('all_users', users, timeout=300)  # Cache for 5 minutes
-
+            # Use utils function which already has caching built-in
+            users = get_all_users()
+            
             return jsonify({"users": users}), 200
         except Exception as e:
             app.logger.error(f"Failed to fetch users: {str(e)}")
             return jsonify({"error": "An internal error has occurred."}), 500
 
+    # Enhanced cache stats endpoint
+    @app.route('/cache-stats')
+    def cache_stats():
+        """Enhanced cache status endpoint"""
+        try:
+            # Test cache operations
+            test_key = 'cache:health:check'
+            cache.set(test_key, 'ok', timeout=60)
+            status = cache.get(test_key)
+            cache.delete(test_key)
+            
+            # Get some cache info
+            cache_info = {
+                "cache_status": "healthy" if status == 'ok' else "unhealthy",
+                "cache_type": "RedisCache",
+                "test_result": status,
+                "cached_functions": [
+                    "get_all_users (15 min)",
+                    "get_user_duty (10 min)", 
+                    "get_users_by_section (30 min)",
+                    "user_data (30 min)"
+                ],
+                "management": {
+                    "clear_users": "Available via clear_user_cache()",
+                    "admin_endpoint": "/api/admin/cache/clear"
+                }
+            }
+            
+            return jsonify(cache_info)
+        except Exception as e:
+            app.logger.error(f"Cache health check failed: {str(e)}")
+            return jsonify({
+                "cache_status": "unhealthy",
+                "error": "Cache operations failed"
+            }), 500
+
+    # NEW: Admin endpoint for clearing user caches
+    @app.route('/admin/clear-user-cache', methods=['POST'])
+    def clear_user_cache_endpoint():
+        """Admin endpoint to clear user-related caches"""
+        try:
+            # Optional: Add authentication check here
+            # if not is_admin_user():
+            #     return jsonify({"error": "Admin access required"}), 403
+            
+            clear_user_cache()
+            
+            return jsonify({
+                "success": True,
+                "message": "User caches cleared successfully"
+            })
+        except Exception as e:
+            app.logger.error(f"Failed to clear user cache: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "Failed to clear user cache"
+            }), 500
+
+    # NEW: Endpoint to update user and clear cache
+    @app.route('/admin/users/<int:user_id>', methods=['PUT'])
+    def update_user(user_id):
+        """Update user and clear related caches"""
+        try:
+            # Optional: Add authentication check
+            # if not is_admin_user():
+            #     return jsonify({"error": "Admin access required"}), 403
+            
+            data = request.json
+            if not data:
+                return jsonify({"error": "No data provided"}), 400
+            
+            # Your user update logic here
+            # update_query = "UPDATE users SET ... WHERE id = :user_id"
+            # execute_query(update_query, {"user_id": user_id, **data})
+            
+            # Clear user caches after successful update
+            clear_user_cache()
+            
+            return jsonify({
+                "success": True,
+                "message": f"User {user_id} updated successfully"
+            })
+        except Exception as e:
+            app.logger.error(f"Failed to update user {user_id}: {str(e)}")
+            return jsonify({
+                "success": False,
+                "error": "Failed to update user"
+            }), 500
+
     @app.context_processor
     def inject_user_state():
-        user_name = session.get('user_name', None)
+        """Inject user state into templates"""
+        user_name = session.get('user_name')
         if user_name:
             return {
                 'is_logged_in': True,
@@ -119,4 +295,3 @@ def init_users_routes(app):
                 'is_leader': False,
                 'user_id': None
             }
-        

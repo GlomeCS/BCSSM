@@ -1,6 +1,9 @@
+# Updated test_app.py with new cache management tests
+
 import logging
 import os
 from unittest.mock import MagicMock, patch
+import json
 
 import pytest
 from flask import Flask
@@ -23,6 +26,13 @@ def mock_db_cache():
     with patch('backend.bcssm_backend.db') as mock_db, patch('backend.bcssm_backend.cache') as mock_cache:
         mock_db.init_app = MagicMock()
         mock_cache.init_app = MagicMock()
+        
+        # Mock cache operations for the new admin endpoints
+        mock_cache.set = MagicMock(return_value=True)
+        mock_cache.get = MagicMock()  # Will be configured per test
+        mock_cache.delete = MagicMock(return_value=True)
+        mock_cache.clear = MagicMock(return_value=True)
+        
         # Make cache.cached a no-op decorator to avoid MagicMock __name__ errors
         mock_cache.cached = lambda *args, **kwargs: (lambda f: f)
         yield mock_db, mock_cache
@@ -101,13 +111,10 @@ def test_create_app_config(clean_env, mock_db_cache, monkeypatch, env, expected_
     mock_db.init_app.assert_called_once_with(app)
     mock_cache.init_app.assert_called_once_with(app)
 
-# Test that /api/sections returns data and is cached
-import os
-from unittest.mock import patch
-
-
+# Test that /api/sections returns data (removed caching decorator since it's internal now)
 @patch('backend.bcssm_backend.get_all_sections')
 def test_api_sections_returns_data(mock_get_all_sections, mock_db_cache, clean_env):
+    """Test /api/sections endpoint returns data from get_all_sections"""
     mock_get_all_sections.return_value = [{"id": "123", "name": "Minors"}, {"id": "456", "name": "Majors"}]
 
     os.environ['FLASK_ENV'] = 'testing'
@@ -126,7 +133,319 @@ def test_api_sections_returns_data(mock_get_all_sections, mock_db_cache, clean_e
     assert response.get_json() == [{"id": "123", "name": "Minors"}, {"id": "456", "name": "Majors"}]
     mock_get_all_sections.assert_called_once()
 
+# NEW: Test the health check endpoint
+def test_health_check_endpoint_healthy(mock_db_cache, clean_env):
+    """Test /api/health endpoint when cache is healthy"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+    os.environ['REDIS_URL'] = 'redis://localhost:6379'
 
+    mock_db, mock_cache = mock_db_cache
+    # Configure mock to return 'ok' for health check
+    mock_cache.get.return_value = 'ok'
+    
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    assert response.is_json
+    
+    data = response.get_json()
+    assert data["status"] == "healthy"
+    assert data["database"] == "connected"
+    assert data["cache"] == "healthy"
+    assert data["environment"] == "testing"
+    assert "redis_url" in data
+
+def test_health_check_endpoint_cache_unhealthy(mock_db_cache, clean_env):
+    """Test /api/health endpoint when cache is unhealthy"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    # Make cache.get return wrong value to simulate unhealthy cache
+    mock_cache.get.return_value = 'not_ok'
+    
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get("/api/health")
+    assert response.status_code == 200
+    
+    data = response.get_json()
+    assert data["status"] == "degraded"  # Should be degraded when cache fails
+    assert data["cache"] == "unhealthy"
+
+def test_health_check_endpoint_exception(mock_db_cache, clean_env):
+    """Test /api/health endpoint when cache throws exception"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    # Make cache operations throw exception
+    mock_cache.set.side_effect = Exception("Redis connection failed")
+    
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get("/api/health")
+    assert response.status_code == 500
+    
+    data = response.get_json()
+    assert data["status"] == "unhealthy"
+    assert "Health check failed" in data["error"]
+
+# NEW: Test cache management endpoints
+@patch('backend.bcssm_backend.utils.clear_user_cache')
+def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
+    """Test POST /api/admin/cache/clear with type=users"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post('/api/admin/cache/clear', 
+                          json={'type': 'users'},
+                          content_type='application/json')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    assert "user" in data["message"].lower()
+    assert data["cache_type"] == "users"
+    
+    mock_clear_user_cache.assert_called_once()
+
+@patch('backend.bcssm_backend.utils.clear_duty_cache')
+def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
+    """Test POST /api/admin/cache/clear with type=duties"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post('/api/admin/cache/clear', 
+                          json={'type': 'duties'},
+                          content_type='application/json')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    assert "duty" in data["message"].lower()
+    
+    mock_clear_duty_cache.assert_called_once()
+
+@patch('backend.bcssm_backend.utils.clear_feedback_cache')
+def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_env):
+    """Test POST /api/admin/cache/clear with type=feedback"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post('/api/admin/cache/clear', 
+                          json={'type': 'feedback'},
+                          content_type='application/json')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    
+    mock_clear_feedback_cache.assert_called_once()
+
+@patch('backend.bcssm_backend.utils.clear_all_cache')
+def test_clear_cache_all(mock_clear_all_cache, mock_db_cache, clean_env):
+    """Test POST /api/admin/cache/clear with type=all"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post('/api/admin/cache/clear', 
+                          json={'type': 'all'},
+                          content_type='application/json')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    
+    mock_clear_all_cache.assert_called_once()
+
+def test_clear_cache_invalid_type(mock_db_cache, clean_env):
+    """Test POST /api/admin/cache/clear with invalid type"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post('/api/admin/cache/clear', 
+                          json={'type': 'invalid'},
+                          content_type='application/json')
+    
+    assert response.status_code == 400
+    data = response.get_json()
+    assert data["success"] is False
+    assert "Invalid cache type" in data["error"]
+
+def test_clear_cache_no_json(mock_db_cache, clean_env):
+    """Test POST /api/admin/cache/clear without JSON defaults to all"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    with patch('backend.bcssm_backend.utils.clear_all_cache') as mock_clear_all:
+        response = client.post('/api/admin/cache/clear')
+        
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["cache_type"] == "all"
+        
+        mock_clear_all.assert_called_once()
+
+@patch('backend.bcssm_backend.utils.clear_user_cache')
+def test_clear_cache_exception_handling(mock_clear_user_cache, mock_db_cache, clean_env):
+    """Test cache clear endpoint handles exceptions properly"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    mock_clear_user_cache.side_effect = Exception("Cache clearing failed")
+    
+    app = create_app()
+    client = app.test_client()
+
+    response = client.post('/api/admin/cache/clear', 
+                          json={'type': 'users'},
+                          content_type='application/json')
+    
+    assert response.status_code == 500
+    data = response.get_json()
+    assert data["success"] is False
+    assert "Cache clearing failed" in data["error"]
+
+def test_cache_status_endpoint(mock_db_cache, clean_env):
+    """Test GET /api/admin/cache/status endpoint"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+    os.environ['REDIS_URL'] = 'redis://localhost:6379'
+
+    mock_db, mock_cache = mock_db_cache
+    
+    # Ensure the mock returns the correct value for the status check
+    mock_cache.get.return_value = 'working'  # This is what the status endpoint expects
+    
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get('/api/admin/cache/status')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "healthy"
+    assert data["cache_type"] == "RedisCache"
+    assert data["default_timeout"] == 300
+    assert "available_operations" in data
+    assert data["redis_url"] == "redis://localhost:6379"
+    
+    # Verify the cache was tested properly
+    mock_cache.set.assert_called_with('status_test', 'working', timeout=10)
+    mock_cache.get.assert_called_with('status_test')
+    mock_cache.delete.assert_called_with('status_test')
+
+def test_cache_status_endpoint_exception(mock_db_cache, clean_env):
+    """Test cache status endpoint when cache throws exception"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    mock_cache.set.side_effect = Exception("Redis down")
+    
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get('/api/admin/cache/status')
+    
+    assert response.status_code == 500
+    data = response.get_json()
+    assert data["status"] == "unhealthy"
+    assert "Cache status check failed" in data["error"]
+
+def test_cache_info_endpoint(mock_db_cache, clean_env):
+    """Test GET /api/admin/cache/info endpoint"""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get('/api/admin/cache/info')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert "cache_config" in data
+    assert "cached_functions" in data
+    assert "management_endpoints" in data
+    
+    # Check specific function timeouts are documented
+    assert "get_all_users" in data["cached_functions"]
+    assert "15 minutes" in data["cached_functions"]["get_all_users"]
+
+# Existing React serving tests (unchanged)
 from unittest.mock import patch
 
 @patch('backend.bcssm_backend.load_dotenv')

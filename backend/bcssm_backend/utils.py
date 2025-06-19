@@ -1,13 +1,25 @@
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
-
+from functools import lru_cache
+import hashlib
 
 from sqlalchemy import text
 
-from backend.globals import db
+from backend.globals import db, cache
 
 logger = logging.getLogger(__name__)
+
+@lru_cache(maxsize=128)
+def get_current_cycle_week():
+    """Pre-calculate cycle week to avoid repeated computation"""
+    days_since_start = (datetime.now().date() - datetime(2025, 7, 7).date()).days
+    return (days_since_start // 7) % 2
+
+def generate_cache_key(*args, **kwargs):
+    """Generate a consistent cache key from function arguments"""
+    key_data = str(args) + str(sorted(kwargs.items()))
+    return hashlib.md5(key_data.encode()).hexdigest()
 
 def execute_readonly_query(query, params=None):
     """
@@ -49,6 +61,18 @@ def execute_query(query, params=None):
         raise e
 
 def get_all_users():
+    """
+    Optimized query with Redis caching and better ordering.
+    Cache timeout: 15 minutes (users don't change frequently)
+    """
+    cache_key = 'users:all:list'
+    
+    # Try to get from cache first
+    cached_users = cache.get(cache_key)
+    if cached_users is not None:
+        logger.info("Retrieved users from cache")
+        return cached_users
+    
     query = """
     SELECT 
         u.name, 
@@ -58,7 +82,13 @@ def get_all_users():
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    ORDER BY SPLIT_PART(u.name, ' ', 2);
+    ORDER BY 
+        CASE 
+            WHEN POSITION(' ' IN u.name) > 0 
+            THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
+            ELSE u.name 
+        END,
+        u.name;
     """
     try:
         logger.info("Starting query execution for get_all_users...")
@@ -66,14 +96,35 @@ def get_all_users():
         logger.info("Query returned rows: %s", rows)
 
         # Extract only the names for the dropdown
-        user_names = [row[0] for row in rows]  # Extract only the name (first column)
+        user_names = [row[0] for row in rows]
         logger.info("Fetched user names: %s", user_names)
+        
+        # Cache the results
+        cache.set(cache_key, user_names, timeout=900)  # 15 minutes
+        logger.info("Cached users list")
+        
         return user_names
     except Exception as e:
         logger.error("Failed to fetch users: %s", e)
         return []
 
 def get_user_duty(user_name):
+    """
+    Optimized with Redis caching and pre-calculated cycle week.
+    Cache timeout: 10 minutes (duty assignments change daily)
+    """
+    current_day = datetime.now().weekday()
+    current_cycle = get_current_cycle_week()
+    
+    # Create cache key that includes day and cycle for accurate caching
+    cache_key = f'user:duty:{user_name}:day{current_day}:cycle{current_cycle}'
+    
+    # Try to get from cache first
+    cached_duty = cache.get(cache_key)
+    if cached_duty is not None:
+        logger.info("Retrieved user duty from cache for %s", user_name)
+        return cached_duty
+    
     query = """
     SELECT 
         u.name AS user_name, 
@@ -84,89 +135,103 @@ def get_user_duty(user_name):
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id AND ds.day = :day
+    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id 
+        AND ds.day = :day 
+        AND ds.cycle_week = :cycle_week
     LEFT JOIN duties d ON ds.duty_id = d.id
     WHERE u.name = :user_name;
     """
     try:
-        # Get the current day of the week (0=Monday, 6=Sunday)
-        current_day = datetime.now().weekday()
-
-        # Execute the query with the user's name and current day
-        result = execute_readonly_query(query, {"user_name": user_name, "day": current_day})
+        # Execute the query with the user's name, current day, and cycle week
+        result = execute_readonly_query(query, {
+            "user_name": user_name, 
+            "day": current_day,
+            "cycle_week": current_cycle
+        })
+        
         if not result:
-            return {"error": "User not found or no duty assigned"}
-
-        # Extract the user's duty information
-        row = result[0]
-        duty_data = {
-            "user": row[0],  # user_name
-            "section": row[1],  # section name
-            "role": row[2],  # role
-            "team": row[3],  # team name
-            "duty": row[4],  # duty name
-        }
+            duty_data = {"error": "User not found or no duty assigned"}
+        else:
+            # Extract the user's duty information
+            row = result[0]
+            duty_data = {
+                "user": row[0],  # user_name
+                "section": row[1],  # section name
+                "role": row[2],  # role
+                "team": row[3],  # team name
+                "duty": row[4],  # duty name
+            }
+        
+        # Cache the results (even errors, to avoid repeated failed queries)
+        cache.set(cache_key, duty_data, timeout=600)  # 10 minutes
+        logger.info("Cached user duty for %s", user_name)
+        
         return duty_data
 
     except Exception as e:
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
-        return {"error": f"Failed to fetch duty for user: {e}"}
-
+        error_data = {"error": f"Failed to fetch duty for user: {e}"}
+        
+        # Cache errors for shorter time to allow recovery
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
 
 def get_todays_duties(user_name):
     """
-    Fetch all duties scheduled for today, including member lists and a flag indicating
-    whether the given user is part of each duty.
-    Returns: list of dicts with keys id, name, duty_description, members, is_current_user.
+    Cached today's duties with day-specific cache key.
+    Cache timeout: 30 minutes (duties are daily but don't change frequently)
     """
-    # Determine current day of week (0=Monday, 6=Sunday)
     current_day = datetime.now().weekday()
+    current_cycle = get_current_cycle_week()
+    
+    # Cache key includes day and cycle for accuracy
+    cache_key = f'duties:today:day{current_day}:cycle{current_cycle}:user{user_name}'
+    
+    # Try to get from cache first
+    cached_duties = cache.get(cache_key)
+    if cached_duties is not None:
+        logger.info("Retrieved today's duties from cache")
+        return cached_duties
+    
     query = '''
-    WITH computed_cycle AS (
-    -- calculate 0 for the week starting 2025-07-07, 1 for the following week, etc.
-    SELECT (ABS(CURRENT_DATE - DATE '2025-07-07') / 7) % 2 AS cycle_week
-    ),
-    today_schedule AS (
-    SELECT DISTINCT ON (ds.duty_id)
-        ds.duty_id,
-        ds.duty_team_id
-    FROM public.duty_schedule ds, computed_cycle cc
-    WHERE ds.day = :day
-        AND ds.cycle_week = cc.cycle_week
-    ORDER BY ds.duty_id, ds.duty_team_id
-    )
     SELECT
-    d.id,
-    d.name,
-    d.duty_description,
-    dt.name AS team_name,
-    array_agg(
-        jsonb_build_object(
-        'name', u.name,
-        'week', u.week
-        )
-        ORDER BY
-        CASE u.week
-            WHEN 'Both' THEN 0
-            WHEN 'Week A' THEN 1
-            WHEN 'Week B' THEN 2
-            ELSE 3
-        END,
-        u.name
-    ) AS members,
-    bool_or(u.name = :user_name) AS is_current_user
-    FROM today_schedule ts
-    JOIN public.duties d
-    ON ts.duty_id = d.id
-    JOIN public.duty_teams dt
-    ON ts.duty_team_id = dt.id
-    LEFT JOIN public.users u
-    ON u.duty_team_id = ts.duty_team_id
+        d.id,
+        d.name,
+        d.duty_description,
+        dt.name AS team_name,
+        array_agg(
+            jsonb_build_object(
+                'name', u.name,
+                'week', u.week
+            )
+            ORDER BY
+                CASE u.week
+                    WHEN 'Both' THEN 0
+                    WHEN 'Week A' THEN 1
+                    WHEN 'Week B' THEN 2
+                    ELSE 3
+                END,
+                u.name
+        ) AS members,
+        bool_or(u.name = :user_name) AS is_current_user
+    FROM duty_schedule ds
+    JOIN duties d ON ds.duty_id = d.id
+    JOIN duty_teams dt ON ds.duty_team_id = dt.id
+    LEFT JOIN users u ON u.duty_team_id = ds.duty_team_id
+    WHERE ds.day = :day 
+        AND ds.cycle_week = :cycle_week
     GROUP BY d.id, d.name, d.duty_description, dt.name
     ORDER BY d.name;
     '''
+    
     try:
-        rows = execute_readonly_query(query, {"day": current_day, "user_name": user_name})
+        rows = execute_readonly_query(query, {
+            "day": current_day, 
+            "user_name": user_name,
+            "cycle_week": current_cycle
+        })
+        
         duties = []
         for row in rows:
             duties.append({
@@ -176,35 +241,57 @@ def get_todays_duties(user_name):
                 "team_name": row[3],
                 "members": row[4] or [],
                 "is_current_user": row[5],
-        })
+            })
+        
+        # Cache the results
+        cache.set(cache_key, duties, timeout=1800)  # 30 minutes
+        logger.info("Cached today's duties")
+        
         return duties
     except Exception as e:
         logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
+        
+        # Cache empty result for short time to avoid repeated failures
+        cache.set(cache_key, [], timeout=60)  # 1 minute
+        
         return []
-
-logger = logging.getLogger(__name__)
 
 def get_duty_schedule():
     """
-    Fetch 2-week duty schedule starting from Saturday July 5th, 2025.
-    Returns: list of dicts with date, day_name, week, and duties for each day.
+    Cached duty schedule with date-based cache key.
+    Cache timeout: 2 hours (schedule doesn't change frequently)
     """
+    # Create cache key based on current date to ensure freshness
+    today = datetime.now().date()
+    cache_key = f'duties:schedule:14day:{today}'
+    
+    # Try to get from cache first
+    cached_schedule = cache.get(cache_key)
+    if cached_schedule is not None:
+        logger.info("Retrieved duty schedule from cache")
+        return cached_schedule
+    
     start_date = datetime(2025, 7, 5)
-    date_map = {}  # date -> {"day": int, "cycle_week": int}
-
-    # Precompute date mappings
+    
+    # Pre-calculate all day/cycle combinations we need
+    day_cycle_combinations = []
+    date_to_info = {}
+    
     for i in range(14):
         current_date = start_date + timedelta(days=i)
         db_day = (current_date.weekday() + 1) % 7  # Adjust to Sunday=0
         days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
         cycle_week = (days_since_cycle_start // 7) % 2
-        date_map[current_date.date()] = {"day": db_day, "cycle_week": cycle_week}
+        
+        day_cycle_combinations.append((db_day, cycle_week))
+        date_to_info[current_date.date()] = {
+            "day": db_day, 
+            "cycle_week": cycle_week,
+            "week_name": "Week A" if cycle_week == 0 else "Week B"
+        }
 
-    # Unique (day, cycle_week) pairs
-    day_cycle_pairs = set((v["day"], v["cycle_week"]) for v in date_map.values())
-    conditions_sql = ", ".join(f"({day},{cycle})" for day, cycle in day_cycle_pairs)
-
-    query = f'''
+    # Use a more efficient parameterized query
+    query = '''
     SELECT
         ds.day,
         ds.cycle_week,
@@ -225,28 +312,32 @@ def get_duty_schedule():
                 END,
                 u.name
         ) AS team_members
-    FROM public.duty_schedule ds
-    JOIN public.duties d ON ds.duty_id = d.id
-    JOIN public.duty_teams dt ON ds.duty_team_id = dt.id
-    LEFT JOIN public.users u ON u.duty_team_id = dt.id
-    WHERE (ds.day, ds.cycle_week) IN ({conditions_sql})
+    FROM duty_schedule ds
+    JOIN duties d ON ds.duty_id = d.id
+    JOIN duty_teams dt ON ds.duty_team_id = dt.id
+    LEFT JOIN users u ON u.duty_team_id = dt.id
+    WHERE ds.day = ANY(:days) 
+        AND ds.cycle_week = ANY(:cycles)
     GROUP BY ds.day, ds.cycle_week, d.name, d.duty_description, dt.name, d.id
     ORDER BY ds.day, d.name;
     '''
 
     try:
-        rows = execute_readonly_query(query)
+        # Extract unique days and cycles for the query
+        days = list(set(combo[0] for combo in day_cycle_combinations))
+        cycles = list(set(combo[1] for combo in day_cycle_combinations))
+        
+        rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
     except Exception as e:
         logger.error("Failed to fetch 2-week duty schedule: %s", e)
+        
+        # Cache empty result for short time to avoid repeated failures
+        cache.set(cache_key, [], timeout=60)  # 1 minute
+        
         return []
 
-    # Reverse lookup from (day, cycle_week) → list of dates
-    reverse_lookup = defaultdict(list)
-    for dt, info in date_map.items():
-        reverse_lookup[(info["day"], info["cycle_week"])].append(dt)
-
-    # Group duties by actual date
-    date_duties = defaultdict(list)
+    # Group duties by (day, cycle_week) combination
+    duty_lookup = defaultdict(list)
     for row in rows:
         day, cycle_week, duty_name, duty_description, team_name, team_members = row
         duty = {
@@ -255,24 +346,40 @@ def get_duty_schedule():
             "team_name": team_name,
             "team_members": team_members or []
         }
-        for dt in reverse_lookup.get((day, cycle_week), []):
-            date_duties[dt].append(duty)
+        duty_lookup[(day, cycle_week)].append(duty)
 
     # Assemble final schedule
     schedule = []
-    for dt in sorted(date_map):
-        info = date_map[dt]
-        week_name = "Week A" if info["cycle_week"] == 0 else "Week B"
+    for dt in sorted(date_to_info.keys()):
+        info = date_to_info[dt]
+        duties_for_date = duty_lookup.get((info["day"], info["cycle_week"]), [])
+        
         schedule.append({
             "date": dt.strftime("%Y-%m-%d"),
             "day_name": dt.strftime("%A"),
-            "week": week_name,
-            "duties": date_duties.get(dt, [])
+            "week": info["week_name"],
+            "duties": duties_for_date
         })
+
+    # Cache the results
+    cache.set(cache_key, schedule, timeout=7200)  # 2 hours
+    logger.info("Cached duty schedule")
 
     return schedule
 
 def get_all_sections():
+    """
+    Cached sections query with long timeout since sections rarely change.
+    Cache timeout: 1 hour
+    """
+    cache_key = 'sections:all:list'
+    
+    # Try to get from cache first
+    cached_sections = cache.get(cache_key)
+    if cached_sections is not None:
+        logger.info("Retrieved sections from cache")
+        return cached_sections
+    
     query = """
     SELECT name
     FROM sections
@@ -281,27 +388,72 @@ def get_all_sections():
     try:
         result = execute_readonly_query(query)
         sections = [row[0] for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, sections, timeout=3600)  # 1 hour
+        logger.info("Cached sections list")
+        
         return sections
     except Exception as e:
         logger.error("Failed to fetch sections: %s", e)
-        return {"error": f"Failed to fetch sections: {e}"}
+        error_data = {"error": f"Failed to fetch sections: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
 
 def get_users_by_section(section):
+    """
+    Cached users by section query.
+    Cache timeout: 30 minutes
+    """
+    cache_key = f'users:section:{section}'
+    
+    # Try to get from cache first
+    cached_users = cache.get(cache_key)
+    if cached_users is not None:
+        logger.info("Retrieved users by section from cache for %s", section)
+        return cached_users
+    
     query = """
     SELECT u.name, u.role
     FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE s.name = :section;
+    INNER JOIN sections s ON u.section_id = s.id
+    WHERE s.name = :section
+    ORDER BY u.name;
     """
     try:
         result = execute_readonly_query(query, {"section": section})
         users = [{"name": row[0], "role": row[1]} for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, users, timeout=1800)  # 30 minutes
+        logger.info("Cached users by section for %s", section)
+        
         return users
     except Exception as e:
         logger.error("Failed to fetch users by section %s: %s", section, e)
-        return {"error": f"Failed to fetch users by section: {e}"}
+        error_data = {"error": f"Failed to fetch users by section: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
 
 def get_all_feedback_dates():
+    """
+    Cached feedback dates with long timeout since they don't change frequently.
+    Cache timeout: 2 hours
+    """
+    cache_key = 'feedback:dates:all'
+    
+    # Try to get from cache first
+    cached_dates = cache.get(cache_key)
+    if cached_dates is not None:
+        logger.info("Retrieved feedback dates from cache")
+        return cached_dates
+    
     query = """
     SELECT DISTINCT date
     FROM feedback_records
@@ -310,7 +462,54 @@ def get_all_feedback_dates():
     try:
         result = execute_readonly_query(query)
         dates = [row[0] for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, dates, timeout=7200)  # 2 hours
+        logger.info("Cached feedback dates")
+        
         return dates
     except Exception as e:
         logger.error("Failed to fetch feedback dates: %s", e)
-        return {"error": f"Failed to fetch feedback dates: {e}"}
+        error_data = {"error": f"Failed to fetch feedback dates: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
+    
+    # Simple cache management functions with error handling
+def clear_user_cache():
+    """Clear user-related caches after user data changes"""
+    try:
+        cache.delete('users:all:list')
+        cache.delete('sections:all:list')
+        logger.info("Cleared user-related caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear user caches: {e}")
+
+def clear_duty_cache():
+    """Clear duty-related caches after duty data changes"""
+    try:
+        today = datetime.now().date()
+        cache.delete(f'duties:schedule:14day:{today}')
+        # Clear today's duties (harder to clear all variations, so clear all)
+        cache.clear()  # Nuclear option for duties
+        logger.info("Cleared duty-related caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear duty caches: {e}")
+
+def clear_feedback_cache():
+    """Clear feedback caches after feedback data changes"""
+    try:
+        cache.delete('feedback:dates:all')
+        logger.info("Cleared feedback caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear feedback caches: {e}")
+
+def clear_all_cache():
+    """Nuclear option - clear everything"""
+    try:
+        cache.clear()
+        logger.info("Cleared all caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear all caches: {e}")
