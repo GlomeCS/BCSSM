@@ -203,7 +203,7 @@ def test_health_check_endpoint_exception(mock_db_cache, clean_env):
     
     data = response.get_json()
     assert data["status"] == "unhealthy"
-    assert "Redis connection failed" in data["error"]
+    assert "Health check failed" in data["error"]
 
 # NEW: Test cache management endpoints
 @patch('backend.bcssm_backend.utils.clear_user_cache')
@@ -419,7 +419,7 @@ def test_cache_status_endpoint_exception(mock_db_cache, clean_env):
     assert response.status_code == 500
     data = response.get_json()
     assert data["status"] == "unhealthy"
-    assert "Redis down" in data["error"]
+    assert "Cache status check failed" in data["error"]
 
 def test_cache_info_endpoint(mock_db_cache, clean_env):
     """Test GET /api/admin/cache/info endpoint"""

@@ -122,7 +122,7 @@ def create_app():
                 "status": "unhealthy",
                 "database": "unknown",
                 "cache": "unhealthy", 
-                "error": str(e)
+                "error": "Health check failed",
             }), 500
 
     # Your existing React serving (unchanged)
@@ -192,7 +192,7 @@ def add_cache_management_routes(app):
             app.logger.error(f"Cache clearing failed: {e}")
             return jsonify({
                 "success": False, 
-                "error": f"Cache clearing failed: {str(e)}"
+                "error": f"Cache clearing failed"
             }), 500
 
     @app.route("/api/admin/cache/status", methods=['GET'])
@@ -225,7 +225,7 @@ def add_cache_management_routes(app):
             app.logger.error(f"Cache status check failed: {e}")
             return jsonify({
                 "status": "unhealthy",
-                "error": str(e),
+                "error": "Cache status check failed",
                 "redis_url": os.getenv('REDIS_URL', 'redis://localhost:6379')
             }), 500
 
