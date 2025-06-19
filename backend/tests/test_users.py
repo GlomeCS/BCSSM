@@ -331,24 +331,3 @@ def test_cache_stats_unhealthy(client, patch_helpers):
     assert resp.status_code == 500
     data = resp.get_json()
     assert data["cache_status"] == "unhealthy"
-
-# ─── 10) POST /clear-cache ───────────────────────────────────────────────────────
-def test_clear_cache_success(client, patch_helpers):
-    ph = patch_helpers
-
-    resp = client.post("/clear-cache")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["message"] == "Cache cleared successfully"
-    
-    # Verify cache.clear() was called
-    ph["cache"].clear.assert_called_once()
-
-def test_clear_cache_error(client, patch_helpers):
-    ph = patch_helpers
-    ph["cache"].clear.side_effect = Exception("Clear failed")
-
-    resp = client.post("/clear-cache")
-    assert resp.status_code == 500
-    data = resp.get_json()
-    assert "error" in data

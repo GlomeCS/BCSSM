@@ -1,7 +1,10 @@
 import pytest
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
+from datetime import datetime
+import logging
 from backend.bcssm_backend import create_app, utils
+import unittest.mock
 
 # ─── 0) Autouse fixture to push a Flask app context ─────────────────────────
 @pytest.fixture(autouse=True)
@@ -440,3 +443,231 @@ def test_get_current_cycle_week_calculation():
         days_since_start = (datetime(2025, 7, 21).date() - datetime(2025, 7, 7).date()).days
         expected_week_0_again = (days_since_start // 7) % 2
         assert expected_week_0_again == 0
+
+    # Add these tests to your existing test_utils.py file
+
+# ─── Tests for cache clearing methods ────────────────────────────────────────
+
+def test_clear_user_cache(mock_cache):
+    """Test clearing user-related caches"""
+    # Act
+    utils.clear_user_cache()
+    
+    # Assert
+    # Should delete specific user-related cache keys
+    expected_calls = [
+        unittest.mock.call('users:all:list'),
+        unittest.mock.call('sections:all:list')
+    ]
+    mock_cache.delete.assert_has_calls(expected_calls, any_order=True)
+    assert mock_cache.delete.call_count == 2
+
+def test_clear_duty_cache(mock_cache):
+    """Test clearing duty-related caches"""
+    with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
+        # Mock today's date for predictable cache key
+        mock_dt.now.return_value.date.return_value = datetime(2025, 6, 16).date()
+        
+        # Act
+        utils.clear_duty_cache()
+        
+        # Assert
+        # Should delete duty schedule cache key and then clear all
+        mock_cache.delete.assert_called_with('duties:schedule:14day:2025-06-16')
+        mock_cache.clear.assert_called_once()
+
+def test_clear_feedback_cache(mock_cache):
+    """Test clearing feedback-related caches"""
+    # Act
+    utils.clear_feedback_cache()
+    
+    # Assert
+    mock_cache.delete.assert_called_once_with('feedback:dates:all')
+
+def test_clear_all_cache(mock_cache):
+    """Test clearing all caches"""
+    # Act
+    utils.clear_all_cache()
+    
+    # Assert
+    mock_cache.clear.assert_called_once()
+    # Should not call delete for specific keys when clearing all
+    mock_cache.delete.assert_not_called()
+
+def test_clear_cache_methods_handle_errors_gracefully(mock_cache, caplog):
+    """Test that cache clearing methods handle Redis errors gracefully"""
+    # Arrange - make cache operations fail
+    mock_cache.delete.side_effect = Exception("Redis connection failed")
+    mock_cache.clear.side_effect = Exception("Redis connection failed")
+    
+    # Act & Assert - should not raise exceptions
+    with caplog.at_level(logging.WARNING):
+        utils.clear_user_cache()
+        utils.clear_feedback_cache()
+        utils.clear_all_cache()
+        utils.clear_duty_cache()
+    
+    # Verify that warning messages were logged
+    assert "Failed to clear user caches" in caplog.text
+    assert "Failed to clear feedback caches" in caplog.text
+    assert "Failed to clear all caches" in caplog.text
+    assert "Failed to clear duty caches" in caplog.text
+    
+    # Verify that Redis connection failed error is mentioned
+    assert "Redis connection failed" in caplog.text
+
+def test_clear_cache_methods_are_importable():
+    """Test that all cache clearing functions can be imported"""
+    from backend.bcssm_backend.utils import (
+        clear_user_cache, 
+        clear_duty_cache, 
+        clear_feedback_cache, 
+        clear_all_cache
+    )
+    
+    # Assert functions exist and are callable
+    assert callable(clear_user_cache)
+    assert callable(clear_duty_cache)
+    assert callable(clear_feedback_cache)
+    assert callable(clear_all_cache)
+
+def test_cache_clearing_integration_with_data_changes(mock_readonly, mock_cache):
+    """Test typical workflow: data change -> cache clear -> fresh data"""
+    # Arrange: Populate cache first
+    mock_readonly.return_value = [('Alice Smith','SectionA','RoleA','TeamA')]
+    
+    # Act 1: Get data (populates cache)
+    result1 = utils.get_all_users()
+    assert mock_cache.set.call_count == 1
+    
+    # Act 2: Clear cache (simulating data update)
+    utils.clear_user_cache()
+    
+    # Act 3: Get data again (should hit DB, not cache)
+    mock_cache.get.return_value = None  # Simulate cache miss after clear
+    mock_readonly.return_value = [('Bob Jones','SectionB','RoleB','TeamB')]
+    result2 = utils.get_all_users()
+    
+    # Assert
+    assert result1 == ['Alice Smith']
+    assert result2 == ['Bob Jones']
+    # Should have deleted the cache keys
+    mock_cache.delete.assert_called()
+    # Should have called DB twice (once for each get after cache operations)
+    assert mock_readonly.call_count == 2
+
+def test_clear_user_cache_logs_correctly(mock_cache, caplog):
+    """Test that cache clearing logs appropriate messages"""
+    with caplog.at_level(logging.INFO):
+        utils.clear_user_cache()
+    
+    # Check that info message was logged
+    assert "Cleared user-related caches" in caplog.text
+
+def test_clear_duty_cache_logs_correctly(mock_cache, caplog):
+    """Test that duty cache clearing logs correctly"""
+    with caplog.at_level(logging.INFO):
+        utils.clear_duty_cache()
+    
+    assert "Cleared duty-related caches" in caplog.text
+
+def test_clear_feedback_cache_logs_correctly(mock_cache, caplog):
+    """Test that feedback cache clearing logs correctly"""
+    with caplog.at_level(logging.INFO):
+        utils.clear_feedback_cache()
+    
+    assert "Cleared feedback caches" in caplog.text
+
+def test_clear_all_cache_logs_correctly(mock_cache, caplog):
+    """Test that all cache clearing logs correctly"""
+    with caplog.at_level(logging.INFO):
+        utils.clear_all_cache()
+    
+    assert "Cleared all caches" in caplog.text
+
+# ─── Tests for cache management in realistic scenarios ──────────────────────
+
+def test_cache_clear_after_user_update_scenario(mock_readonly, mock_cache):
+    """Test realistic scenario: user gets updated, cache gets cleared"""
+    # Arrange: Initial user data in cache
+    mock_readonly.return_value = [('Alice Smith','SectionA','RoleA','TeamA')]
+    initial_users = utils.get_all_users()
+    
+    # Simulate user update (this would happen in your route handler)
+    # ... user update logic would go here ...
+    
+    # Act: Clear cache after user update
+    utils.clear_user_cache()
+    
+    # Arrange: New data after update
+    mock_cache.get.return_value = None  # Cache cleared
+    mock_readonly.return_value = [('Alice Jones','SectionA','RoleA','TeamA')]  # Name changed
+    
+    # Act: Get fresh data
+    updated_users = utils.get_all_users()
+    
+    # Assert
+    assert initial_users == ['Alice Smith']
+    assert updated_users == ['Alice Jones']
+    mock_cache.delete.assert_called()
+
+def test_cache_clear_after_duty_schedule_update_scenario(mock_readonly, mock_cache):
+    """Test realistic scenario: duty schedule gets updated, cache gets cleared"""
+    # Arrange: Initial schedule in cache
+    mock_readonly.return_value = [
+        (1, 0, "Kitchen Duty", "Clean kitchen", "Team A", [{"name": "Alice", "week": "Both"}])
+    ]
+    initial_schedule = utils.get_duty_schedule()
+    
+    # Act: Clear cache after schedule update
+    utils.clear_duty_cache()
+    
+    # Arrange: New schedule data
+    mock_cache.get.return_value = None  # Cache cleared
+    mock_readonly.return_value = [
+        (1, 0, "Kitchen Duty", "Clean kitchen UPDATED", "Team A", [{"name": "Bob", "week": "Both"}])
+    ]
+    
+    # Act: Get fresh schedule
+    updated_schedule = utils.get_duty_schedule()
+    
+    # Assert: Schedules should be different
+    assert len(initial_schedule) == 14  # 2 weeks
+    assert len(updated_schedule) == 14  # 2 weeks
+    # Cache should have been cleared
+    mock_cache.clear.assert_called()
+
+# ─── Edge case tests ─────────────────────────────────────────────────────────
+
+def test_clear_duty_cache_with_different_dates(mock_cache):
+    """Test that duty cache clearing works correctly across different dates"""
+    dates_to_test = [
+        datetime(2025, 1, 1).date(),
+        datetime(2025, 6, 15).date(),
+        datetime(2025, 12, 31).date()
+    ]
+    
+    for test_date in dates_to_test:
+        mock_cache.reset_mock()
+        
+        with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
+            mock_dt.now.return_value.date.return_value = test_date
+            
+            utils.clear_duty_cache()
+            
+            expected_key = f'duties:schedule:14day:{test_date}'
+            mock_cache.delete.assert_called_with(expected_key)
+            mock_cache.clear.assert_called_once()
+
+def test_multiple_cache_clears_in_sequence(mock_cache):
+    """Test calling multiple cache clear methods in sequence"""
+    # Act: Call all cache clear methods
+    utils.clear_user_cache()
+    utils.clear_duty_cache() 
+    utils.clear_feedback_cache()
+    utils.clear_all_cache()
+    
+    # Assert: All appropriate methods were called
+    # Note: exact call counts depend on the implementation
+    assert mock_cache.delete.call_count >= 3  # At least user, feedback, and duty keys
+    assert mock_cache.clear.call_count >= 2   # Duty cache and all cache

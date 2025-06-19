@@ -476,3 +476,40 @@ def get_all_feedback_dates():
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
         
         return error_data
+    
+    # Simple cache management functions with error handling
+def clear_user_cache():
+    """Clear user-related caches after user data changes"""
+    try:
+        cache.delete('users:all:list')
+        cache.delete('sections:all:list')
+        logger.info("Cleared user-related caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear user caches: {e}")
+
+def clear_duty_cache():
+    """Clear duty-related caches after duty data changes"""
+    try:
+        today = datetime.now().date()
+        cache.delete(f'duties:schedule:14day:{today}')
+        # Clear today's duties (harder to clear all variations, so clear all)
+        cache.clear()  # Nuclear option for duties
+        logger.info("Cleared duty-related caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear duty caches: {e}")
+
+def clear_feedback_cache():
+    """Clear feedback caches after feedback data changes"""
+    try:
+        cache.delete('feedback:dates:all')
+        logger.info("Cleared feedback caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear feedback caches: {e}")
+
+def clear_all_cache():
+    """Nuclear option - clear everything"""
+    try:
+        cache.clear()
+        logger.info("Cleared all caches")
+    except Exception as e:
+        logger.warning(f"Failed to clear all caches: {e}")

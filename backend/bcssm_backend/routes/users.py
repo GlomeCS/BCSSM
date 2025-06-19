@@ -194,16 +194,6 @@ def init_users_routes(app):
                 "error": "An internal error has occurred."
             }), 500
 
-    @app.route('/clear-cache', methods=['POST'])
-    def clear_cache():
-        """Administrative endpoint to clear cache"""
-        try:
-            cache.clear()
-            return jsonify({"message": "Cache cleared successfully"})
-        except Exception as e:
-            app.logger.error(f"Failed to clear cache: {str(e)}")
-            return jsonify({"error": "Failed to clear cache"}), 500
-
     @app.context_processor
     def inject_user_state():
         user_name = session.get('user_name')
