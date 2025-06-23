@@ -168,7 +168,7 @@ const DevoFeedbackEdit: React.FC = () => {
                   required
                   value={feedback}
                   onChange={handleFeedbackChange}
-                  placeholder={`Share your praise and prayer points about ${section}'s devotion on ${formatDate(dateStr)}...`}
+                  placeholder={`Share your praise and prayer points about ${section}'s day on ${formatDate(dateStr)}...`}
                   disabled={saving}
                 />
                 <div className="character-counter">
