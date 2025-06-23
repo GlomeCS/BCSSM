@@ -137,11 +137,12 @@ def create_app():
         
         safe_path = os.path.normpath(path).lstrip("/\\")
         requested_path = os.path.join(app.static_folder, safe_path)
-        if not os.path.commonpath([app.static_folder, requested_path]).startswith(app.static_folder):
+        requested_path = os.path.realpath(requested_path)  # Ensure absolute path resolution
+        if not requested_path.startswith(os.path.realpath(app.static_folder)):
             app.logger.warning("Attempted directory traversal detected: %s", path)
             return send_from_directory(app.static_folder, "index.html")
         if os.path.isfile(requested_path):
-            return send_from_directory(app.static_folder, safe_path)
+            return send_from_directory(app.static_folder, os.path.relpath(requested_path, app.static_folder))
         
         app.logger.info("React serving index.html for path: /%s", path)
         return send_from_directory(app.static_folder, "index.html")
