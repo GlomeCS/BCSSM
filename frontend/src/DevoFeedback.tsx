@@ -102,7 +102,7 @@ const DevoFeedback: React.FC = () => {
         <header className="page-header">
           <div className="page-header-content">
             <h1 className="page-title">Devo's Feedback</h1>
-            <p className="page-subtitle">Share your thoughts and feedback from today's devotions</p>
+            <p className="page-subtitle">Share your praise and prayer points from today</p>
           </div>
         </header>
 
