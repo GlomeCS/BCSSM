@@ -46,9 +46,15 @@ def init_main_routes(app):
         duty_data = get_user_duty(user_name)
 
         # Check if the user is a team leader and doesn't have a duty
-        if not duty_data:
-            duty_message = "You do not have a duty today."
+        if not duty_data or duty_data.get('error'):
+            duty_message = "No duty assigned"
+            user_role = None
         else:
-            duty_message = duty_data.get('duty', 'No duty assigned')  # This depends on your duty data structure
+            duty_message = duty_data.get('duty', 'No duty assigned')
+            user_role = duty_data.get('role')
 
-        return jsonify({"user": user_name, "duty_message": duty_message})
+        return jsonify({
+            "user": user_name, 
+            "duty_message": duty_message,
+            "role": user_role
+        })
