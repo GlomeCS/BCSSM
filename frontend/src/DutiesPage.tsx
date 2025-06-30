@@ -327,6 +327,14 @@ export default function DutiesPage() {
                         </thead>
                         <tbody>
                           {schedule.map((day, index) => {
+                            const dateOnly = new Date(day.date).toISOString().split("T")[0];
+                            if (dateOnly === "2025-07-12") {
+                              return (
+                                <tr key={index}>
+                                  <td colSpan={sortedDuties.length + 1}></td>
+                                </tr>
+                              );
+                            }
                             // Create a map of duty name to team for this day
                             const dutyTeamMap: { [key: string]: string } = {};
                             if (day.duties && Array.isArray(day.duties)) {
@@ -343,9 +351,23 @@ export default function DutiesPage() {
                                 <td className="date-cell">
                                   <div className="date-with-week">
                                     <span className="date-text">{formatScheduleDate(day.date)}</span>
-                                    <span className={`week-badge-small ${day.week === 'Week A' ? 'week-a' : 'week-b'}`}>
-                                      {day.week}
-                                    </span>
+                                    {(() => {
+                                      const d = new Date(day.date);
+                                      const dateOnly = d.toISOString().split("T")[0];
+                                      if (dateOnly === "2025-07-05" || dateOnly === "2025-07-06") {
+                                        return <span className="week-badge-small prep-week">Prep Week</span>;
+                                      } else if (dateOnly === "2025-07-12") {
+                                        return <span className="week-badge-small prep-week">FREEDOM</span>;;
+                                      } else if (day.week === "Week A" || day.week === "Week B") {
+                                        return (
+                                          <span className={`week-badge-small ${day.week === "Week A" ? "week-a" : "week-b"}`}>
+                                            {day.week}
+                                          </span>
+                                        );
+                                      } else {
+                                        return null;
+                                      }
+                                    })()}
                                   </div>
                                 </td>
                                 {sortedDuties.map(dutyName => (
@@ -505,6 +527,11 @@ export default function DutiesPage() {
         .week-badge-small.week-b {
           background-color: #dcfce7;
           color: #16a34a;
+        }
+
+        .week-badge-small.prep-week {
+          background-color: #fef9c3; /* light yellow */
+          color: #ca8a04;            /* amber-700 */
         }
 
         .duty-teams-list {
@@ -667,6 +694,7 @@ export default function DutiesPage() {
             font-size: 10px;
             padding: 2px 4px;
           }
+
 
           .member-tag {
             font-size: 12px;

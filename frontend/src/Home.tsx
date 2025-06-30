@@ -49,7 +49,7 @@ function Home() {
       <section className="info-section">
         {currentUser && (
           <p className="user-info">
-            Good morning/afternoon/evening <strong>{currentUser}</strong>
+            Good mae <strong>{currentUser}</strong>
           </p>
         )}
         <div className="duty-card">
