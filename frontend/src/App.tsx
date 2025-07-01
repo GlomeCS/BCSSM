@@ -5,6 +5,7 @@ import DevoFeedback from "./DevoFeedback";
 import SimpleTest from "./SimpleTest";
 import DevoFeedbackEdit from "./DevoFeedbackEdit";
 import DutiesPage from "./DutiesPage";
+import Sections from "./Sections";
 
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
       <Route path="/react/devos-feedback" element={<DevoFeedback />} />
       <Route path="/react/devos-feedback/edit" element={<DevoFeedbackEdit />} />
       <Route path="/duties" element={<DutiesPage />} />
+      <Route path="/sections" element={<Sections />} />
       <Route path="/test" element={<SimpleTest />} />
     </Routes>
   );

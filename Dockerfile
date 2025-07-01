@@ -12,8 +12,14 @@ RUN npm run build
 FROM python:3.13-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc build-essential libpq-dev && rm -rf /var/lib/apt/lists/*
+# Update package lists and install dependencies with retry logic
+RUN apt-get update && \
+    for i in 1 2 3; do \
+        apt-get install -y --no-install-recommends --fix-missing \
+            gcc build-essential libpq-dev && break || \
+        (apt-get clean && apt-get update && sleep 10); \
+    done && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt .
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt

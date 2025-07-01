@@ -66,6 +66,7 @@ function Navbar() {
                     <li><Link to="/" className="nav-link">Home</Link></li>
                     <li><Link to="/duties" className="nav-link">Duties</Link></li>
                     <li><Link to="/react/devos-feedback" className="nav-link">Devos Feedback</Link></li>
+                    <li><Link to="/sections" className="nav-link">Sections</Link></li>
                     <li>
                         <button onClick={handleLogout} className="logout-btn">
                             Logout
@@ -103,6 +104,11 @@ function Navbar() {
                         <li>
                             <Link to="/react/devos-feedback" className="mobile-nav-link" onClick={closeMenu}>
                                 💬 Devos Feedback
+                            </Link>
+                        </li>
+                        <li>
+                            <Link to="/users-by-section" className="mobile-nav-link" onClick={closeMenu}>
+                                👥 Sections
                             </Link>
                         </li>
                         <li>

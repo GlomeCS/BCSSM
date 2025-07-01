@@ -118,7 +118,7 @@ def get_user_duty(user_name):
     
     # Create cache key that includes day and cycle for accurate caching
     cache_key = f'user:duty:{user_name}:day{current_day}:cycle{current_cycle}'
-    
+
     # Try to get from cache first
     cached_duty = cache.get(cache_key)
     if cached_duty is not None:
@@ -476,16 +476,6 @@ def get_all_feedback_dates():
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
         
         return error_data
-    
-    # Simple cache management functions with error handling
-def clear_user_cache():
-    """Clear user-related caches after user data changes"""
-    try:
-        cache.delete('users:all:list')
-        cache.delete('sections:all:list')
-        logger.info("Cleared user-related caches")
-    except Exception as e:
-        logger.warning(f"Failed to clear user caches: {e}")
 
 def clear_duty_cache():
     """Clear duty-related caches after duty data changes"""
@@ -496,7 +486,7 @@ def clear_duty_cache():
         cache.clear()  # Nuclear option for duties
         logger.info("Cleared duty-related caches")
     except Exception as e:
-        logger.warning(f"Failed to clear duty caches: {e}")
+        logger.warning("Failed to clear duty caches: %s", e)
 
 def clear_feedback_cache():
     """Clear feedback caches after feedback data changes"""
@@ -504,7 +494,7 @@ def clear_feedback_cache():
         cache.delete('feedback:dates:all')
         logger.info("Cleared feedback caches")
     except Exception as e:
-        logger.warning(f"Failed to clear feedback caches: {e}")
+        logger.warning("Failed to clear feedback caches: %s", e)
 
 def clear_all_cache():
     """Nuclear option - clear everything"""
@@ -512,4 +502,246 @@ def clear_all_cache():
         cache.clear()
         logger.info("Cleared all caches")
     except Exception as e:
-        logger.warning(f"Failed to clear all caches: {e}")
+        logger.warning("Failed to clear all caches: %s", e)
+
+# Add these functions to your backend/bcssm_backend/utils.py file
+
+def get_all_sections_with_users():
+    """
+    Get all sections with their users, optimized with caching.
+    Cache timeout: 30 minutes (user assignments don't change frequently)
+    """
+    cache_key = 'sections:with_users:all_v6'  # Updated cache key for new sorting
+    
+    # Try to get from cache first
+    cached_data = cache.get(cache_key)
+    if cached_data is not None:
+        logger.info("Retrieved sections with users from cache")
+        return cached_data
+    
+    # Optimized query using proper JOINs and leveraging indexes
+    query = """
+    SELECT 
+        COALESCE(s.name, 'Unassigned') AS section_name,
+        COALESCE(s.display_order, 999) AS display_order,
+        u.name AS user_name,
+        CASE 
+            WHEN u.role = 'Admin' THEN 'Section Leader'
+            ELSE u.role
+        END AS display_role,
+        u.week
+    FROM sections s
+    RIGHT JOIN users u ON s.id = u.section_id
+    ORDER BY 
+        COALESCE(s.display_order, 999),
+        COALESCE(s.name, 'Unassigned'),
+        -- Sort Section Leaders first (by first name), then others by surname
+        CASE 
+            WHEN u.role = 'Admin' OR u.role = 'Section Leader' THEN 0
+            ELSE 1
+        END,
+        CASE 
+            WHEN u.role = 'Admin' OR u.role = 'Section Leader' THEN u.name
+            ELSE CASE 
+                WHEN POSITION(' ' IN u.name) > 0 
+                THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
+                ELSE u.name 
+            END
+        END,
+        u.name;
+    """
+    
+    try:
+        logger.info("Executing optimized query to fetch all sections with users")
+        rows = execute_readonly_query(query)
+        
+        # Group users by section efficiently
+        sections_dict = {}
+        
+        for row in rows:
+            section_name = row[0]
+            user_name = row[2]
+            display_role = row[3]
+            week = row[4]
+            
+            # Create section if it doesn't exist
+            if section_name not in sections_dict:
+                sections_dict[section_name] = {
+                    "name": section_name,
+                    "display_order": row[1],
+                    "users": [],
+                    "user_count": 0
+                }
+            
+            # Add user to section (user_name should always exist due to RIGHT JOIN)
+            if user_name:
+                user_data = {
+                    "name": user_name,
+                    "role": display_role,  # This is now the display_role
+                    "week": week  # Add the week field
+                }
+                
+                sections_dict[section_name]["users"].append(user_data)
+                sections_dict[section_name]["user_count"] += 1
+        
+        # Convert to list and sort by display_order (already sorted by query, but ensure consistency)
+        sections_list = list(sections_dict.values())
+        sections_list.sort(key=lambda x: (x["display_order"], x["name"]))
+        
+        # Cache the results
+        cache.set(cache_key, sections_list, timeout=1800)  # 30 minutes
+        logger.info("Cached sections with users data")
+        
+        return sections_list
+        
+    except Exception as e:
+        logger.error("Failed to fetch sections with users: %s", e)
+        error_data = {"error": f"Failed to fetch sections with users: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
+    
+def get_section_statistics():
+    """
+    Get statistics about users across sections.
+    Cache timeout: 1 hour (statistics don't change frequently)
+    """
+    cache_key = 'sections:statistics:summary'
+    
+    # Try to get from cache first
+    cached_stats = cache.get(cache_key)
+    if cached_stats is not None:
+        logger.info("Retrieved section statistics from cache")
+        return cached_stats
+    
+    # Single optimized query to get all statistics
+    query = """
+    SELECT 
+        COALESCE(s.name, 'Unassigned') AS section_name,
+        COALESCE(s.display_order, 999) AS display_order,
+        COUNT(u.id) AS total_users,
+        COUNT(CASE WHEN u.role IN ('Section Leader', 'Admin') THEN 1 END) AS section_leaders,
+        COUNT(CASE WHEN u.role = 'Team Leader' THEN 1 END) AS team_leaders,
+        COUNT(CASE WHEN u.role NOT IN ('Section Leader', 'Admin', 'Team Leader') THEN 1 END) AS other_roles
+    FROM sections s
+    RIGHT JOIN users u ON s.id = u.section_id
+    GROUP BY s.id, s.name, s.display_order
+    ORDER BY COALESCE(s.display_order, 999), COALESCE(s.name, 'Unassigned');
+    """
+    
+    try:
+        rows = execute_readonly_query(query)
+        
+        statistics = []
+        for row in rows:
+            stat = {
+                "section_name": row[0],
+                "display_order": row[1],
+                "total_users": row[2],
+                "section_leaders": row[3],  # Now includes both Admin and Section Leader
+                "team_leaders": row[4],
+                "other_roles": row[5]
+            }
+            statistics.append(stat)
+        
+        # Cache the results
+        cache.set(cache_key, statistics, timeout=3600)  # 1 hour
+        logger.info("Cached section statistics")
+        
+        return statistics
+        
+    except Exception as e:
+        logger.error("Failed to fetch section statistics: %s", e)
+        error_data = {"error": f"Failed to fetch section statistics: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
+
+def get_users_by_section_optimized(section_name):
+    """
+    Get users for a specific section with optimized caching.
+    Cache timeout: 30 minutes
+    """
+    cache_key = f'users:section:{section_name}:detailed'
+    
+    # Try to get from cache first
+    cached_users = cache.get(cache_key)
+    if cached_users is not None:
+        logger.info("Retrieved users by section from cache for %s", section_name)
+        return cached_users
+    
+    # Handle "Unassigned" section case
+    if section_name == "Unassigned":
+        query = """
+        SELECT u.name, 
+               CASE 
+                   WHEN u.role = 'Admin' THEN 'Section Leader'
+                   ELSE u.role
+               END AS display_role
+        FROM users u
+        WHERE u.section_id IS NULL
+        ORDER BY u.name;
+        """
+        params = {}
+    else:
+        query = """
+        SELECT u.name,
+               CASE 
+                   WHEN u.role = 'Admin' THEN 'Section Leader'
+                   ELSE u.role
+               END AS display_role
+        FROM users u
+        INNER JOIN sections s ON u.section_id = s.id
+        WHERE s.name = :section_name
+        ORDER BY u.name;
+        """
+        params = {"section_name": section_name}
+    
+    try:
+        result = execute_readonly_query(query, params)
+        users = [{"name": row[0], "role": row[1]} for row in result]
+        
+        # Cache the results
+        cache.set(cache_key, users, timeout=1800)  # 30 minutes
+        logger.info("Cached users by section for %s", section_name)
+        
+        return users
+    except Exception as e:
+        logger.error("Failed to fetch users by section %s: %s", section_name, e)
+        error_data = {"error": f"Failed to fetch users by section: {e}"}
+        
+        # Cache error for short time
+        cache.set(cache_key, error_data, timeout=60)  # 1 minute
+        
+        return error_data
+
+# Update the clear_user_cache function to include new cache keys
+def clear_user_cache():
+    """Clear user-related caches after user data changes"""
+    try:
+        cache.delete('users:all:list')
+        cache.delete('sections:all:list')
+        cache.delete('sections:with_users:all')
+        cache.delete('sections:with_users:all_v2')  # Old cache key
+        cache.delete('sections:with_users:all_v3')  # Old cache key with week data
+        cache.delete('sections:with_users:all_v4')  # New cache key with better week handling
+        cache.delete('sections:statistics:summary')
+        
+        # Clear individual section caches using pattern matching if supported
+        # Otherwise, clear specific known sections
+        sections = get_all_sections()
+        if isinstance(sections, list):
+            for section in sections:
+                cache.delete(f'users:section:{section}')
+                cache.delete(f'users:section:{section}:detailed')
+        
+        # Also clear the "Unassigned" section cache
+        cache.delete('users:section:Unassigned:detailed')
+        
+        logger.info("Cleared user-related caches")
+    except Exception as e:
+        logger.warning("Failed to clear user caches: %s", e)

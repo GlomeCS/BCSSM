@@ -14,8 +14,10 @@ from backend.bcssm_backend.routes.routes import init_main_routes
 from backend.bcssm_backend.routes.users import init_users_routes
 from backend.bcssm_backend.routes.devos_feedback import init_feedback_routes
 from backend.bcssm_backend.routes.duties import init_duties_routes
+from backend.bcssm_backend.routes.sections import init_users_sections_routes
 
 from backend.bcssm_backend.utils import get_all_sections
+
 
 def create_app():
     load_dotenv()
@@ -75,6 +77,7 @@ def create_app():
     init_users_routes(app)
     init_feedback_routes(app)
     init_duties_routes(app)
+    init_users_sections_routes(app)
 
     # Add cache management routes using your utils functions
     add_cache_management_routes(app)

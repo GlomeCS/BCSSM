@@ -5,6 +5,7 @@ services:
     image: redis:7
     ports:
       - "6379:6379"
+      
   web:
     build:
       context: .
@@ -17,4 +18,8 @@ services:
     environment:
       # Ensures Flask doesn't auto-reload in Gunicorn container
       FLASK_ENV: production
+      # Override ONLY for local Docker - doesn't affect Render
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
     restart: unless-stopped
