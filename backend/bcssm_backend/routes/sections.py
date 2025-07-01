@@ -12,6 +12,7 @@ def init_users_sections_routes(app):
         Get all users grouped by their sections
         Returns: JSON with sections and their users
         """
+        
         user_name = session.get('user_name')
         if not user_name:
             return jsonify({'error': 'User not authenticated'}), 401

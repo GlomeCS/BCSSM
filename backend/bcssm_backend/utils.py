@@ -118,7 +118,7 @@ def get_user_duty(user_name):
     
     # Create cache key that includes day and cycle for accurate caching
     cache_key = f'user:duty:{user_name}:day{current_day}:cycle{current_cycle}'
-    
+
     # Try to get from cache first
     cached_duty = cache.get(cache_key)
     if cached_duty is not None:
@@ -511,7 +511,7 @@ def get_all_sections_with_users():
     Get all sections with their users, optimized with caching.
     Cache timeout: 30 minutes (user assignments don't change frequently)
     """
-    cache_key = 'sections:with_users:all'
+    cache_key = 'sections:with_users:all_v6'  # Updated cache key for new sorting
     
     # Try to get from cache first
     cached_data = cache.get(cache_key)
@@ -528,12 +528,26 @@ def get_all_sections_with_users():
         CASE 
             WHEN u.role = 'Admin' THEN 'Section Leader'
             ELSE u.role
-        END AS display_role
+        END AS display_role,
+        u.week
     FROM sections s
     RIGHT JOIN users u ON s.id = u.section_id
     ORDER BY 
         COALESCE(s.display_order, 999),
         COALESCE(s.name, 'Unassigned'),
+        -- Sort Section Leaders first (by first name), then others by surname
+        CASE 
+            WHEN u.role = 'Admin' OR u.role = 'Section Leader' THEN 0
+            ELSE 1
+        END,
+        CASE 
+            WHEN u.role = 'Admin' OR u.role = 'Section Leader' THEN u.name
+            ELSE CASE 
+                WHEN POSITION(' ' IN u.name) > 0 
+                THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
+                ELSE u.name 
+            END
+        END,
         u.name;
     """
     
@@ -547,6 +561,8 @@ def get_all_sections_with_users():
         for row in rows:
             section_name = row[0]
             user_name = row[2]
+            display_role = row[3]
+            week = row[4]
             
             # Create section if it doesn't exist
             if section_name not in sections_dict:
@@ -561,7 +577,8 @@ def get_all_sections_with_users():
             if user_name:
                 user_data = {
                     "name": user_name,
-                    "role": row[3]  # This is now the display_role
+                    "role": display_role,  # This is now the display_role
+                    "week": week  # Add the week field
                 }
                 
                 sections_dict[section_name]["users"].append(user_data)
@@ -585,7 +602,7 @@ def get_all_sections_with_users():
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
         
         return error_data
-
+    
 def get_section_statistics():
     """
     Get statistics about users across sections.
@@ -709,6 +726,9 @@ def clear_user_cache():
         cache.delete('users:all:list')
         cache.delete('sections:all:list')
         cache.delete('sections:with_users:all')
+        cache.delete('sections:with_users:all_v2')  # Old cache key
+        cache.delete('sections:with_users:all_v3')  # Old cache key with week data
+        cache.delete('sections:with_users:all_v4')  # New cache key with better week handling
         cache.delete('sections:statistics:summary')
         
         # Clear individual section caches using pattern matching if supported

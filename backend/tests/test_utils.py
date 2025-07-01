@@ -683,12 +683,12 @@ def test_multiple_cache_clears_in_sequence(mock_cache):
 
 def test_get_all_sections_with_users_happy_path(mock_readonly, mock_cache):
     """Test get_all_sections_with_users with normal data"""
-    # Arrange: return section data with users
+    # Arrange: return section data with users (now includes week field)
     mock_readonly.return_value = [
-        ('Minis', 1, 'Alice Smith', 'Section Leader'),
-        ('Minis', 1, 'Bob Jones', 'Team Member'),
-        ('Micros', 2, 'Charlie Brown', 'Section Leader'),
-        ('Unassigned', 999, 'Dave Wilson', 'Team Member')
+        ('Minis', 1, 'Alice Smith', 'Section Leader', 'Both'),
+        ('Minis', 1, 'Bob Jones', 'Team Member', 'Week A'),
+        ('Micros', 2, 'Charlie Brown', 'Section Leader', 'Week B'),
+        ('Unassigned', 999, 'Dave Wilson', 'Team Member', 'Both')
     ]
     
     # Act
@@ -703,28 +703,29 @@ def test_get_all_sections_with_users_happy_path(mock_readonly, mock_cache):
     assert minis_section['display_order'] == 1
     assert minis_section['user_count'] == 2
     assert len(minis_section['users']) == 2
-    assert minis_section['users'][0] == {'name': 'Alice Smith', 'role': 'Section Leader'}
-    assert minis_section['users'][1] == {'name': 'Bob Jones', 'role': 'Team Member'}
+    assert minis_section['users'][0] == {'name': 'Alice Smith', 'role': 'Section Leader', 'week': 'Both'}
+    assert minis_section['users'][1] == {'name': 'Bob Jones', 'role': 'Team Member', 'week': 'Week A'}
     
     # Check Micros section
     micros_section = next(s for s in result if s['name'] == 'Micros')
     assert micros_section['user_count'] == 1
-    assert micros_section['users'][0] == {'name': 'Charlie Brown', 'role': 'Section Leader'}
+    assert micros_section['users'][0] == {'name': 'Charlie Brown', 'role': 'Section Leader', 'week': 'Week B'}
     
     # Check Unassigned section
     unassigned_section = next(s for s in result if s['name'] == 'Unassigned')
     assert unassigned_section['display_order'] == 999
     assert unassigned_section['user_count'] == 1
     
-    # Verify cache operations
-    mock_cache.get.assert_called_once_with('sections:with_users:all')
-    mock_cache.set.assert_called_once_with('sections:with_users:all', result, timeout=1800)
+    # Verify cache operations (updated cache key)
+    mock_cache.get.assert_called_once_with('sections:with_users:all_v6')
+    mock_cache.set.assert_called_once_with('sections:with_users:all_v6', result, timeout=1800)
     
     # Verify SQL query structure
     sql = mock_readonly.call_args[0][0]
     assert "RIGHT JOIN users u ON s.id = u.section_id" in sql
     assert "COALESCE(s.name, 'Unassigned')" in sql
     assert "WHEN u.role = 'Admin' THEN 'Section Leader'" in sql
+    assert "u.week" in sql  # New field
     assert "ORDER BY" in sql
 
 def test_get_all_sections_with_users_cache_hit(mock_readonly, mock_cache):
@@ -734,7 +735,7 @@ def test_get_all_sections_with_users_cache_hit(mock_readonly, mock_cache):
         {
             "name": "Cached Section",
             "display_order": 1,
-            "users": [{"name": "Cached User", "role": "Cached Role"}],
+            "users": [{"name": "Cached User", "role": "Cached Role", "week": "Both"}],
             "user_count": 1
         }
     ]
@@ -746,8 +747,8 @@ def test_get_all_sections_with_users_cache_hit(mock_readonly, mock_cache):
     # Assert
     assert result == cached_data
     
-    # Verify cache was checked
-    mock_cache.get.assert_called_once_with('sections:with_users:all')
+    # Verify cache was checked (updated cache key)
+    mock_cache.get.assert_called_once_with('sections:with_users:all_v6')
     # Verify DB was NOT queried
     mock_readonly.assert_not_called()
     # Verify cache was NOT set (already had data)
@@ -764,9 +765,9 @@ def test_get_all_sections_with_users_empty_result(mock_readonly, mock_cache):
     # Assert
     assert result == []
     
-    # Verify cache operations
-    mock_cache.get.assert_called_once_with('sections:with_users:all')
-    mock_cache.set.assert_called_once_with('sections:with_users:all', [], timeout=1800)
+    # Verify cache operations (updated cache key)
+    mock_cache.get.assert_called_once_with('sections:with_users:all_v6')
+    mock_cache.set.assert_called_once_with('sections:with_users:all_v6', [], timeout=1800)
 
 def test_get_all_sections_with_users_db_failure_returns_error(mock_readonly, mock_cache):
     """Test get_all_sections_with_users with database failure"""
@@ -782,15 +783,15 @@ def test_get_all_sections_with_users_db_failure_returns_error(mock_readonly, moc
     assert "Failed to fetch sections with users" in result["error"]
     assert "Database connection failed" in result["error"]
     
-    # Verify error was cached with short timeout
-    mock_cache.set.assert_called_once_with('sections:with_users:all', result, timeout=60)
+    # Verify error was cached with short timeout (updated cache key)
+    mock_cache.set.assert_called_once_with('sections:with_users:all_v6', result, timeout=60)
 
 def test_get_all_sections_with_users_admin_role_conversion(mock_readonly, mock_cache):
     """Test that Admin role is converted to Section Leader"""
-    # Arrange: data with Admin role
+    # Arrange: data with Admin role (now includes week field)
     mock_readonly.return_value = [
-        ('TestSection', 1, 'Admin User', 'Section Leader'),  # Already converted in SQL
-        ('TestSection', 1, 'Regular User', 'Team Member')
+        ('TestSection', 1, 'Admin User', 'Section Leader', 'Both'),  # Already converted in SQL
+        ('TestSection', 1, 'Regular User', 'Team Member', 'Week A')
     ]
     
     # Act
@@ -800,15 +801,16 @@ def test_get_all_sections_with_users_admin_role_conversion(mock_readonly, mock_c
     section = result[0]
     admin_user = next(u for u in section['users'] if u['name'] == 'Admin User')
     assert admin_user['role'] == 'Section Leader'
+    assert admin_user['week'] == 'Both'  # Check week field too
 
 def test_get_all_sections_with_users_sorting(mock_readonly, mock_cache):
     """Test that sections are sorted by display_order then name"""
-    # Arrange: unsorted data
+    # Arrange: unsorted data (now includes week field)
     mock_readonly.return_value = [
-        ('Zebra Section', 3, 'User A', 'Team Member'),
-        ('Alpha Section', 1, 'User B', 'Team Member'),
-        ('Beta Section', 1, 'User C', 'Team Member'),
-        ('Unassigned', 999, 'User D', 'Team Member')
+        ('Zebra Section', 3, 'User A', 'Team Member', 'Both'),
+        ('Alpha Section', 1, 'User B', 'Team Member', 'Week A'),
+        ('Beta Section', 1, 'User C', 'Team Member', 'Week B'),
+        ('Unassigned', 999, 'User D', 'Team Member', 'Both')
     ]
     
     # Act
@@ -1171,11 +1173,11 @@ def test_section_methods_integration_workflow(mock_readonly, mock_cache):
     """Test a realistic workflow using all three new methods"""
     # Arrange: Setup data for all three methods
     
-    # Data for get_all_sections_with_users
+    # Data for get_all_sections_with_users (now includes week field)
     sections_with_users_data = [
-        ('Minis', 1, 'Alice Smith', 'Section Leader'),
-        ('Minis', 1, 'Bob Jones', 'Team Member'),
-        ('Micros', 2, 'Charlie Brown', 'Section Leader')
+        ('Minis', 1, 'Alice Smith', 'Section Leader', 'Both'),
+        ('Minis', 1, 'Bob Jones', 'Team Member', 'Week A'),
+        ('Micros', 2, 'Charlie Brown', 'Section Leader', 'Week B')
     ]
     
     # Data for get_section_statistics  

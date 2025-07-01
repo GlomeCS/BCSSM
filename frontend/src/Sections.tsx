@@ -5,6 +5,7 @@ import Navbar from "./Navbar";
 type User = {
   name: string;
   role: string;
+  week?: string;
 };
 
 type Section = {
@@ -37,7 +38,9 @@ export default function UsersBySectionPage() {
 
     const fetchUsersBySection = async () => {
       try {
-        const res = await fetch("/api/users/by-section");
+        // Add cache busting parameter to force fresh data
+        const timestamp = new Date().getTime();
+        const res = await fetch(`/api/users/by-section?t=${timestamp}`);
         if (!res.ok) throw new Error(`Failed to fetch users: ${res.statusText}`);
         
         const data: SectionData = await res.json();
@@ -47,7 +50,7 @@ export default function UsersBySectionPage() {
         data.sections.forEach(section => {
           console.log(`Section: ${section.name}`);
           section.users.forEach(user => {
-            console.log(`  User: ${user.name}, Role: ${user.role}`);
+            console.log(`  User: ${user.name}, Role: ${user.role}, Week: ${user.week}`);
           });
         });
         
@@ -80,6 +83,34 @@ export default function UsersBySectionPage() {
       case 'Leader': return 'bg-green-100 text-green-800 border-green-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
+  };
+
+  const getWeekBadgeColor = (week: string) => {
+    switch (week) {
+      case 'Week A': return 'bg-green-100 text-green-800 border-green-200';
+      case 'Week B': return 'bg-orange-100 text-orange-800 border-orange-200';
+      case 'Both': return 'bg-indigo-100 text-indigo-800 border-indigo-200'; // Changed to indigo to avoid conflict
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  // Function to determine what to display in the badge
+  const getBadgeContent = (user: User) => {
+    console.log(`getBadgeContent for ${user.name}: role=${user.role}, week=${user.week}`);
+    if (user.role === 'Leader' && user.week) {
+      console.log(`Returning week: ${user.week}`);
+      return user.week;
+    }
+    console.log(`Returning role: ${user.role}`);
+    return user.role;
+  };
+
+  // Function to get the appropriate badge color
+  const getBadgeColor = (user: User) => {
+    if (user.role === 'Leader' && user.week) {
+      return getWeekBadgeColor(user.week);
+    }
+    return getRoleBadgeColor(user.role);
   };
 
   // Filter sections based on role filter
@@ -194,8 +225,8 @@ export default function UsersBySectionPage() {
                                 <div className="user-item leader-item">
                                   <div className="user-info">
                                     <span className="user-name leader-name">{sectionLeader.name}</span>
-                                    <span className={`role-badge ${getRoleBadgeColor(sectionLeader.role)}`}>
-                                      {sectionLeader.role}
+                                    <span className={`role-badge ${getBadgeColor(sectionLeader)}`}>
+                                      {getBadgeContent(sectionLeader)}
                                     </span>
                                   </div>
                                 </div>
@@ -206,8 +237,8 @@ export default function UsersBySectionPage() {
                                 <div key={index} className="user-item">
                                   <div className="user-info">
                                     <span className="user-name">{user.name}</span>
-                                    <span className={`role-badge ${getRoleBadgeColor(user.role)}`}>
-                                      {user.role}
+                                    <span className={`role-badge ${getBadgeColor(user)}`}>
+                                      {getBadgeContent(user)}
                                     </span>
                                   </div>
                                 </div>
@@ -219,8 +250,8 @@ export default function UsersBySectionPage() {
                               <div key={index} className="user-item">
                                 <div className="user-info">
                                   <span className="user-name">{user.name}</span>
-                                  <span className={`role-badge ${getRoleBadgeColor(user.role)}`}>
-                                    {user.role}
+                                  <span className={`role-badge ${getBadgeColor(user)}`}>
+                                    {getBadgeContent(user)}
                                   </span>
                                 </div>
                               </div>
@@ -533,6 +564,18 @@ export default function UsersBySectionPage() {
           background: linear-gradient(135deg, var(--color-success, #10b981), #059669);
           color: white;
           box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+        }
+
+        .role-badge.bg-indigo-100 {
+          background: linear-gradient(135deg, #6366f1, #4f46e5);
+          color: white;
+          box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2);
+        }
+
+        .role-badge.bg-orange-100 {
+          background: linear-gradient(135deg, #f97316, #ea580c);
+          color: white;
+          box-shadow: 0 2px 4px rgba(249, 115, 22, 0.2);
         }
 
         .role-badge.bg-gray-100 {
