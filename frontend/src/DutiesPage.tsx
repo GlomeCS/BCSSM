@@ -450,7 +450,8 @@ export default function DutiesPage() {
           background: white;
           border-radius: 12px;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
+          overflow: auto;
+          max-height: 70vh;
         }
 
         .schedule-table {
@@ -465,6 +466,20 @@ export default function DutiesPage() {
           font-weight: 600;
           color: #374151;
           border-bottom: 2px solid #e5e7eb;
+          position: sticky;
+          top: 0;
+          z-index: 10;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .schedule-table thead th::after {
+          content: '';
+          position: absolute;
+          bottom: -1px;
+          left: 0;
+          right: 0;
+          height: 1px;
+          background: #e5e7eb;
         }
 
         .date-column {
