@@ -107,7 +107,7 @@ function Navbar() {
                             </Link>
                         </li>
                         <li>
-                            <Link to="/users-by-section" className="mobile-nav-link" onClick={closeMenu}>
+                            <Link to="/sections" className="mobile-nav-link" onClick={closeMenu}>
                                 👥 Sections
                             </Link>
                         </li>
