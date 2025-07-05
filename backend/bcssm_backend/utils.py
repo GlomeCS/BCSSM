@@ -113,7 +113,7 @@ def get_user_duty(user_name):
     Optimized with Redis caching and pre-calculated cycle week.
     Cache timeout: 10 minutes (duty assignments change daily)
     """
-    current_day = datetime.now().weekday()
+    current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
     
     # Create cache key that includes day and cycle for accurate caching
@@ -182,7 +182,7 @@ def get_todays_duties(user_name):
     Cached today's duties with day-specific cache key.
     Cache timeout: 30 minutes (duties are daily but don't change frequently)
     """
-    current_day = datetime.now().weekday()
+    current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
     
     # Cache key includes day and cycle for accuracy
@@ -218,7 +218,7 @@ def get_todays_duties(user_name):
     FROM duty_schedule ds
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
-    LEFT JOIN users u ON u.duty_team_id = ds.duty_team_id
+    LEFT JOIN users u ON u.duty_team_id = dt.id
     WHERE ds.day = :day 
         AND ds.cycle_week = :cycle_week
     GROUP BY d.id, d.name, d.duty_description, dt.name
@@ -255,7 +255,6 @@ def get_todays_duties(user_name):
         cache.set(cache_key, [], timeout=60)  # 1 minute
         
         return []
-
 def get_duty_schedule():
     """
     Cached duty schedule with date-based cache key.

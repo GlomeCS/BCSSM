@@ -119,6 +119,7 @@ def test_get_all_users_db_failure_returns_empty_list(mock_readonly, mock_cache):
 # ─── 5) Tests for get_user_duty() ─────────────────────────────────────────────
 def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, mock_cache):
     # Freeze today to Wednesday (weekday==2)
+    # With corrected calculation: (2 + 1) % 7 = 3
     FakeDatetime.today_weekday = 2
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
     
@@ -137,8 +138,8 @@ def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, 
         "duty": "Lunch Duty"
     }
     
-    # Verify cache operations
-    cache_key_pattern = 'user:duty:Ivy:day2:cycle0'
+    # Verify cache operations - day is now 3 instead of 2
+    cache_key_pattern = 'user:duty:Ivy:day3:cycle0'
     mock_cache.get.assert_called_once_with(cache_key_pattern)
     mock_cache.set.assert_called_once()
     cache_set_args = mock_cache.set.call_args
@@ -148,6 +149,7 @@ def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, 
     mock_readonly.assert_called_once()
     sql, params = mock_readonly.call_args[0]
     assert isinstance(params['day'], int)
+    assert params['day'] == 3  # Corrected day calculation
     assert params['cycle_week'] == 0
 
 def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
@@ -161,6 +163,7 @@ def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     }
     mock_cache.get.return_value = cached_duty
     
+    # Wednesday (weekday==2) becomes day 3 with corrected calculation
     FakeDatetime.today_weekday = 2
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
     monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
@@ -171,8 +174,8 @@ def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     # Assert
     assert result == cached_duty
     
-    # Verify cache was checked
-    mock_cache.get.assert_called_once_with('user:duty:Ivy:day2:cycle0')
+    # Verify cache was checked - day is now 3 instead of 2
+    mock_cache.get.assert_called_once_with('user:duty:Ivy:day3:cycle0')
     # Verify DB was NOT queried
     mock_readonly.assert_not_called()
     # Verify cache was NOT set (already had data)
@@ -339,6 +342,7 @@ def test_execute_query_failure_triggers_rollback(mock_db_session):
 # Add test for get_todays_duties to verify cycle_week usage
 def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly, mock_cache):
     # Mock datetime and cycle week
+    # Tuesday (weekday==1) becomes day 2 with corrected calculation: (1 + 1) % 7 = 2
     FakeDatetime.today_weekday = 1  # Tuesday
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
     monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 1)
@@ -349,14 +353,14 @@ def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly, mock_cach
     
     result = utils.get_todays_duties("Alice")
     
-    # Verify cache operations
-    cache_key_pattern = 'duties:today:day1:cycle1:userAlice'
+    # Verify cache operations - day is now 2 instead of 1
+    cache_key_pattern = 'duties:today:day2:cycle1:userAlice'
     mock_cache.get.assert_called_once_with(cache_key_pattern)
     mock_cache.set.assert_called_once()
     
-    # Verify the query was called with correct parameters
+    # Verify the query was called with correct parameters - day is now 2 instead of 1
     sql, params = mock_readonly.call_args[0]
-    assert params['day'] == 1
+    assert params['day'] == 2  # Corrected day calculation
     assert params['cycle_week'] == 1
     assert params['user_name'] == "Alice"
     
@@ -364,7 +368,7 @@ def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly, mock_cach
     assert "WITH computed_cycle" not in sql
     assert "WHERE ds.day = :day" in sql
     assert "AND ds.cycle_week = :cycle_week" in sql
-
+    
 def test_caching_behavior(mock_readonly, mock_cache):
     """Test that caching works correctly"""
     mock_readonly.return_value = [('Alice Smith','SectionA','RoleA','TeamA')]
