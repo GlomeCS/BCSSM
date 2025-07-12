@@ -9,6 +9,28 @@ from backend.bcssm_backend.utils import (
 )
 
 
+def get_username_from_request():
+    """Helper function to get username from various request sources"""
+    # Try request body first (for POST requests)
+    if request.method == 'POST' and request.json:
+        username = request.json.get('user_name')
+        if username:
+            return escape(username)
+    
+    # Try query parameters (for GET requests)
+    username = request.args.get('user_name') or request.args.get('user')
+    if username:
+        return escape(username)
+    
+    # Try headers (sent by frontend API wrapper)
+    username = request.headers.get('X-Current-User')
+    if username:
+        return escape(username)
+    
+    # Fallback to session for backward compatibility
+    return session.get('user_name')
+
+
 def validate_params(*required_params):
     """Decorator to validate required parameters in request"""
     def decorator(f):
@@ -56,23 +78,26 @@ def init_users_routes(app):
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/user-duty')
-    @validate_params('user')
     def user_duty():
-        """Get user duty - now uses utils function with built-in caching"""
+        """Get user duty - now accepts username from multiple sources"""
         try:
-            user_name = request.args.get('user')
+            # Get username from request (query param, body, header, or session)
+            user_name = get_username_from_request()
+            
+            if not user_name:
+                return jsonify({"error": "Username required"}), 400
             
             # Use utils function which already has smart caching with day/cycle keys
             duty_data = get_user_duty(user_name)
             
             return jsonify(duty_data), 200
         except Exception as e:
-            app.logger.error(f"Failed to fetch duty for user {user_name}: {str(e)}")
+            app.logger.error(f"Failed to fetch duty for user: {str(e)}")
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/select-user', methods=['POST'])
     def select_user():
-        """Select user and cache user data"""
+        """Select user and return user data - modified for persistent auth"""
         try:
             user_name = request.json.get('user_name')
             if not user_name:
@@ -96,7 +121,7 @@ def init_users_routes(app):
             user_id, name, role, section_name = user_rows[0]
             is_leader = role in {"Section Leader", "Team Leader", "Admin"}
 
-            # Batch session updates
+            # Still update session for backward compatibility with other parts of the app
             session.update({
                 'user_name': user_name,
                 'user_id': user_id,
@@ -119,10 +144,13 @@ def init_users_routes(app):
                 # Log cache error but don't fail the request
                 app.logger.warning(f"Failed to cache user data for {user_name}: {cache_error}")
 
+            # Return comprehensive user data for frontend
             return jsonify({
                 "message": f"User {escape(user_name)} successfully selected.",
                 "is_logged_in": True,
+                "user_name": user_name,  # Add this for frontend
                 "user_section": section_name,
+                "role": role,  # Add this for frontend
                 "is_leader": is_leader
             }), 200
 
@@ -132,8 +160,10 @@ def init_users_routes(app):
 
     @app.route('/get-selected-user')
     def get_selected_user():
-        """Get selected user with cached data"""
-        user_name = session.get('user_name')
+        """Get selected user with cached data - now supports multiple auth methods"""
+        # Try to get username from multiple sources
+        user_name = get_username_from_request()
+        
         if not user_name:
             return jsonify({"user": None})
         
@@ -156,7 +186,8 @@ def init_users_routes(app):
     @app.route('/logout', methods=['POST'])
     def logout():
         """Logout user and clear caches"""
-        user_name = session.get('user_name')
+        # Get username from multiple sources
+        user_name = get_username_from_request()
         
         # Clear user-specific cache entries on logout with error handling
         if user_name:
@@ -187,6 +218,43 @@ def init_users_routes(app):
         except Exception as e:
             app.logger.error(f"Failed to fetch users: {str(e)}")
             return jsonify({"error": "An internal error has occurred."}), 500
+
+    # Add username validation endpoint for persistent auth
+    @app.route('/api/auth/validate')
+    def validate_user():
+        """Validate if a username is still valid - for persistent auth"""
+        user_name = get_username_from_request()
+        
+        if not user_name:
+            return jsonify({"is_valid": False, "error": "No username provided"}), 400
+        
+        try:
+            # Check if user exists in database
+            user_rows = execute_query(
+                "SELECT u.id, u.name, u.role, s.name AS section_name "
+                "FROM users u "
+                "LEFT JOIN sections s ON u.section_id = s.id "
+                "WHERE u.name = :user_name",
+                {'user_name': user_name}
+            )
+            
+            if not user_rows:
+                return jsonify({"is_valid": False, "error": "Invalid user"}), 400
+            
+            user_id, name, role, section_name = user_rows[0]
+            is_leader = role in {"Section Leader", "Team Leader", "Admin"}
+            
+            return jsonify({
+                "is_valid": True,
+                "user_name": user_name,
+                "role": role,
+                "section": section_name,
+                "is_leader": is_leader
+            })
+            
+        except Exception as e:
+            app.logger.error(f"User validation failed for {user_name}: {str(e)}")
+            return jsonify({"is_valid": False, "error": "Validation failed"}), 500
 
     # Enhanced cache stats endpoint
     @app.route('/cache-stats')
@@ -224,7 +292,7 @@ def init_users_routes(app):
                 "error": "Cache operations failed"
             }), 500
 
-    # NEW: Admin endpoint for clearing user caches
+    # Admin endpoint for clearing user caches
     @app.route('/admin/clear-user-cache', methods=['POST'])
     def clear_user_cache_endpoint():
         """Admin endpoint to clear user-related caches"""
@@ -246,7 +314,7 @@ def init_users_routes(app):
                 "error": "Failed to clear user cache"
             }), 500
 
-    # NEW: Endpoint to update user and clear cache
+    # Endpoint to update user and clear cache
     @app.route('/admin/users/<int:user_id>', methods=['PUT'])
     def update_user(user_id):
         """Update user and clear related caches"""
@@ -280,8 +348,23 @@ def init_users_routes(app):
     @app.context_processor
     def inject_user_state():
         """Inject user state into templates"""
-        user_name = session.get('user_name')
+        user_name = get_username_from_request()
         if user_name:
+            # Try to get cached user data
+            try:
+                user_cache_key = f'user:data:{user_name}'
+                user_data = cache.get(user_cache_key)
+                if user_data:
+                    return {
+                        'is_logged_in': True,
+                        'user_section': user_data.get('section_name'),
+                        'is_leader': user_data.get('is_leader'),
+                        'user_id': user_data.get('id')
+                    }
+            except Exception:
+                pass
+            
+            # Fallback to session data
             return {
                 'is_logged_in': True,
                 'user_section': session.get('user_section'),

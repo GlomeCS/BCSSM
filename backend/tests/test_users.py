@@ -137,11 +137,13 @@ def test_user_duty_error_response(client, patch_helpers):
     assert "User not found or no duty assigned" in data["error"]
     
 def test_user_duty_missing_param(client, patch_helpers):
+    """Test /user-duty without username parameter - updated for new route behavior"""
     resp = client.get("/user-duty")  # Missing user parameter
     assert resp.status_code == 400
     data = resp.get_json()
     assert "error" in data
-    assert "Missing parameters" in data["error"]
+    # Updated assertion - the route now uses get_username_from_request() which returns "Username required"
+    assert "Username required" in data["error"]
 
 def test_user_duty_exception(client, patch_helpers):
     """Test exception handling in route"""
@@ -307,12 +309,14 @@ def test_get_users_error(client, patch_helpers):
 
 # ─── 8) POST /logout ─────────────────────────────────────────────────────────────
 def test_logout(client, patch_helpers):
+    """Test successful logout - fixed for JSON content type"""
     ph = patch_helpers
     
     with client.session_transaction() as sess:
         sess["user_name"] = "Someone"
     
-    resp = client.post("/logout")
+    # Send JSON request instead of form data
+    resp = client.post("/logout", json={}, content_type='application/json')
     assert resp.status_code == 200
     assert resp.get_json() == {"message": "User logged out successfully!"}
     
@@ -326,22 +330,25 @@ def test_logout(client, patch_helpers):
     assert any("user:data:Someone" in str(call) for call in delete_calls)
 
 def test_logout_cache_error_handling(client, patch_helpers):
-    """Test that cache errors don't break logout"""
+    """Test that cache errors don't break logout - fixed for JSON content type"""
     ph = patch_helpers
     ph["cache"].delete.side_effect = Exception("Cache failed")
     
     with client.session_transaction() as sess:
         sess["user_name"] = "Someone"
     
-    resp = client.post("/logout")
+    # Send JSON request instead of form data
+    resp = client.post("/logout", json={}, content_type='application/json')
     # Should still succeed even if cache clearing fails
     assert resp.status_code == 200
     assert resp.get_json() == {"message": "User logged out successfully!"}
 
 def test_logout_no_user(client, patch_helpers):
+    """Test logout without user in session - fixed for JSON content type"""
     ph = patch_helpers
     
-    resp = client.post("/logout")
+    # Send JSON request instead of form data
+    resp = client.post("/logout", json={}, content_type='application/json')
     assert resp.status_code == 200
     assert resp.get_json() == {"message": "User logged out successfully!"}
 

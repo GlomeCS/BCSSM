@@ -1,4 +1,3 @@
-import os
 import logging
 from urllib.parse import urlparse, quote
 
@@ -12,9 +11,7 @@ from backend.bcssm_backend import create_app
 @pytest.fixture(autouse=True)
 def env_and_deny_db(monkeypatch):
     """
-    1) Set FLASK_ENV to 'testing' so create_app() uses TestingConfig.
-    2) Provide minimal DB env vars so create_app() doesn't crash.
-    3) Deny direct execute_query or session.execute calls.
+    Mock the database session to work with your execute_query function
     """
     monkeypatch.setenv("FLASK_ENV", "testing")
     monkeypatch.setenv("user", "test_user")
@@ -23,15 +20,44 @@ def env_and_deny_db(monkeypatch):
     monkeypatch.setenv("port", "5432")
     monkeypatch.setenv("database", "test_db")
 
-    # Deny any direct DB call—tests should patch get_all_users, get_user_duty, etc.
-    mock_exec = MagicMock(side_effect=AssertionError("Direct DB access attempted during test!"))
-    monkeypatch.setattr('backend.bcssm_backend.utils.execute_query', mock_exec)
-
+    # Mock the database session and related components
     mock_sess = MagicMock()
-    mock_sess.execute.side_effect = AssertionError("Direct DB access attempted during test!")
+    mock_result = MagicMock()
+    
+    # Mock the context manager for session.begin()
+    mock_sess.begin.return_value.__enter__ = MagicMock(return_value=mock_sess)
+    mock_sess.begin.return_value.__exit__ = MagicMock(return_value=None)
+    
+    # Mock the execute result
+    mock_result.returns_rows = True  # Assume SELECT queries return rows
+    mock_result.fetchall.return_value = []  # Default to empty (no users)
+    
+    mock_sess.execute.return_value = mock_result
+    mock_sess.rollback = MagicMock()
+    
+    # Mock the text() function from SQLAlchemy
+    mock_text = MagicMock(side_effect=lambda x: x)  # Just return the query string
+    
+    # Patch all the components
     monkeypatch.setattr('backend.bcssm_backend.db.session', mock_sess)
+    monkeypatch.setattr('backend.bcssm_backend.utils.text', mock_text)
+    
+    return mock_sess, mock_result
 
-    return mock_exec, mock_sess
+
+# Helper function to setup database responses
+def setup_db_response(env_and_deny_db, user_data=None):
+    """
+    Helper to setup what the database should return
+    user_data: List of tuples like [(1, 'Username', 'Role')] or None/[] for no users
+    """
+    mock_sess, mock_result = env_and_deny_db
+    
+    if user_data is None:
+        user_data = []
+    
+    mock_result.fetchall.return_value = user_data
+    return mock_sess, mock_result
 
 
 # ─── 0.5) Mock the cache to avoid Redis connection issues ───────────────────────
@@ -39,16 +65,11 @@ def env_and_deny_db(monkeypatch):
 def mock_cache(monkeypatch):
     """Mock the cache to avoid Redis connection during tests"""
     fake_cache = MagicMock()
-    # Configure cache.get to return None by default (cache miss)
     fake_cache.get.return_value = None
-    # Configure cache.set to return True (success)
     fake_cache.set.return_value = True
-    # Configure cache.delete to return True (success)
     fake_cache.delete.return_value = True
-    # Configure cache.clear to return True (success)
     fake_cache.clear.return_value = True
     
-    # Mock cache in both utils and routes modules
     monkeypatch.setattr('backend.bcssm_backend.utils.cache', fake_cache)
     monkeypatch.setattr('backend.bcssm_backend.routes.users.cache', fake_cache)
     
@@ -59,7 +80,6 @@ def mock_cache(monkeypatch):
 @pytest.fixture(autouse=True)
 def mock_db_queries(monkeypatch):
     """Mock database query functions to avoid SQLAlchemy initialization issues"""
-    # Mock execute_readonly_query to prevent database access
     mock_readonly = MagicMock(side_effect=Exception("Database access not allowed in tests"))
     monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
     
@@ -70,66 +90,48 @@ def mock_db_queries(monkeypatch):
 @pytest.fixture
 def app():
     app = create_app()
-    # If your TestingConfig already sets TESTING = True, this is redundant—but safe:
     app.config['TESTING'] = True
     app.config['SECRET_KEY'] = 'test_secret'
     return app
 
 @pytest.fixture
 def client(app):
-    # The test_client() pushes a "request" context for route handlers automatically.
     return app.test_client()
 
 
-# ─── 2) Patch utils helpers (get_all_users, user_assignments, get_user_duty) ───
+# ─── 2) Patch utils helpers ───────────────────────────────────────────────────
 @pytest.fixture(autouse=True)
 def patch_utils_helpers(monkeypatch):
     """
-    By default, `get_all_users()` returns [], `user_assignments` is empty list,
-    and `get_user_duty()` returns None. Each test can override the .return_value.
+    Mock utility functions for controlled testing
     """
     fake_users = MagicMock(return_value=[])
-    monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_all_users",
-        fake_users
-    )
+    monkeypatch.setattr("backend.bcssm_backend.utils.get_all_users", fake_users)
 
     fake_assign = {}
-    monkeypatch.setattr(
-        "backend.bcssm_backend.utils.user_assignments",
-        fake_assign,
-        raising=False
-    )
+    monkeypatch.setattr("backend.bcssm_backend.utils.user_assignments", fake_assign, raising=False)
 
     fake_duty = MagicMock(return_value=None)
-    # Patch get_user_duty in all possible locations
-    monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_duty",
-        fake_duty
-    )
     
-    # Patch in any routes that might import it directly
+    # Patch get_user_duty in all possible locations where it might be imported
+    monkeypatch.setattr("backend.bcssm_backend.utils.get_user_duty", fake_duty)
+    
+    # Patch in the main routes module where it's likely imported
     try:
-        monkeypatch.setattr(
-            "backend.bcssm_backend.routes.users.get_user_duty",
-            fake_duty
-        )
+        monkeypatch.setattr("backend.bcssm_backend.routes.routes.get_user_duty", fake_duty)
     except AttributeError:
-        pass  # Module might not import it directly
-    
-    # Also patch where the route might be importing from
-    try:
-        from backend.bcssm_backend import routes
-        if hasattr(routes, 'get_user_duty'):
-            monkeypatch.setattr(routes, 'get_user_duty', fake_duty)
-    except (ImportError, AttributeError):
         pass
     
-    # Try to patch in the main app module
+    # Patch in users routes
     try:
-        import backend.bcssm_backend
-        if hasattr(backend.bcssm_backend, 'get_user_duty'):
-            monkeypatch.setattr(backend.bcssm_backend, 'get_user_duty', fake_duty)
+        monkeypatch.setattr("backend.bcssm_backend.routes.users.get_user_duty", fake_duty)
+    except AttributeError:
+        pass
+    
+    # Patch where the app imports it directly (this is likely the one we need)
+    try:
+        from backend.bcssm_backend.routes import routes
+        monkeypatch.setattr(routes, "get_user_duty", fake_duty)
     except (ImportError, AttributeError):
         pass
 
@@ -138,10 +140,7 @@ def patch_utils_helpers(monkeypatch):
 
 # ─── 3) Tests for "/" (index) ─────────────────────────────────────────────────────
 def test_index_shows_dropdown_of_users(client, patch_utils_helpers):
-    """
-    Because there is no static index.html in the test environment,
-    GET / returns 404. Ensure no exception is raised and get_all_users is not called.
-    """
+    """Test index route returns 404 as expected"""
     fake_users, *_ = patch_utils_helpers
 
     response = client.get("/")
@@ -159,28 +158,27 @@ def test_index_empty_or_single_user(client, patch_utils_helpers, user_list, expe
 
     response = client.get("/")
     assert response.status_code == 404
-    # No dropdown should be rendered
     assert expected_message not in response.data.decode()
     fake_users.assert_not_called()
 
 
 # ─── 4) Tests for "/login" ───────────────────────────────────────────────────────
-@pytest.mark.parametrize("assign_dict, post_user, target, expected_path", [
-    ({"A": {"section": "X"}}, "A", None, "/"),
-    ({"A": {"section": "X"}}, "A", "/dashboard", "/dashboard"),
-    ({"A": {"section": "X"}}, "A", "http://evil.com", "/"),
-    ({}, "A", None, "/"),  # Invalid user goes back to index
+@pytest.mark.parametrize("valid_users, post_user, target, expected_path", [
+    (["A"], "A", None, "/"),
+    (["A"], "A", "/dashboard", "/"),  # Target validation redirects to /
+    (["A"], "A", "http://evil.com", "/"),
+    ([], "A", None, "/"),  # Invalid user goes back to index
 ])
-def test_login_post_various(client, patch_utils_helpers, assign_dict, post_user, target, expected_path):
-    _, fake_assign, _ = patch_utils_helpers
-    fake_assign.clear()
-    fake_assign.update(assign_dict)
+def test_login_post_various(client, env_and_deny_db, valid_users, post_user, target, expected_path):
+    # Setup database to return valid users
+    user_data = [(1, user) for user in valid_users]
+    setup_db_response(env_and_deny_db, user_data=user_data)
 
     url = "/login" + (f"?target={quote(target)}" if target else "")
     resp = client.post(url, data={"user_name": post_user}, follow_redirects=False)
 
     assert resp.status_code == 302
-    assert urlparse(resp.headers["Location"]).path == "/"
+    assert urlparse(resp.headers["Location"]).path == expected_path
 
 
 def test_login_get_redirects_to_index(client):
@@ -191,70 +189,147 @@ def test_login_get_redirects_to_index(client):
 
 # ─── 5) Tests for "/duty-teams" ─────────────────────────────────────────────────
 def test_duty_team_redirects_if_not_logged_in(client):
-    # Without session["user_name"], should respond with 401 Unauthorized
+    """Without username, should respond with 400 Bad Request"""
     resp = client.get("/duty-teams", follow_redirects=False)
-    assert resp.status_code == 401
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "error" in data
+    assert "Username required" in data["error"]
 
 
-def test_duty_team_shows_no_duty_message(client, patch_utils_helpers, mock_cache):
+def test_duty_team_shows_no_duty_message(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
     fake_duty.return_value = None  # No duty assigned
+    
+    # Setup database to return valid user "A"
+    setup_db_response(env_and_deny_db, user_data=[(1, 'A', 'Leader')])
 
-    with client.session_transaction() as sess:
-        sess["user_name"] = "A"
-
-    resp = client.get("/duty-teams", follow_redirects=True)
+    # Test with query parameter
+    resp = client.get("/duty-teams?user_name=A")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["user"] == "A"
     assert data["duty_message"] == "No duty assigned"
-    
-    # Note: The route might not be calling get_user_duty as expected
-    # or it might be handling the database error gracefully
+    assert data["role"] == "Leader"  # From database when no duty
 
 
-def test_duty_team_shows_duty_when_assigned(client, patch_utils_helpers, mock_cache):
+def test_duty_team_shows_duty_when_assigned(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
-    fake_duty.return_value = {"duty": "Clean kitchen"}
+    fake_duty.return_value = {"duty": "Clean kitchen", "role": "Worker"}
+    
+    # Setup database to return valid user "A"
+    setup_db_response(env_and_deny_db, user_data=[(1, 'A', 'Leader')])
+
+    # Test with query parameter
+    resp = client.get("/duty-teams?user_name=A")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["user"] == "A"
+    assert data["duty_message"] == "Clean kitchen"
+    assert data["role"] == "Worker"  # From duty data overrides database
+
+
+def test_duty_team_invalid_user_returns_400(client, patch_utils_helpers, env_and_deny_db):
+    """Test /duty-teams with invalid user returns 400"""
+    fake_users, fake_assign, fake_duty = patch_utils_helpers
+    
+    # Setup database to return no users (empty result)
+    setup_db_response(env_and_deny_db, user_data=[])
+    
+    resp = client.get("/duty-teams?user_name=InvalidUser")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "error" in data
+    assert "Invalid user" in data["error"]
+
+
+def test_duty_team_with_session(client, patch_utils_helpers, env_and_deny_db):
+    """Test backward compatibility with session-based auth"""
+    _, _, fake_duty = patch_utils_helpers
+    fake_duty.return_value = {"duty": "Kitchen duty", "role": "Helper"}
+    
+    # Setup database to return valid user
+    setup_db_response(env_and_deny_db, user_data=[(1, 'SessionUser', 'Leader')])
 
     with client.session_transaction() as sess:
-        sess["user_name"] = "A"
+        sess["user_name"] = "SessionUser"
 
+    # Call without query parameter (should use session)
     resp = client.get("/duty-teams")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["user"] == "A"
-    # The route always returns "No duty assigned" based on the current implementation
-    assert data["duty_message"] == "No duty assigned"
+    assert data["user"] == "SessionUser"
+    assert data["duty_message"] == "Kitchen duty"
+    assert data["role"] == "Helper"
+
+
+def test_duty_team_with_header(client, patch_utils_helpers, env_and_deny_db):
+    """Test with X-Current-User header"""
+    _, _, fake_duty = patch_utils_helpers
+    fake_duty.return_value = {"duty": "Header duty", "role": "Leader"}
+    
+    # Setup database to return valid user
+    setup_db_response(env_and_deny_db, user_data=[(1, 'HeaderUser', 'Leader')])
+
+    # Call with header
+    resp = client.get("/duty-teams", headers={"X-Current-User": "HeaderUser"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["user"] == "HeaderUser"
+    assert data["duty_message"] == "Header duty"
+    assert data["role"] == "Leader"
 
 
 @pytest.mark.parametrize("duty_response", [
     None,
-    {"duty": "Foo"},
-    {"error": "DB down"}  # If you handle errors specially, test that branch
+    {"duty": "Foo", "role": "Worker"},
+    {"error": "DB down"}  # Error case
 ])
-def test_duty_team_helper_called_with_session_user(client, patch_utils_helpers, mock_cache, duty_response):
+def test_duty_team_helper_called_with_session_user(client, patch_utils_helpers, env_and_deny_db, duty_response):
     _, _, fake_duty = patch_utils_helpers
     fake_duty.return_value = duty_response
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "UserX"
-
-    resp = client.get("/duty-teams")
-    data = resp.get_json()
-    assert data["duty_message"] == "No duty assigned"
     
-    # The route returns consistent behavior regardless of the duty response
+    # Setup database to return valid user
+    setup_db_response(env_and_deny_db, user_data=[(1, 'UserX', 'Leader')])
+
+    resp = client.get("/duty-teams?user_name=UserX")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    
+    # Check basic structure
+    assert "duty_message" in data
+    assert "user" in data
     assert data["user"] == "UserX"
+    
+    # Check specific responses
+    if duty_response is None or duty_response.get("error"):
+        assert data["duty_message"] == "No duty assigned"
+        assert data["role"] == "Leader"  # From database when no duty
+    else:
+        assert data["duty_message"] == duty_response["duty"]
+        assert data["role"] == duty_response.get("role")
+
+
+def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpers, env_and_deny_db):
+    _, _, fake_duty = patch_utils_helpers
+    fake_duty.side_effect = RuntimeError("oops")
+    
+    # Setup database to return valid user
+    setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
+
+    resp = client.get("/duty-teams?user_name=User1")
+    # Should handle exception and return 500
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "error" in data
+    assert "Failed to get duty information" in data["error"]
 
 
 # ─── 6) Testing static‐file or React SPA fallback ──────────────────────────────
 def test_serve_react_index_or_static(client):
-    # Suppose "/static/some-file.js" should return 200 or 404 but not 500
     resp_static = client.get("/static/some-file.js")
     assert resp_static.status_code in (200, 404)
 
-    # And an arbitrary route (e.g. "/foo/bar") should return index.html (React SPA)
     resp_fallback = client.get("/foo/bar")
     assert resp_fallback.status_code in (200, 404)
     text = resp_fallback.data.decode().lower()
@@ -262,30 +337,12 @@ def test_serve_react_index_or_static(client):
         assert "<!doctype html>" in text
 
 
-# ─── 7) Ensure invalid target logging (if you use logging instead of print) ───
-def test_login_invalid_target_logs_warning(client, patch_utils_helpers, caplog):
-    _, fake_assign, _ = patch_utils_helpers
-    fake_assign.clear()
-    fake_assign.update({"A": {"section": "X"}})
+# ─── 7) Ensure invalid target logging ──────────────────────────────────────────
+def test_login_invalid_target_logs_warning(client, env_and_deny_db, caplog):
+    # Setup database to return valid user
+    setup_db_response(env_and_deny_db, user_data=[(1, 'A')])
 
     caplog.set_level(logging.DEBUG)
     resp = client.post("/login?target=http://evil.com", data={"user_name": "A"}, follow_redirects=False)
     assert resp.status_code == 302
     assert urlparse(resp.headers["Location"]).path == "/"
-
-
-# ─── 8) Edge‐case: get_user_duty raises exception ──────────────────────────────
-def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpers, mock_cache):
-    _, _, fake_duty = patch_utils_helpers
-    fake_duty.side_effect = RuntimeError("oops")
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "User1"
-
-    resp = client.get("/duty-teams")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["duty_message"] == "No duty assigned"
-    assert data["user"] == "User1"
-    
-    # The route handles exceptions gracefully and returns a consistent response

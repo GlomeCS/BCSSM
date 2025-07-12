@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiGet, apiPost, getCurrentUser, isLoggedIn } from "../api";
 
 function Login() {
   const [users, setUsers] = useState<string[]>([]);
@@ -10,8 +11,17 @@ function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Check if user is already logged in
+    if (isLoggedIn()) {
+      const currentUser = getCurrentUser();
+      console.log("User already logged in:", currentUser);
+      navigate("/");
+      return;
+    }
+
+    // Fetch available users
     setIsLoadingUsers(true);
-    fetch("/get-users")
+    apiGet("/get-users")
       .then((response) => response.json())
       .then((data: { users: string[] }) => {
         console.log("Fetched users:", data.users);
@@ -25,7 +35,7 @@ function Login() {
       .finally(() => {
         setIsLoadingUsers(false);
       });
-  }, []);
+  }, [navigate]);
 
   const handleLogin = async () => {
     if (!selectedUser) {
@@ -37,29 +47,35 @@ function Login() {
     setError("");
 
     try {
-      const response = await fetch("/select-user", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_name: selectedUser }),
-      });
+      const response = await apiPost("/select-user", { user_name: selectedUser });
 
       if (!response.ok) {
         throw new Error(`Server error: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log("Login response:", data);
       
-      // Store user state in localStorage
+      // Store user state in localStorage for persistent auth
       localStorage.setItem("is_logged_in", data.is_logged_in ? "true" : "false");
+      localStorage.setItem("currentUser", selectedUser);
+      
       if (data.user_section) {
         localStorage.setItem("user_section", data.user_section);
       } else {
         localStorage.removeItem("user_section");
       }
+      
+      if (data.role) {
+        localStorage.setItem("user_role", data.role);
+      } else {
+        localStorage.removeItem("user_role");
+      }
+      
       localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
-      localStorage.setItem("currentUser", selectedUser);
 
       // Navigate to home page
+      console.log("Login successful, navigating to home");
       navigate("/");
     } catch (error) {
       console.error("Error selecting user:", error);
