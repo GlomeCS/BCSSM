@@ -377,7 +377,158 @@ def test_cache_stats_unhealthy(client, patch_helpers):
     data = resp.get_json()
     assert data["cache_status"] == "unhealthy"
 
-# ─── 10) NEW: Admin endpoints ────────────────────────────────────────────────────
+# ─── 11) GET /api/auth/validate ─────────────────────────────────────────────────
+def test_validate_user_success_with_query_param(client, patch_helpers):
+    """Test /api/auth/validate with valid user via query parameter"""
+    ph = patch_helpers
+    # Mock successful user lookup
+    ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
+
+    resp = client.get("/api/auth/validate?user_name=Alice")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["is_valid"] is True
+    assert data["user_name"] == "Alice"
+    assert data["role"] == "Section Leader"
+    assert data["section"] == "Minors"
+    assert data["is_leader"] is True
+
+def test_validate_user_success_with_header(client, patch_helpers):
+    """Test /api/auth/validate with valid user via header"""
+    ph = patch_helpers
+    # Mock successful user lookup
+    ph["execute"].return_value = [(43, "Bob", "Team Member", "Majors")]
+
+    resp = client.get("/api/auth/validate", headers={"X-Current-User": "Bob"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["is_valid"] is True
+    assert data["user_name"] == "Bob"
+    assert data["role"] == "Team Member"
+    assert data["section"] == "Majors"
+    assert data["is_leader"] is False
+
+def test_validate_user_success_with_session(client, patch_helpers):
+    """Test /api/auth/validate with valid user via session"""
+    ph = patch_helpers
+    # Mock successful user lookup
+    ph["execute"].return_value = [(44, "Charlie", "Admin", "Unassigned")]
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Charlie"
+
+    resp = client.get("/api/auth/validate")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["is_valid"] is True
+    assert data["user_name"] == "Charlie"
+    assert data["role"] == "Admin"
+    assert data["section"] == "Unassigned"
+    assert data["is_leader"] is True  # Admin counts as leader
+
+def test_validate_user_team_leader_role(client, patch_helpers):
+    """Test /api/auth/validate correctly identifies team leader as leader"""
+    ph = patch_helpers
+    # Mock team leader user
+    ph["execute"].return_value = [(45, "David", "Team Leader", "Micros")]
+
+    resp = client.get("/api/auth/validate?user_name=David")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["is_valid"] is True
+    assert data["user_name"] == "David"
+    assert data["role"] == "Team Leader"
+    assert data["section"] == "Micros"
+    assert data["is_leader"] is True  # Team Leader counts as leader
+
+def test_validate_user_no_username_provided(client, patch_helpers):
+    """Test /api/auth/validate without any username"""
+    resp = client.get("/api/auth/validate")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["is_valid"] is False
+    assert "No username provided" in data["error"]
+
+def test_validate_user_invalid_user(client, patch_helpers):
+    """Test /api/auth/validate with user not found in database"""
+    ph = patch_helpers
+    # Mock user not found
+    ph["execute"].return_value = []
+
+    resp = client.get("/api/auth/validate?user_name=NonExistentUser")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["is_valid"] is False
+    assert "Invalid user" in data["error"]
+
+def test_validate_user_database_error(client, patch_helpers):
+    """Test /api/auth/validate with database error"""
+    ph = patch_helpers
+    # Mock database error
+    ph["execute"].side_effect = Exception("Database connection failed")
+
+    resp = client.get("/api/auth/validate?user_name=Alice")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert data["is_valid"] is False
+    assert "Validation failed" in data["error"]
+
+def test_validate_user_user_without_section(client, patch_helpers):
+    """Test /api/auth/validate with user that has no section"""
+    ph = patch_helpers
+    # Mock user without section (section_name is None)
+    ph["execute"].return_value = [(46, "Eve", "Team Member", None)]
+
+    resp = client.get("/api/auth/validate?user_name=Eve")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["is_valid"] is True
+    assert data["user_name"] == "Eve"
+    assert data["role"] == "Team Member"
+    assert data["section"] is None
+    assert data["is_leader"] is False
+
+def test_validate_user_multiple_auth_sources_priority(client, patch_helpers):
+    """Test /api/auth/validate prioritizes query param over other sources"""
+    ph = patch_helpers
+    # Mock successful user lookup
+    ph["execute"].return_value = [(47, "QueryUser", "Section Leader", "Minis")]
+
+    # Set up multiple potential username sources
+    with client.session_transaction() as sess:
+        sess["user_name"] = "SessionUser"
+
+    # Query param should take priority
+    resp = client.get("/api/auth/validate?user_name=QueryUser", 
+                     headers={"X-Current-User": "HeaderUser"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["user_name"] == "QueryUser"  # Should use query param, not header or session
+
+def test_validate_user_execute_query_called_correctly(client, patch_helpers):
+    """Test that execute_query is called with correct parameters"""
+    ph = patch_helpers
+    # Mock successful user lookup
+    ph["execute"].return_value = [(48, "TestUser", "Team Member", "TestSection")]
+
+    resp = client.get("/api/auth/validate?user_name=TestUser")
+    assert resp.status_code == 200
+
+    # Verify execute_query was called with correct SQL and parameters
+    ph["execute"].assert_called_once()
+    call_args = ph["execute"].call_args
+    sql, params = call_args[0]
+    
+    # Check SQL structure
+    assert "SELECT u.id, u.name, u.role, s.name AS section_name" in sql
+    assert "FROM users u" in sql
+    assert "LEFT JOIN sections s ON u.section_id = s.id" in sql
+    assert "WHERE u.name = :user_name" in sql
+    
+    # Check parameters
+    assert params == {"user_name": "TestUser"}
+
+# ─── 12) NEW: Admin endpoints ────────────────────────────────────────────────────
 def test_clear_user_cache_endpoint(client, patch_helpers):
     """Test the new admin cache clearing endpoint"""
     ph = patch_helpers
