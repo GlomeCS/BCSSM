@@ -1,9 +1,53 @@
 from datetime import datetime
+from urllib.parse import unquote
 from flask import request, session, jsonify
+from markupsafe import escape
 from backend.bcssm_backend.utils import execute_query
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def get_username_from_request():
+    """Helper function to get username from various request sources"""
+    # Try request body first (for POST requests)
+    if request.method == 'POST' and request.json:
+        username = request.json.get('user_name')
+        if username:
+            return escape(unquote(username))
+    
+    # Try query parameters (for GET requests)
+    username = request.args.get('user_name') or request.args.get('user')
+    if username:
+        return escape(unquote(username))
+    
+    # Try headers (sent by frontend API wrapper)
+    username = request.headers.get('X-Current-User')
+    if username:
+        return escape(unquote(username))
+    
+    # Fallback to session for backward compatibility
+    return session.get('user_name')
+
+
+def get_user_id_from_request():
+    """Helper function to get user_id from various request sources"""
+    # First try to get username and look it up
+    user_name = get_username_from_request()
+    if user_name:
+        try:
+            user_rows = execute_query(
+                "SELECT u.id FROM users u WHERE u.name = :user_name",
+                {'user_name': user_name}
+            )
+            if user_rows:
+                return user_rows[0][0]
+        except Exception as e:
+            logger.error(f"Error looking up user ID for {user_name}: {e}")
+    
+    # Fallback to session
+    return session.get('user_id')
+
 
 def get_feedback_by_date(date_str):
     """Fetch feedback from the database for a given date."""
@@ -49,10 +93,19 @@ def init_feedback_routes(app):
             # Get date from query param or use today
             date_str = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
 
-            # Get current user from session
-            user_name = session.get('user_name')
-            user_info = get_user_info(user_name) if user_name else None
-            is_leader = user_info and user_info["role"] in ["Section Leader", "Team Leader", "Admin"]
+            # Get current user from multiple sources (query param, header, or session)
+            user_name = get_username_from_request()
+            
+            if not user_name:
+                logger.warning("No username found in request for /api/devos-feedback")
+                return jsonify({"error": "Username required"}), 400
+
+            user_info = get_user_info(user_name)
+            if not user_info:
+                logger.warning(f"User info not found for user: {user_name}")
+                return jsonify({"error": "Invalid user"}), 400
+                
+            is_leader = user_info["role"] in ["Section Leader", "Team Leader", "Admin"]
 
             # Get feedback records
             daily_feedback, error = get_feedback_by_date(date_str)
@@ -77,10 +130,14 @@ def init_feedback_routes(app):
         section_name = request.args.get('section')
         payload = request.get_json() or {}
         new_feedback = payload.get('feedback')
-        editor_id = session.get('user_id')
-        print("DEBUG edit_devos_feedback - editor_id:", editor_id)
+        
+        # Get editor ID from multiple sources
+        editor_id = get_user_id_from_request()
+        logger.info(f"DEBUG edit_devos_feedback - editor_id: {editor_id}")
+        
         if not editor_id:
-            return jsonify({'error': 'User not authenticated'}), 401
+            logger.warning("No user ID found in request for /api/devos-feedback/edit")
+            return jsonify({'error': 'Username required'}), 400
 
         # Validate input
         if not date_str or not section_name or new_feedback is None:

@@ -1,10 +1,35 @@
 import logging
+from urllib.parse import unquote
 
-from flask import jsonify, session
+from flask import jsonify, session, request
+from markupsafe import escape
 
 from backend.bcssm_backend.utils import get_duty_schedule, get_todays_duties
 
 logger = logging.getLogger(__name__)
+
+
+def get_username_from_request():
+    """Helper function to get username from various request sources"""
+    # Try request body first (for POST requests)
+    if request.method == 'POST' and request.json:
+        username = request.json.get('user_name')
+        if username:
+            return escape(unquote(username))
+    
+    # Try query parameters (for GET requests)
+    username = request.args.get('user_name') or request.args.get('user')
+    if username:
+        return escape(unquote(username))
+    
+    # Try headers (sent by frontend API wrapper)
+    username = request.headers.get('X-Current-User')
+    if username:
+        return escape(unquote(username))
+    
+    # Fallback to session for backward compatibility
+    return session.get('user_name')
+
 
 def init_duties_routes(app):
     @app.route('/api/duties/today', methods=['GET'])
@@ -18,12 +43,20 @@ def init_duties_routes(app):
           - members (list of user names)
           - is_current_user (bool)
         """
-        user_name = session.get('user_name')
+        # Get username from multiple sources (query param, header, or session)
+        user_name = get_username_from_request()
+        
         if not user_name:
-            return jsonify({'error': 'User not authenticated'}), 401
+            logger.warning("No username found in request for /api/duties/today")
+            return jsonify({'error': 'Username required'}), 400
 
-        duties = get_todays_duties(user_name)
-        return jsonify(duties), 200
+        try:
+            duties = get_todays_duties(user_name)
+            logger.info(f"Retrieved {len(duties)} duties for user {user_name}")
+            return jsonify(duties), 200
+        except Exception as e:
+            logger.error(f"Error fetching today's duties for user {user_name}: {str(e)}")
+            return jsonify({'error': 'Failed to fetch today\'s duties'}), 500
 
     @app.route('/api/duties/schedule', methods=['GET'])
     def get_duty_schedule_route():
@@ -48,13 +81,17 @@ def init_duties_routes(app):
           ]
         }
         """
-        user_name = session.get('user_name')
+        # Get username from multiple sources (query param, header, or session)
+        user_name = get_username_from_request()
+        
         if not user_name:
-            return jsonify({'error': 'User not authenticated'}), 401
+            logger.warning("No username found in request for /api/duties/schedule")
+            return jsonify({'error': 'Username required'}), 400
 
         try:
             schedule = get_duty_schedule()
+            logger.info(f"Retrieved duty schedule for user {user_name}")
             return jsonify({"schedule": schedule}), 200
         except Exception as e:
-            logging.error("Error fetching duty schedule: %s", str(e))
-            return jsonify({'error': 'An internal error occurred while fetching the duty schedule.'}), 500
+            logger.error(f"Error fetching duty schedule for user {user_name}: {str(e)}")
+            return jsonify({'error': 'Failed to fetch duty schedule'}), 500
