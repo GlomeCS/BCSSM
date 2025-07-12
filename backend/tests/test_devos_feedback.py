@@ -78,17 +78,46 @@ def patch_helpers(monkeypatch):
     )
     return fake_fb, fake_ui
 
-def test_route_default_date(client, patch_helpers):
+def test_route_default_date_no_user(client, patch_helpers):
+    """Test route without any username - should return 400"""
     fake_fb, fake_ui = patch_helpers
     resp = client.get("/api/devos-feedback")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "Username required" in data["error"]
+
+def test_route_default_date_with_user(client, patch_helpers):
+    """Test route with username via query parameter"""
+    fake_fb, fake_ui = patch_helpers
+    # Mock get_user_info to return valid user data
+    fake_ui.return_value = {"name": "TestUser", "role": "Team Member", "section": "TestSection"}
+    
+    resp = client.get("/api/devos-feedback?user_name=TestUser")
     assert resp.status_code == 200
     data = resp.get_json()
     assert "date" in data
     assert data["feedback"] == {}
-    assert data["user"] is None
-    assert data["is_leader"] is None
+    assert data["user"]["name"] == "TestUser"
+    assert data["is_leader"] is False
 
-def test_route_with_date_and_leader(client, patch_helpers):
+def test_route_with_date_and_leader_via_header(client, patch_helpers):
+    """Test route with username via header"""
+    fake_fb, fake_ui = patch_helpers
+    fake_fb.return_value = ({"X": "Y"}, None)
+    fake_ui.return_value = {"name": "A", "role": "Section Leader", "section": "S"}
+
+    date_str = "2025-06-07"
+    resp = client.get(f"/api/devos-feedback?date={quote(date_str)}", 
+                     headers={"X-Current-User": "A"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["date"] == date_str
+    assert data["feedback"] == {"X": "Y"}
+    assert data["user"] == {"name": "A", "role": "Section Leader", "section": "S"}
+    assert data["is_leader"] is True
+
+def test_route_with_date_and_leader_via_session(client, patch_helpers):
+    """Test route with username via session (backward compatibility)"""
     fake_fb, fake_ui = patch_helpers
     fake_fb.return_value = ({"X": "Y"}, None)
     fake_ui.return_value = {"name": "A", "role": "Section Leader", "section": "S"}
@@ -105,62 +134,158 @@ def test_route_with_date_and_leader(client, patch_helpers):
     assert data["user"] == {"name": "A", "role": "Section Leader", "section": "S"}
     assert data["is_leader"] is True
 
+def test_route_invalid_user(client, patch_helpers):
+    """Test route with username that doesn't exist"""
+    fake_fb, fake_ui = patch_helpers
+    # Mock get_user_info to return None (user not found)
+    fake_ui.return_value = None
+    
+    resp = client.get("/api/devos-feedback?user_name=NonExistentUser")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "Invalid user" in data["error"]
+
 def test_route_feedback_error(client, patch_helpers):
-    fake_fb, _ = patch_helpers
+    """Test route when feedback fetch fails"""
+    fake_fb, fake_ui = patch_helpers
     fake_fb.return_value = (None, "err")
-    resp = client.get("/api/devos-feedback?date=2025-06-07")
+    fake_ui.return_value = {"name": "TestUser", "role": "Team Member", "section": "TestSection"}
+    
+    resp = client.get("/api/devos-feedback?date=2025-06-07&user_name=TestUser")
     assert resp.status_code == 500
     assert resp.get_json() == {"error": "Internal server error"}
 
 # ─── 6) Integration tests for POST /api/devos-feedback/edit ────────────────────
 def test_edit_unauthenticated(client):
+    """Test edit without any authentication - should return 400"""
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
-    assert resp.status_code == 401
-    assert resp.get_json() == {"error": "User not authenticated"}
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert "Username required" in data["error"]
 
-def test_edit_missing_params(client):
+def test_edit_authenticated_via_query_param(client, mock_execute_query):
+    """Test edit with username via query parameter"""
+    # Mock user lookup and section lookup
+    calls = []
+    def side_effect(query, params=None):
+        calls.append((query, params))
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]  # Return user ID
+        elif "SELECT id FROM sections" in query:
+            return [(5,)]  # Return section ID
+        else:
+            return None  # Upsert query
+    
+    mock_execute_query.side_effect = side_effect
+    
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True}
+
+def test_edit_authenticated_via_header(client, mock_execute_query):
+    """Test edit with username via header"""
+    calls = []
+    def side_effect(query, params=None):
+        calls.append((query, params))
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]  # Return user ID
+        elif "SELECT id FROM sections" in query:
+            return [(5,)]  # Return section ID
+        else:
+            return None  # Upsert query
+    
+    mock_execute_query.side_effect = side_effect
+    
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"},
+                       headers={"X-Current-User": "TestUser"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True}
+
+def test_edit_authenticated_via_session(client, mock_execute_query):
+    """Test edit with session (backward compatibility)"""
     with client.session_transaction() as sess:
         sess["user_id"] = 1
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07",
+        sess["user_name"] = "TestUser"  # For username lookup fallback
+    
+    calls = []
+    def side_effect(query, params=None):
+        calls.append((query, params))
+        if "SELECT id FROM sections" in query:
+            return [(5,)]  # Return section ID
+        else:
+            return None  # Upsert query
+    
+    mock_execute_query.side_effect = side_effect
+    
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True}
+
+def test_edit_missing_params(client):
+    """Test edit with missing parameters"""
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 400
     assert "Missing date, section, or feedback" in resp.get_json()["error"]
 
 def test_edit_section_not_found(client, mock_execute_query):
-    with client.session_transaction() as sess:
-        sess["user_id"] = 1
-    mock_execute_query.return_value = []
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+    """Test edit when section doesn't exist"""
+    # Mock user lookup to succeed, section lookup to fail
+    def side_effect(query, params=None):
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]  # Return user ID
+        elif "SELECT id FROM sections" in query:
+            return []  # Section not found
+        else:
+            return None
+    
+    mock_execute_query.side_effect = side_effect
+    
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 400
     assert "Section 'Minis' not found" in resp.get_json()["error"]
 
 def test_edit_success(client, mock_execute_query):
-    with client.session_transaction() as sess:
-        sess["user_id"] = 1
+    """Test successful edit operation"""
     calls = []
     def side_effect(query, params=None):
         calls.append((query, params))
-        return [(1,)] if len(calls) == 1 else None
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]  # Return user ID
+        elif "SELECT id FROM sections" in query:
+            return [(5,)]  # Return section ID
+        else:
+            return None  # Upsert query
+    
     mock_execute_query.side_effect = side_effect
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+    
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "New"})
     assert resp.status_code == 200
     assert resp.get_json() == {"success": True}
-    assert len(calls) == 2
-    assert calls[0][0].strip().startswith("SELECT id FROM sections")
-    assert "INSERT INTO feedback" in calls[1][0]
+    assert len(calls) == 3  # User lookup, section lookup, upsert
+    assert any("SELECT u.id FROM users u WHERE u.name" in call[0] for call in calls)
+    assert any("SELECT id FROM sections" in call[0] for call in calls)
+    assert any("INSERT INTO feedback" in call[0] for call in calls)
 
 def test_edit_upsert_error(client, mock_execute_query):
-    with client.session_transaction() as sess:
-        sess["user_id"] = 1
+    """Test edit when upsert operation fails"""
     def side_effect(query, params=None):
-        if "SELECT id FROM sections" in query:
-            return [(5,)]
-        raise Exception("oops")
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]  # Return user ID
+        elif "SELECT id FROM sections" in query:
+            return [(5,)]  # Return section ID
+        else:
+            raise Exception("oops")  # Upsert fails
+    
     mock_execute_query.side_effect = side_effect
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+    
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})
     assert resp.status_code == 500
     assert "Internal server error" in resp.get_json()["error"]
