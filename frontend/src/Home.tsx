@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Navbar from "./Navbar"; // Import the reusable Navbar component
+import Navbar from "./Navbar";
+import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from "../api";
 
 function Home() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -8,7 +9,6 @@ function Home() {
   const [dutyMessage, setDutyMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const navigate = useNavigate();
-  console.log("Home component rendered");
 
   // Check if user has access to forms based on their role
   const hasFormsAccess = (role: string | null): boolean => {
@@ -17,36 +17,97 @@ function Home() {
     return allowedRoles.includes(role);
   };
 
-  // On component mount, retrieve the current user and fetch duty info.
   useEffect(() => {
-    console.log("Home useEffect triggered");
-    const storedUser = localStorage.getItem("currentUser");
-    console.log("Stored user:", storedUser);
-    if (!storedUser) {
-      navigate("/login");
-      console.log("No user found, redirecting to login.");
-    } else {
-      setCurrentUser(storedUser);
-      console.log("Current user:", storedUser);
+    const initializeApp = async () => {
+      console.log("Home component initializing...");
       
-      // Fetch duty info and user role from the API endpoint.
-      fetch("/duty-teams")
-        .then((response) => response.json())
-        .then((data) => {
-          // Expect the API to return JSON like: { user: <username>, duty_message: <string>, role: <string> }
-          if (data && data.user) {
-            setDutyMessage(data.duty_message);
-            setUserRole(data.role || null); // Set role from API response
-          }
-          setLoading(false);
-        })
-        .catch((error) => {
-          console.error("Error fetching duty info:", error);
-          setLoading(false);
-        });
+      // Check if user is logged in
+      if (!isLoggedIn()) {
+        console.log("No user logged in, redirecting to login");
+        navigate("/login");
+        return;
+      }
+      
+      const user = getCurrentUser();
+      console.log("Current user from localStorage:", user);
+      
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+      
+      // Validate that the user is still valid
+      const isValid = await validateAuth();
+      if (!isValid) {
+        console.log("User validation failed, redirecting to login");
+        localStorage.clear(); // Clear all auth data
+        navigate("/login");
+        return;
+      }
+      
+      setCurrentUser(user);
+      
+      // Get user role from localStorage (updated by validateAuth)
+      const role = localStorage.getItem("user_role");
+      setUserRole(role);
+      
+      // Fetch duty info using the new API utility
+      try {
         console.log("Fetching duty info...");
-    }
+        const response = await apiGet("/duty-teams");
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log("Duty data received:", data);
+        
+        if (data && data.user) {
+          setDutyMessage(data.duty_message);
+          setUserRole(data.role || role); // Use API role or fallback to localStorage
+        }
+      } catch (error) {
+        console.error("Error fetching duty info:", error);
+        // Don't redirect on duty fetch error - user is still valid
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initializeApp();
   }, [navigate]);
+
+  if (loading) {
+    return (
+      <div className="home-page">
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          flexDirection: 'column',
+          gap: '1rem'
+        }}>
+          <div className="loading-spinner" style={{
+            width: '40px',
+            height: '40px',
+            border: '4px solid #f3f3f3',
+            borderTop: '4px solid #3498db',
+            borderRadius: '50%',
+            animation: 'spin 2s linear infinite'
+          }}></div>
+          <p>Loading your dashboard...</p>
+          <style>{`
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="home-page">
@@ -63,9 +124,7 @@ function Home() {
           </p>
         )}
         <div className="duty-card">
-          {loading ? (
-            <p>Loading your duty info...</p>
-          ) : dutyMessage ? (
+          {dutyMessage ? (
             <p>Your duty today is {dutyMessage}</p>
           ) : (
             <p>No duty assigned today.</p>

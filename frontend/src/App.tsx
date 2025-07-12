@@ -9,7 +9,6 @@ import Sections from "./Sections";
 
 
 function App() {
-  console.log("🚀 React app loaded via Vite");
   return (
     <Routes>
       <Route path="/" element={<Home />} />
