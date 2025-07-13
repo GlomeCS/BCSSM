@@ -195,6 +195,147 @@ function Home() {
             </div>
           </div>
         )}
+
+        {/* Bank Details for non-Section Leaders */}
+        {!hasFormsAccess(userRole) && (
+          <div 
+            className="bank-details-section"
+            style={{
+              marginTop: '2.5rem',
+              padding: '2rem',
+              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
+              borderRadius: '16px',
+              border: '1px solid #bae6fd',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+            }}
+          >
+            <h3 
+              style={{
+                fontSize: '1.5rem',
+                fontWeight: '600',
+                color: '#1e293b',
+                marginBottom: '1.25rem',
+                letterSpacing: '-0.025em',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+              }}
+            >
+              Ballyholme CSSM Bank Account
+            </h3>
+            <div style={{ 
+              background: 'white',
+              padding: '1.5rem',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
+            }}>
+              <div style={{ display: 'grid', gap: '1rem' }}>
+                <div>
+                  <label style={{ 
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    Account Name
+                  </label>
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.95rem',
+                    color: '#1f2937',
+                    fontFamily: 'monospace'
+                  }}>
+                    Scripture Union Northern Ireland
+                  </div>
+                </div>
+                
+                <div>
+                  <label style={{ 
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    Sort Code
+                  </label>
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.95rem',
+                    color: '#1f2937',
+                    fontFamily: 'monospace'
+                  }}>
+                    98-00-30
+                  </div>
+                </div>
+                
+                <div>
+                  <label style={{ 
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    Account Number
+                  </label>
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.95rem',
+                    color: '#1f2937',
+                    fontFamily: 'monospace'
+                  }}>
+                    05391716
+                  </div>
+                </div>
+                
+                <div>
+                  <label style={{ 
+                    display: 'block',
+                    fontSize: '0.875rem',
+                    fontWeight: '500',
+                    color: '#374151',
+                    marginBottom: '0.5rem'
+                  }}>
+                    Bank Name
+                  </label>
+                  <div style={{
+                    padding: '0.75rem',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    fontSize: '0.95rem',
+                    color: '#1f2937',
+                    fontFamily: 'monospace'
+                  }}>
+                    Ulster Bank
+                  </div>
+                </div>
+              </div>
+              
+              <div style={{
+                marginTop: '1.5rem',
+                padding: '1rem',
+                backgroundColor: '#fef3c7',
+                border: '1px solid #f59e0b',
+                borderRadius: '8px',
+                fontSize: '0.875rem',
+                color: '#92400e'
+              }}>
+                <strong>Note:</strong> Please include your name and "Team Fees" in the payment reference when making transfers e.g. "Ross Team Fees" or "Harrison TF"
+              </div>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
