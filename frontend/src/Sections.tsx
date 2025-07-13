@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
+// Import the API utilities that automatically include username
+import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from '../api';
 
 type User = {
   name: string;
@@ -30,17 +32,41 @@ export default function UsersBySectionPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("currentUser");
-    if (!storedUser) {
-      navigate("/login");
-      return;
-    }
+    const initializePage = async () => {
+      // Check if user is logged in using the same method as other pages
+      if (!isLoggedIn()) {
+        console.log("No user logged in, redirecting to login");
+        navigate("/login");
+        return;
+      }
+      
+      const user = getCurrentUser();
+      console.log("Current user from localStorage:", user);
+      
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+      
+      // Validate that the user is still valid
+      const isValid = await validateAuth();
+      if (!isValid) {
+        console.log("User validation failed, redirecting to login");
+        localStorage.clear();
+        navigate("/login");
+        return;
+      }
+
+      // Now load the sections data
+      await fetchUsersBySection();
+    };
 
     const fetchUsersBySection = async () => {
       try {
         // Add cache busting parameter to force fresh data
         const timestamp = new Date().getTime();
-        const res = await fetch(`/api/users/by-section?t=${timestamp}`);
+        // Use apiGet which automatically includes username in header/params
+        const res = await apiGet(`/api/users/by-section?t=${timestamp}`);
         if (!res.ok) throw new Error(`Failed to fetch users: ${res.statusText}`);
         
         const data: SectionData = await res.json();
@@ -64,8 +90,8 @@ export default function UsersBySectionPage() {
       }
     };
 
-    fetchUsersBySection();
-  }, []);
+    initializePage();
+  }, [navigate]);
 
   const getSectionLeader = (users: User[]): User | null => {
     // Look for both 'Section Leader' and 'Admin' (Admin gets displayed as Section Leader)
