@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
+// Import the API utilities that automatically include username
+import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from "../api";
 
 type Duty = {
   id: string;
@@ -8,7 +10,7 @@ type Duty = {
   description: string;
   members: { name: string; week: string }[];
   isCurrentUser: boolean;
-  teamName?: string; // Added to support team number display
+  teamName?: string;
 };
 
 type ScheduleDay = {
@@ -37,15 +39,39 @@ export default function DutiesPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("currentUser");
-    if (!storedUser) {
-      navigate("/login");
-      return;
-    }
+    const initializePage = async () => {
+      // Check if user is logged in using the same method as Home page
+      if (!isLoggedIn()) {
+        console.log("No user logged in, redirecting to login");
+        navigate("/login");
+        return;
+      }
+      
+      const user = getCurrentUser();
+      console.log("Current user from localStorage:", user);
+      
+      if (!user) {
+        navigate("/login");
+        return;
+      }
+      
+      // Validate that the user is still valid
+      const isValid = await validateAuth();
+      if (!isValid) {
+        console.log("User validation failed, redirecting to login");
+        localStorage.clear();
+        navigate("/login");
+        return;
+      }
+
+      // Now fetch the duties data using API utilities
+      await Promise.all([fetchDuties(), fetchSchedule()]);
+    };
 
     const fetchDuties = async () => {
       try {
-        const res = await fetch("/api/duties/today");
+        // Use apiGet which automatically includes username in header/params
+        const res = await apiGet("/api/duties/today");
         if (!res.ok) throw new Error(`Failed to fetch duties: ${res.statusText}`);
         
         const data: any[] = await res.json();
@@ -57,7 +83,7 @@ export default function DutiesPage() {
           description: d.duty_description,
           members: d.members,
           isCurrentUser: d.is_current_user,
-          teamName: d.team_name, // Use team_name from API
+          teamName: d.team_name,
         }));
         
         console.log("Mapped duties for UI:", mapped);
@@ -72,7 +98,8 @@ export default function DutiesPage() {
 
     const fetchSchedule = async () => {
       try {
-        const res = await fetch("/api/duties/schedule");
+        // Use apiGet which automatically includes username in header/params
+        const res = await apiGet("/api/duties/schedule");
         if (!res.ok) throw new Error(`Failed to fetch schedule: ${res.statusText}`);
         
         const data: ScheduleData = await res.json();
@@ -87,8 +114,7 @@ export default function DutiesPage() {
       }
     };
 
-    fetchDuties();
-    fetchSchedule();
+    initializePage();
   }, [navigate]);
 
   // Extract team number from team name (format: "Duty Team 1", "Duty Team 2", etc.)
@@ -411,6 +437,7 @@ export default function DutiesPage() {
         </footer>
       </div>
 
+      {/* All your existing styles remain the same */}
       <style>{`
         .tab-navigation {
           display: flex;
