@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 @lru_cache(maxsize=128)
 def get_current_cycle_week():
     """Pre-calculate cycle week to avoid repeated computation"""
-    days_since_start = (datetime.now().date() - datetime(2025, 7, 7).date()).days
-    return (days_since_start // 7) % 2
+    current_date = datetime.now()  # or datetime.utcnow() if server uses UTC
+    days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
+    return (days_since_cycle_start // 7) % 2
 
 def generate_cache_key(*args, **kwargs):
     """Generate a consistent cache key from function arguments"""
