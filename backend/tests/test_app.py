@@ -511,3 +511,28 @@ def test_serve_existing_static_file_branch(mock_load_dotenv, mock_send, monkeypa
     response = app.test_client().get("/main.css")
     mock_send.assert_called_once_with(app.static_folder, "main.css")
     assert response.get_data(as_text=True) == "served main.css"
+
+def test_run_app_function(clean_env, mock_db_cache):
+    """Test the extracted run_app function for 100% coverage"""
+    os.environ['FLASK_ENV'] = 'development'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+    
+    mock_db, mock_cache = mock_db_cache
+    
+    with patch('backend.bcssm_backend.create_app') as mock_create_app:
+        mock_app = MagicMock()
+        mock_create_app.return_value = mock_app
+        
+        # Import and call the extracted function
+        from backend.bcssm_backend import run_app
+        run_app()
+        
+        mock_create_app.assert_called_once()
+        mock_app.run.assert_called_once_with(
+            host="0.0.0.0", 
+            port=8080, 
+            debug=True
+        )
