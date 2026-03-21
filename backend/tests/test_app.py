@@ -7,6 +7,7 @@ import json
 
 import pytest
 from flask import Flask
+from redis.exceptions import RedisError
 
 from backend.bcssm_backend import configure_logging, create_app
 
@@ -193,7 +194,7 @@ def test_health_check_endpoint_exception(mock_db_cache, clean_env):
 
     mock_db, mock_cache = mock_db_cache
     # Make cache operations throw exception
-    mock_cache.set.side_effect = Exception("Redis connection failed")
+    mock_cache.set.side_effect = RedisError("Redis connection failed")
     
     app = create_app()
     client = app.test_client()
@@ -206,7 +207,7 @@ def test_health_check_endpoint_exception(mock_db_cache, clean_env):
     assert "Health check failed" in data["error"]
 
 # NEW: Test cache management endpoints
-@patch('backend.bcssm_backend.utils.clear_user_cache')
+@patch('backend.bcssm_backend.clear_user_cache')
 def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=users"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -231,7 +232,7 @@ def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
     
     mock_clear_user_cache.assert_called_once()
 
-@patch('backend.bcssm_backend.utils.clear_duty_cache')
+@patch('backend.bcssm_backend.clear_duty_cache')
 def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=duties"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -255,7 +256,7 @@ def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
     
     mock_clear_duty_cache.assert_called_once()
 
-@patch('backend.bcssm_backend.utils.clear_feedback_cache')
+@patch('backend.bcssm_backend.clear_feedback_cache')
 def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=feedback"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -278,7 +279,7 @@ def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_en
     
     mock_clear_feedback_cache.assert_called_once()
 
-@patch('backend.bcssm_backend.utils.clear_all_cache')
+@patch('backend.bcssm_backend.clear_all_cache')
 def test_clear_cache_all(mock_clear_all_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=all"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -334,7 +335,7 @@ def test_clear_cache_no_json(mock_db_cache, clean_env):
     app = create_app()
     client = app.test_client()
 
-    with patch('backend.bcssm_backend.utils.clear_all_cache') as mock_clear_all:
+    with patch('backend.bcssm_backend.clear_all_cache') as mock_clear_all:
         response = client.post('/api/admin/cache/clear')
         
         assert response.status_code == 200
@@ -344,7 +345,7 @@ def test_clear_cache_no_json(mock_db_cache, clean_env):
         
         mock_clear_all.assert_called_once()
 
-@patch('backend.bcssm_backend.utils.clear_user_cache')
+@patch('backend.bcssm_backend.clear_user_cache')
 def test_clear_cache_exception_handling(mock_clear_user_cache, mock_db_cache, clean_env):
     """Test cache clear endpoint handles exceptions properly"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -354,7 +355,7 @@ def test_clear_cache_exception_handling(mock_clear_user_cache, mock_db_cache, cl
     os.environ['database'] = 'test_db'
 
     mock_db, mock_cache = mock_db_cache
-    mock_clear_user_cache.side_effect = Exception("Cache clearing failed")
+    mock_clear_user_cache.side_effect = RedisError("Cache clearing failed")
     
     app = create_app()
     client = app.test_client()
@@ -409,7 +410,7 @@ def test_cache_status_endpoint_exception(mock_db_cache, clean_env):
     os.environ['database'] = 'test_db'
 
     mock_db, mock_cache = mock_db_cache
-    mock_cache.set.side_effect = Exception("Redis down")
+    mock_cache.set.side_effect = RedisError("Redis down")
     
     app = create_app()
     client = app.test_client()
@@ -532,7 +533,7 @@ def test_run_app_function(clean_env, mock_db_cache):
         
         mock_create_app.assert_called_once()
         mock_app.run.assert_called_once_with(
-            host="0.0.0.0", 
-            port=8080, 
+            host="0.0.0.0",
+            port=8080,
             debug=True
         )

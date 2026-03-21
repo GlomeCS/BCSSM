@@ -20,6 +20,8 @@ from backend.bcssm_backend.routes.sections import (
     init_users_sections_routes
 )
 
+from redis.exceptions import RedisError
+
 from backend.bcssm_backend.utils import (
     get_all_sections, clear_user_cache, clear_duty_cache,
     clear_feedback_cache, clear_all_cache
@@ -93,7 +95,7 @@ def _setup_routes(app):
 
             return jsonify(health_info)
 
-        except (ConnectionError, TimeoutError, ValueError) as e:
+        except RedisError as e:
             app.logger.error("Health check failed: %s", e)
             return jsonify({
                 "status": "unhealthy",
@@ -136,7 +138,6 @@ def create_app():
     """
     load_dotenv()
 
-    # Your existing app setup (unchanged)
     here = Path(__file__).parent
     static_dir = here / "static"
     app = Flask(
@@ -211,8 +212,8 @@ def add_cache_management_routes(app):
                 "cache_type": cache_type
             })
 
-        except (ConnectionError, TimeoutError, ValueError, KeyError) as e:
-            app.logger.error(f"Cache clearing failed: {e}")
+        except RedisError as e:
+            app.logger.error("Cache clearing failed: %s", e)
             return jsonify({
                 "success": False,
                 "error": "Cache clearing failed"
@@ -244,8 +245,8 @@ def add_cache_management_routes(app):
 
             return jsonify(status_info)
 
-        except (ConnectionError, TimeoutError, ValueError, KeyError) as e:
-            app.logger.error(f"Cache status check failed: {e}")
+        except RedisError as e:
+            app.logger.error("Cache status check failed: %s", e)
             return jsonify({
                 "status": "unhealthy",
                 "error": "Cache status check failed",
