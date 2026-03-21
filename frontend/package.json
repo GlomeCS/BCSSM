@@ -30,7 +30,6 @@
     "@types/node": "^22.13.9",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
-    "@types/react-router-dom": "^5.3.3",
     "@vitejs/plugin-react-swc": "^3.8.0",
     "@vitest/coverage-v8": "^4.1.0",
     "connect-history-api-fallback": "^2.0.0",
