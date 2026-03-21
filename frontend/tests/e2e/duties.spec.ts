@@ -115,7 +115,7 @@ test('duties page shows the Today tab by default', async ({ page }) => {
 
 test('shows current user duty card under "Your Duties"', async ({ page }) => {
   await setupDutiesPage(page);
-  await expect(page.getByText('Your Duties')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Your Duties/i })).toBeVisible();
   await expect(page.getByText('Setup')).toBeVisible();
   await expect(page.getByText('Set up the hall and equipment before the session')).toBeVisible();
   await expect(page.getByText('Team 1 Duty')).toBeVisible();

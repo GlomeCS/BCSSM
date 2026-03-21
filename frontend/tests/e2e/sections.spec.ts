@@ -101,9 +101,9 @@ test('role filter dropdown exists with correct options', async ({ page }) => {
   const select = page.getByRole('combobox');
   await expect(select).toBeVisible();
   await expect(page.getByRole('option', { name: 'All Roles' })).toBeAttached();
-  await expect(page.getByRole('option', { name: 'Section Leaders Only' })).toBeAttached();
-  await expect(page.getByRole('option', { name: 'Team Leaders Only' })).toBeAttached();
-  await expect(page.getByRole('option', { name: 'Leaders Only' })).toBeAttached();
+  await expect(page.getByRole('option', { name: 'Section Leaders Only', exact: true })).toBeAttached();
+  await expect(page.getByRole('option', { name: 'Team Leaders Only', exact: true })).toBeAttached();
+  await expect(page.getByRole('option', { name: 'Leaders Only', exact: true })).toBeAttached();
 });
 
 test('filtering by Section Leader shows only section leaders', async ({ page }) => {
