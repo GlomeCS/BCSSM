@@ -172,7 +172,8 @@ def create_app():
     # Teardown and logging
     @app.teardown_appcontext
     def shutdown_session(exception):
-        db.session.remove()
+        if not app.config.get("TESTING"):
+            db.session.remove()
 
     configure_logging(app)
 
@@ -296,5 +297,5 @@ def run_app():
     debug_mode = os.getenv("FLASK_ENV") == "development"
     app.run(host="0.0.0.0", port=8080, debug=debug_mode)
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     run_app()
