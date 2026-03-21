@@ -99,7 +99,7 @@ const DevoFeedback: React.FC = () => {
         // Set user state from devos-feedback payload
         if (dataParsed.user) {
           setUserSection(dataParsed.user.section);
-          setIsLeaderState(dataParsed.is_leader);
+          setIsLeaderState(dataParsed.is_leader ?? false);
           setIsLoggedInState(true);
         }
         
