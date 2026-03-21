@@ -74,7 +74,7 @@ export default function DutiesPage() {
         const res = await apiGet("/api/duties/today");
         if (!res.ok) throw new Error(`Failed to fetch duties: ${res.statusText}`);
         
-        const data: any[] = await res.json();
+        const data = await res.json() as { id: string; name: string; duty_description: string; members: { name: string; week: string }[]; is_current_user: boolean; team_name?: string }[];
         console.log("Raw duties from API:", data);
         
         const mapped: Duty[] = data.map((d) => ({
