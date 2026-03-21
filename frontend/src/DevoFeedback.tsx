@@ -8,6 +8,13 @@ type FeedbackData = {
   [section: string]: string | null;
 };
 
+type DevoFeedbackResponse = {
+  feedback?: FeedbackData;
+  date?: string;
+  user?: { section: string };
+  is_leader?: boolean;
+};
+
 const DevoFeedback: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const currentDateStr = searchParams.get('date') || new Date().toISOString().split('T')[0];
@@ -67,7 +74,7 @@ const DevoFeedback: React.FC = () => {
         const text = await res.text();
         console.log('Raw devos-feedback response text:', text);
         
-        let dataParsed: { feedback?: FeedbackData; date?: string; user?: { section: string }; is_leader?: boolean };
+        let dataParsed: DevoFeedbackResponse;
         try {
           dataParsed = JSON.parse(text);
           // Handle double-encoded JSON string
