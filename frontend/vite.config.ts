@@ -1,14 +1,14 @@
-import { defineConfig, UserConfig } from 'vite';
+/// <reference types="vitest/config" />
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import { resolve } from 'path';
-import type { InlineConfig } from 'vitest/node';
 
 export default defineConfig(({ command }) => {
   const isServe = command === 'serve';
   const base = process.env.VITE_BASE_URL ?? '/';
   const apiBase = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8080';
 
-  const testConfig: InlineConfig = {
+  const testConfig = {
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
@@ -16,7 +16,7 @@ export default defineConfig(({ command }) => {
   };
 
   // Common configuration for both dev and production
-  const commonConfig: UserConfig = {
+  const commonConfig = {
     base,
     appType: 'spa',
     plugins: [react()],

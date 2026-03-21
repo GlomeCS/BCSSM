@@ -81,7 +81,7 @@ describe('Login', () => {
     );
   });
 
-  it('shows an error when login is attempted without selecting a user', async () => {
+  it('disables the Continue button until a user is selected', async () => {
     mockFetchUsers();
     renderLogin();
     await waitFor(() => screen.getByRole('button', { name: /continue/i }));

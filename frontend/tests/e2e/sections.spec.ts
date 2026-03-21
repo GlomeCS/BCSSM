@@ -118,13 +118,10 @@ test('filtering by Team Leader shows only team leaders', async ({ page }) => {
   await expect(page.getByText('Alice')).not.toBeVisible();
 });
 
-test('filtering by a role with no matches shows "No Results Found"', async ({ page }) => {
+test('filtering by Team Leader hides sections with no matching users', async ({ page }) => {
   await setupSectionsPage(page);
-  // Filter to Team Leader - only Bob qualifies. Then switch to Section Leader (no empty sections)
-  // Actually let's test with a filter that won't match any sections fully - Team Leader
-  // Juniors has no Team Leaders, so let's filter and check Juniors is gone
+  // Juniors has no Team Leaders, so it should be filtered out
   await page.selectOption('select#role-filter', 'Team Leader');
-  // Juniors has no team leaders, so it should be filtered out
   await expect(page.getByText('Juniors')).not.toBeVisible();
   await expect(page.getByText('Seniors')).toBeVisible();
 });
