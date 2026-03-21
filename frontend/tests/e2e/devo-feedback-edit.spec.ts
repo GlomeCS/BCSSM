@@ -1,11 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
 
-test.beforeEach(async ({ page }) => {
-  await page.route('**/get-users*', route =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ users: [] }) })
-  );
-});
-
 const EDIT_URL = '/react/devos-feedback/edit?date=2026-03-21&section=Seniors';
 
 const EXISTING_FEEDBACK_RESPONSE = {

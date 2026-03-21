@@ -36,14 +36,18 @@ export default defineConfig(({ command }) => {
     return {
       ...commonConfig,
       server: {
-        open: true,
-        proxy: {
-          '^/(get-|select-|devos-|duty-|api/)': {
-            target: apiBase,
-            changeOrigin: true,
-            secure: false,
+        open: !process.env.VITE_E2E,
+        // Omit the proxy entirely in E2E mode — all API calls are mocked by
+        // Playwright's page.route(), so there is no backend to forward to.
+        ...(!process.env.VITE_E2E && {
+          proxy: {
+            '^/(get-|select-|devos-|duty-|api/)': {
+              target: apiBase,
+              changeOrigin: true,
+              secure: false,
+            },
           },
-        },
+        }),
       },
     };
   }

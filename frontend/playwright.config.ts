@@ -22,7 +22,7 @@ export default defineConfig({
   // Snapshot directory for visual regression baselines
   snapshotDir: './tests/e2e/snapshots',
   webServer: {
-    command: 'npm run dev',
+    command: 'VITE_E2E=true npm run dev',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
