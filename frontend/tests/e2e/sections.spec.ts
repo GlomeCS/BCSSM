@@ -1,5 +1,11 @@
 import { test, expect, Page } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.route('**/get-users*', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ users: [] }) })
+  );
+});
+
 const SECTIONS_DATA = {
   sections: [
     {

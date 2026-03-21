@@ -1,5 +1,13 @@
 import { test, expect, Page } from '@playwright/test';
 
+// Prevent any unauthenticated redirect to /login from hitting the real proxy.
+// Login fetches /get-users on mount; without a backend this causes ECONNREFUSED.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/get-users*', route =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ users: [] }) })
+  );
+});
+
 const TODAY_DUTIES = [
   {
     id: '1',
