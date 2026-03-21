@@ -34,7 +34,7 @@ export const getCurrentUser = (): string | null => {
             ...existingData,
             user_name: currentUser
           });
-        } catch (e) {
+        } catch {
           // If not valid JSON, create new JSON body with username
           body = JSON.stringify({ user_name: currentUser });
           headers.set('Content-Type', 'application/json');
@@ -60,7 +60,7 @@ export const getCurrentUser = (): string | null => {
     return apiCall(url, { ...options, method: 'GET' });
   };
   
-  export const apiPost = (url: string, data: any = {}, options: RequestInit = {}) => {
+  export const apiPost = (url: string, data: Record<string, unknown> = {}, options: RequestInit = {}) => {
     const currentUser = getCurrentUser();
     const bodyData = currentUser ? { ...data, user_name: currentUser } : data;
     
