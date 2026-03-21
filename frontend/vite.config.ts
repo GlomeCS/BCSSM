@@ -18,7 +18,7 @@ export default defineConfig(({ command }) => {
   // Common configuration for both dev and production
   const commonConfig = {
     base,
-    appType: 'spa',
+    appType: 'spa' as const,
     plugins: [react()],
     resolve: {
       alias: {

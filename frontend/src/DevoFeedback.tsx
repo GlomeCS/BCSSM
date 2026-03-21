@@ -67,7 +67,7 @@ const DevoFeedback: React.FC = () => {
         const text = await res.text();
         console.log('Raw devos-feedback response text:', text);
         
-        let dataParsed: unknown;
+        let dataParsed: any;
         try {
           dataParsed = JSON.parse(text);
           // Handle double-encoded JSON string
