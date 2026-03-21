@@ -1,4 +1,6 @@
-# Improved app.py with better cache integration
+"""
+Improved app.py with better cache integration
+"""
 
 import logging
 import os
@@ -14,81 +16,55 @@ from backend.bcssm_backend.routes.routes import init_main_routes
 from backend.bcssm_backend.routes.users import init_users_routes
 from backend.bcssm_backend.routes.devos_feedback import init_feedback_routes
 from backend.bcssm_backend.routes.duties import init_duties_routes
-from backend.bcssm_backend.routes.sections import init_users_sections_routes
+from backend.bcssm_backend.routes.sections import (
+    init_users_sections_routes
+)
 
-from backend.bcssm_backend.utils import get_all_sections
+from redis.exceptions import RedisError
+
+from backend.bcssm_backend.utils import (
+    get_all_sections, clear_user_cache, clear_duty_cache,
+    clear_feedback_cache, clear_all_cache
+)
 
 
-def create_app():
-    load_dotenv()
+def _configure_database(app):
+    """Configure database settings for the Flask app."""
+    db_user = os.getenv("user")
+    db_password = os.getenv("password")
+    db_host = os.getenv("host")
+    db_port = os.getenv("port", "5432")
+    db_name = os.getenv("database")
 
-    # Your existing app setup (unchanged)
-    here = Path(__file__).parent
-    static_dir = here / "static"
-    app = Flask(
-        __name__,
-        static_folder=str(static_dir),
-        static_url_path="/static"
-    )
-    CORS(app)
-    
-    # Your existing config (unchanged)
-    env = os.environ.get('FLASK_ENV', 'development')
-    if env == 'development':
-        app.config.from_object(DevelopmentConfig)
-    elif env == 'testing':
-        app.config.from_object(TestingConfig)
-    elif env == 'production':
-        app.config.from_object(ProductionConfig)
-    else:
-        app.config.from_object(DevelopmentConfig)
-
-    # Your existing database config (unchanged)
-    USER = os.getenv("user")
-    PASSWORD = os.getenv("password")
-    HOST = os.getenv("host")
-    PORT = os.getenv("port", "5432")
-    DBNAME = os.getenv("database")
-
-    if not all([USER, PASSWORD, HOST, DBNAME]):
+    if not all([db_user, db_password, db_host, db_name]):
         raise RuntimeError("Missing required database environment variables.")
 
-    connection_url = f"postgresql://{USER}:{PASSWORD}@{HOST}:{PORT}/{DBNAME}"
+    connection_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     app.config['SQLALCHEMY_DATABASE_URI'] = connection_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # Your existing connection pooling (unchanged)
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        'pool_size': int(os.getenv('DB_POOL_SIZE', 3)),
-        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 7)),
-        'pool_timeout': int(os.getenv('DB_POOL_TIMEOUT', 30)),
-        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', 1800)),
+        'pool_size': int(os.getenv('DB_POOL_SIZE', '3')),
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', '7')),
+        'pool_timeout': int(os.getenv('DB_POOL_TIMEOUT', '30')),
+        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', '1800')),
         'pool_pre_ping': True,
     }
-    
-    # Your existing initialization (unchanged)
-    if not app.config.get("TESTING"):
-        db.init_app(app)
-    
-    cache.init_app(app)
 
-    # Your existing route initialization (unchanged)
+
+def _setup_routes(app):
+    """Set up all application routes."""
+    # Route initialization
     init_main_routes(app)
     init_users_routes(app)
     init_feedback_routes(app)
     init_duties_routes(app)
     init_users_sections_routes(app)
 
-    # Add cache management routes using your utils functions
+    # Add cache management routes
     add_cache_management_routes(app)
 
-    @app.teardown_appcontext
-    def shutdown_session(exception=None):
-        db.session.remove()
-
-    configure_logging(app)
-
-    # Your existing sections endpoint - remove decorator since get_all_sections already has caching
+    # Sections endpoint
     @app.route("/api/sections")
     def api_sections():
         """Return list of section names in configured display order."""
@@ -104,7 +80,7 @@ def create_app():
             cache.set('health_test', 'ok', timeout=10)
             cache_status = cache.get('health_test') == 'ok'
             cache.delete('health_test')
-            
+
             health_info = {
                 "status": "healthy",
                 "database": "connected",
@@ -112,32 +88,32 @@ def create_app():
                 "environment": os.getenv('FLASK_ENV', 'development'),
                 "redis_url": os.getenv('REDIS_URL', 'redis://localhost:6379')
             }
-            
+
             # Overall status based on components
             if not cache_status:
                 health_info["status"] = "degraded"
-            
+
             return jsonify(health_info)
-            
-        except Exception as e:
-            app.logger.error(f"Health check failed: {e}")
+
+        except RedisError as e:
+            app.logger.error("Health check failed: %s", e)
             return jsonify({
                 "status": "unhealthy",
                 "database": "unknown",
-                "cache": "unhealthy", 
+                "cache": "unhealthy",
                 "error": "Health check failed",
             }), 500
 
-    # Your existing React serving (unchanged)
+    # React serving route
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
     def serve_react(path):
         """ Serve React index.html for all unknown routes (supports React Router) """
         app.logger.info("React route fallback triggered for path: %s", path)
-        
+
         if path.startswith(('api/', 'get-', 'select-', 'devos-', 'duty-')):
             return app.send_static_file('index.html')
-        
+
         safe_path = os.path.normpath(path).lstrip("/\\")
         requested_path = os.path.join(app.static_folder, safe_path)
         requested_path = os.path.realpath(requested_path)  # Ensure absolute path resolution
@@ -145,29 +121,74 @@ def create_app():
             app.logger.warning("Attempted directory traversal detected: %s", path)
             return send_from_directory(app.static_folder, "index.html")
         if os.path.isfile(requested_path):
-            return send_from_directory(app.static_folder, os.path.relpath(requested_path, app.static_folder))
-        
+            return send_from_directory(
+                app.static_folder,
+                os.path.relpath(requested_path, app.static_folder)
+            )
+
         app.logger.info("React serving index.html for path: /%s", path)
         return send_from_directory(app.static_folder, "index.html")
+
+
+def create_app():
+    """Create and configure the Flask application.
+
+    Returns:
+        Flask: Configured Flask application instance.
+    """
+    load_dotenv()
+
+    here = Path(__file__).parent
+    static_dir = here / "static"
+    app = Flask(
+        __name__,
+        static_folder=str(static_dir),
+        static_url_path="/static"
+    )
+    CORS(app)
+
+    # Configure Flask app
+    env = os.environ.get('FLASK_ENV', 'development')
+    if env == 'development':
+        app.config.from_object(DevelopmentConfig)
+    elif env == 'testing':
+        app.config.from_object(TestingConfig)
+    elif env == 'production':
+        app.config.from_object(ProductionConfig)
+    else:
+        app.config.from_object(DevelopmentConfig)
+
+    # Configure database
+    _configure_database(app)
+
+    # Initialize extensions
+    if not app.config.get("TESTING"):
+        db.init_app(app)
+    cache.init_app(app)
+
+    # Set up routes
+    _setup_routes(app)
+
+    # Teardown and logging
+    @app.teardown_appcontext
+    def shutdown_session(exception):
+        if not app.config.get("TESTING"):
+            db.session.remove()
+
+    configure_logging(app)
 
     return app
 
 def add_cache_management_routes(app):
     """Add cache management endpoints using utils functions"""
-    
+
     @app.route("/api/admin/cache/clear", methods=['POST'])
     def clear_cache_endpoint():
         """Clear cache using utils functions with proper error handling"""
         try:
-            # Import here to avoid circular imports
-            from backend.bcssm_backend.utils import (
-                clear_user_cache, clear_duty_cache, 
-                clear_feedback_cache, clear_all_cache
-            )
-            
             data = request.get_json() if request.is_json else {}
             cache_type = data.get('type', 'all')
-            
+
             if cache_type == 'users':
                 clear_user_cache()
                 message = "Cleared user-related caches"
@@ -182,21 +203,21 @@ def add_cache_management_routes(app):
                 message = "Cleared all caches"
             else:
                 return jsonify({
-                    "success": False, 
+                    "success": False,
                     "error": "Invalid cache type. Use: users, duties, feedback, or all"
                 }), 400
-            
+
             return jsonify({
                 "success": True,
                 "message": message,
                 "cache_type": cache_type
             })
-            
-        except Exception as e:
-            app.logger.error(f"Cache clearing failed: {e}")
+
+        except RedisError as e:
+            app.logger.error("Cache clearing failed: %s", e)
             return jsonify({
-                "success": False, 
-                "error": f"Cache clearing failed"
+                "success": False,
+                "error": "Cache clearing failed"
             }), 500
 
     @app.route("/api/admin/cache/status", methods=['GET'])
@@ -208,7 +229,7 @@ def add_cache_management_routes(app):
             cache.set(test_key, 'working', timeout=10)
             test_result = cache.get(test_key)
             cache.delete(test_key)
-            
+
             status_info = {
                 "status": "healthy" if test_result == 'working' else "unhealthy",
                 "redis_url": os.getenv('REDIS_URL', 'redis://localhost:6379'),
@@ -217,16 +238,16 @@ def add_cache_management_routes(app):
                 "cache_type": "RedisCache",
                 "available_operations": {
                     "clear_users": "/api/admin/cache/clear (POST with type: users)",
-                    "clear_duties": "/api/admin/cache/clear (POST with type: duties)", 
+                    "clear_duties": "/api/admin/cache/clear (POST with type: duties)",
                     "clear_feedback": "/api/admin/cache/clear (POST with type: feedback)",
                     "clear_all": "/api/admin/cache/clear (POST with type: all)"
                 }
             }
-            
+
             return jsonify(status_info)
-            
-        except Exception as e:
-            app.logger.error(f"Cache status check failed: {e}")
+
+        except RedisError as e:
+            app.logger.error("Cache status check failed: %s", e)
             return jsonify({
                 "status": "unhealthy",
                 "error": "Cache status check failed",
@@ -244,7 +265,7 @@ def add_cache_management_routes(app):
             },
             "cached_functions": {
                 "get_all_users": "15 minutes",
-                "get_user_duty": "10 minutes", 
+                "get_user_duty": "10 minutes",
                 "get_todays_duties": "30 minutes",
                 "get_duty_schedule": "2 hours",
                 "get_all_sections": "1 hour",
@@ -259,13 +280,22 @@ def add_cache_management_routes(app):
         })
 
 def configure_logging(app=None):
+    """Configure logging for the application.
+
+    Args:
+        app: Flask application instance (optional).
+    """
     log_format = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
     logging.basicConfig(level=logging.DEBUG, format=log_format)
 
     if app:
         app.logger.setLevel(logging.DEBUG)
 
-if __name__ == "__main__":
-    app = create_app()    
+def run_app():
+    """Extracted main logic for easier testing"""
+    app = create_app()
     debug_mode = os.getenv("FLASK_ENV") == "development"
     app.run(host="0.0.0.0", port=8080, debug=debug_mode)
+
+if __name__ == "__main__":  # pragma: no cover
+    run_app()
