@@ -27,6 +27,8 @@ jobs:
         run: npm ci
       - name: Lint frontend
         run: npm run lint
+      - name: Type check
+        run: npx tsc --noEmit
       - name: Run Vitest
         run: npm run test:run
 
