@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useTheme } from "./useTheme";
 import "./Navbar.css";
 
 function Navbar() {
@@ -7,6 +8,7 @@ function Navbar() {
     const currentUser = localStorage.getItem("currentUser");
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
+    const { theme, toggleTheme } = useTheme();
 
     const handleLogout = () => {
         localStorage.removeItem("currentUser");
@@ -55,6 +57,9 @@ function Navbar() {
 
     if (!currentUser) return null;
 
+    const themeLabel = theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
+    const themeIcon = theme === 'light' ? '🌙' : '☀️';
+
     return (
         <nav className={`navbar ${isScrolled ? 'scrolled' : ''}`}>
             <div className="navbar-container">
@@ -68,6 +73,16 @@ function Navbar() {
                     <li><Link to="/duties" className="nav-link">Duties</Link></li>
                     <li><Link to="/react/devos-feedback" className="nav-link">Devos Feedback</Link></li>
                     <li><Link to="/sections" className="nav-link">Sections</Link></li>
+                    <li>
+                        <button
+                            onClick={toggleTheme}
+                            className="theme-toggle-btn"
+                            aria-label={themeLabel}
+                            title={themeLabel}
+                        >
+                            {themeIcon}
+                        </button>
+                    </li>
                     <li>
                         <button onClick={handleLogout} className="logout-btn">
                             Logout
@@ -111,6 +126,15 @@ function Navbar() {
                             <Link to="/sections" className="mobile-nav-link" onClick={closeMenu}>
                                 👥 Sections
                             </Link>
+                        </li>
+                        <li>
+                            <button
+                                onClick={toggleTheme}
+                                className="mobile-theme-toggle-btn"
+                                aria-label={themeLabel}
+                            >
+                                {themeIcon} {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+                            </button>
                         </li>
                         <li>
                             <button onClick={handleLogout} className="mobile-logout-btn">

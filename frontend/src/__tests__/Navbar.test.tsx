@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Navbar from '../Navbar';
+import { ThemeProvider } from '../ThemeContext';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -11,15 +12,18 @@ vi.mock('react-router-dom', async () => {
 
 function renderNavbar() {
   return render(
-    <MemoryRouter>
-      <Navbar />
-    </MemoryRouter>
+    <ThemeProvider>
+      <MemoryRouter>
+        <Navbar />
+      </MemoryRouter>
+    </ThemeProvider>
   );
 }
 
 describe('Navbar', () => {
   beforeEach(() => {
     localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
     mockNavigate.mockClear();
   });
 
@@ -76,5 +80,52 @@ describe('Navbar', () => {
       'href',
       '/react/devos-feedback'
     );
+  });
+
+  describe('theme toggle', () => {
+    it('renders theme toggle buttons (desktop and mobile)', () => {
+      localStorage.setItem('currentUser', 'Alice');
+      renderNavbar();
+      const toggleBtns = screen.getAllByRole('button', { name: 'Switch to dark mode' });
+      expect(toggleBtns.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('renders theme toggle button in mobile menu', () => {
+      localStorage.setItem('currentUser', 'Alice');
+      renderNavbar();
+      const toggleBtns = screen.getAllByRole('button', { name: /switch to dark mode/i });
+      expect(toggleBtns.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('desktop toggle switches to dark mode', () => {
+      localStorage.setItem('currentUser', 'Alice');
+      renderNavbar();
+      const toggleBtns = screen.getAllByRole('button', { name: 'Switch to dark mode' });
+      fireEvent.click(toggleBtns[0]);
+      expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+      expect(screen.getAllByRole('button', { name: 'Switch to light mode' }).length).toBeGreaterThan(0);
+    });
+
+    it('toggle switches back to light mode', () => {
+      localStorage.setItem('currentUser', 'Alice');
+      localStorage.setItem('theme', 'dark');
+      renderNavbar();
+      const toggleBtns = screen.getAllByRole('button', { name: 'Switch to light mode' });
+      fireEvent.click(toggleBtns[0]);
+      expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+    });
+
+    it('theme toggle is not rendered when not logged in', () => {
+      renderNavbar();
+      expect(screen.queryByRole('button', { name: /switch to/i })).toBeNull();
+    });
+
+    it('persists theme choice to localStorage', () => {
+      localStorage.setItem('currentUser', 'Alice');
+      renderNavbar();
+      const toggleBtn = screen.getAllByRole('button', { name: 'Switch to dark mode' })[0];
+      fireEvent.click(toggleBtn);
+      expect(localStorage.getItem('theme')).toBe('dark');
+    });
   });
 });
