@@ -93,6 +93,33 @@
   left: 100%;
 }
 
+.theme-toggle-btn {
+  background: none;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.theme-toggle-btn:hover {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.4);
+  transform: scale(1.05);
+}
+
+[data-theme="dark"] .theme-toggle-btn {
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+[data-theme="dark"] .theme-toggle-btn:hover {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
 .logout-btn {
   background: linear-gradient(135deg, #dc2626, #ef4444);
   color: white;
@@ -228,6 +255,30 @@
   text-decoration: none;
 }
 
+.mobile-theme-toggle-btn {
+  background: none;
+  border: none;
+  border-left: 3px solid transparent;
+  color: var(--color-text-primary);
+  font-weight: 500;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: var(--font-size-base);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  text-align: left;
+}
+
+.mobile-theme-toggle-btn:hover {
+  background: rgba(37, 99, 235, 0.05);
+  border-left-color: var(--color-accent);
+  transform: translateX(4px);
+}
+
 .mobile-logout-btn {
   background: linear-gradient(135deg, #dc2626, #ef4444);
   color: white;
@@ -289,10 +340,12 @@
   .navbar,
   .nav-link,
   .logout-btn,
+  .theme-toggle-btn,
   .mobile-menu-button,
   .hamburger-line,
   .mobile-menu,
   .mobile-nav-link,
+  .mobile-theme-toggle-btn,
   .mobile-logout-btn {
     transition-duration: 0.01ms !important;
   }
@@ -319,8 +372,10 @@
 
 .nav-link:focus,
 .logout-btn:focus,
+.theme-toggle-btn:focus,
 .mobile-menu-button:focus,
 .mobile-nav-link:focus,
+.mobile-theme-toggle-btn:focus,
 .mobile-logout-btn:focus {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;

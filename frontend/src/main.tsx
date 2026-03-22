@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { BrowserRouter } from "react-router-dom";
+import { ThemeProvider } from "./ThemeContext";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
 import "./shared.css";
@@ -15,8 +16,10 @@ if (!rootElement) {
 // Type assertion (`as HTMLElement`) ensures TypeScript knows `rootElement` is not `null`
 ReactDOM.createRoot(rootElement as HTMLElement).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ThemeProvider>
   </React.StrictMode>
 );

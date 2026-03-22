@@ -81,18 +81,22 @@ function Home() {
 
   if (loading) {
     return (
-      <div className="home-page">
-        <div className="home-loading">
-          <div className="loading-spinner"></div>
-          <p>Loading your dashboard...</p>
+      <>
+        <Navbar />
+        <div className="home-page">
+          <div className="home-loading">
+            <div className="loading-spinner"></div>
+            <p>Loading your dashboard...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="home-page">
+    <>
       <Navbar />
+      <div className="home-page">
       <header className="hero">
         <div className="hero-content">
           <h1>Welcome to Ballyholme CSSM 2025</h1>
@@ -160,7 +164,8 @@ function Home() {
           </div>
         )}
       </section>
-    </div>
+      </div>
+    </>
   );
 }
 

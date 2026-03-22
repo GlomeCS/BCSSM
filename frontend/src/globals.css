@@ -9,6 +9,8 @@
 }
 
 :root {
+  color-scheme: light;
+
   /* Summer blue and yellow color palette with enhanced contrast */
   --color-primary: #2563eb;           /* Ocean blue */
   --color-primary-dark: #1d4ed8;      /* Deep ocean blue */
@@ -83,4 +85,254 @@ body {
   display: flex;
   flex-direction: column;
   position: relative;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK MODE
+   Activated by: [data-theme="dark"] on the <html> element.
+   Controlled by: ThemeContext (reads localStorage + prefers-color-scheme).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Dark mode CSS variable overrides ──────────────────────────────────── */
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-primary: #3b82f6;
+  --color-primary-dark: #2563eb;
+  --color-primary-light: #60a5fa;
+  --color-secondary: #1e293b;
+  --color-accent: #fbbf24;
+  --color-accent-light: #fcd34d;
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+
+  --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  --bg-glass: rgba(15, 23, 42, 0.95);
+  --bg-card: rgba(30, 41, 59, 0.98);
+
+  --color-text-primary: #f1f5f9;
+  --color-text-secondary: #94a3b8;
+  --color-text-muted: #64748b;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Navbar ─────────────────────────────────────────────────────────────── */
+
+[data-theme="dark"] .navbar {
+  background: rgba(15, 23, 42, 0.90);
+  border-bottom-color: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .navbar.scrolled {
+  background: rgba(15, 23, 42, 0.97);
+  border-bottom-color: rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="dark"] .nav-link:hover {
+  color: var(--color-primary-light);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+[data-theme="dark"] .mobile-menu {
+  background: rgba(15, 23, 42, 0.98);
+  border-bottom-color: rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .mobile-nav-link:hover {
+  background: rgba(59, 130, 246, 0.08);
+  border-left-color: var(--color-primary-light);
+  color: var(--color-primary-light);
+}
+
+/* ── Form inputs (hardcoded white backgrounds) ──────────────────────────── */
+
+[data-theme="dark"] .date-input,
+[data-theme="dark"] .user-select,
+[data-theme="dark"] .role-filter,
+[data-theme="dark"] .feedback-textarea {
+  background: #1e293b;
+  color: var(--color-text-primary);
+  border-color: #334155;
+}
+
+[data-theme="dark"] .date-input option,
+[data-theme="dark"] .user-select option,
+[data-theme="dark"] .role-filter option {
+  background: #1e293b;
+  color: var(--color-text-primary);
+}
+
+/* ── Home page sections ─────────────────────────────────────────────────── */
+
+[data-theme="dark"] .forms-section {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color: #334155;
+}
+
+[data-theme="dark"] .bank-details-section {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color: #334155;
+}
+
+[data-theme="dark"] .bank-details-card {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .bank-field label {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .bank-field-value {
+  background-color: #1e293b;
+  border-color: #334155;
+  color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .bank-note {
+  background-color: rgba(251, 191, 36, 0.1);
+  border-color: var(--color-warning);
+  color: #fcd34d;
+}
+
+/* ── Duties page: tab navigation ────────────────────────────────────────── */
+
+[data-theme="dark"] .tab-navigation {
+  border-bottom-color: #334155;
+}
+
+[data-theme="dark"] .tab-button {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="dark"] .tab-button:hover {
+  color: var(--color-text-primary);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .tab-button.active {
+  color: var(--color-primary);
+  background-color: rgba(59, 130, 246, 0.1);
+  border-bottom-color: var(--color-primary);
+}
+
+/* ── Duties page: schedule table ────────────────────────────────────────── */
+
+[data-theme="dark"] .schedule-table-container {
+  background: #1e293b;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .schedule-table th {
+  background: #0f172a;
+  color: var(--color-text-secondary);
+  border-bottom-color: #334155;
+}
+
+[data-theme="dark"] .schedule-table thead th::after {
+  background: #334155;
+}
+
+[data-theme="dark"] .schedule-row {
+  border-bottom-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .schedule-row:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .date-cell {
+  color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .week-badge-small.week-a {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+[data-theme="dark"] .week-badge-small.week-b {
+  background-color: rgba(52, 211, 153, 0.15);
+  color: #6ee7b7;
+}
+
+[data-theme="dark"] .week-badge-small.prep-week {
+  background-color: rgba(251, 191, 36, 0.15);
+  color: #fcd34d;
+}
+
+[data-theme="dark"] .team-number {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--color-primary-light);
+}
+
+[data-theme="dark"] .no-duty {
+  color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .member-tag {
+  background: #1e293b;
+  color: var(--color-text-secondary);
+  border-color: #334155;
+}
+
+[data-theme="dark"] .member-tag:hover {
+  background: #334155;
+}
+
+[data-theme="dark"] .member-name {
+  color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .member-week {
+  color: var(--color-text-secondary);
+  background: #334155;
+}
+
+/* ── Gradient text headings ─────────────────────────────────────────────── */
+/* The deep-blue → yellow gradient used in light mode has a near-invisible
+   dark-blue start (#1d4ed8 / #2563eb) against dark backgrounds. In dark mode
+   we switch to sky-blue → amber so both ends are vivid and readable. */
+
+[data-theme="dark"] .navbar-brand {
+  background: linear-gradient(135deg, #93c5fd, #fbbf24);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+[data-theme="dark"] .hero-content h1,
+[data-theme="dark"] .page-title,
+[data-theme="dark"] .duties-title,
+[data-theme="dark"] .edit-title {
+  background: linear-gradient(135deg, #93c5fd, #fbbf24);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Login title uses a hardcoded blue → pink gradient; lighten the blue end */
+[data-theme="dark"] .login-title {
+  background: linear-gradient(135deg, #bfdbfe, #f9a8d4);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Plain blue text (--color-primary-dark is too dark on dark bg) ───────── */
+
+[data-theme="dark"] .user-info strong,
+[data-theme="dark"] .leader-name,
+[data-theme="dark"] .info-value {
+  color: var(--color-primary-light);
+}
+
+/* ── Buttons whose gradient runs to --color-text-primary (near-white in dark) */
+
+[data-theme="dark"] .home-btn {
+  background: linear-gradient(135deg, #475569, #334155);
 }
