@@ -130,7 +130,6 @@ export default function UsersBySectionPage() {
 
   const userMatchesWeek = (user: User, week: string): boolean => {
     if (week === "all") return true;
-    if (!user.week) return true; // no week assigned (e.g. Section/Team Leaders), always show
     return user.week === week || user.week === 'Both';
   };
 
@@ -151,7 +150,13 @@ export default function UsersBySectionPage() {
         }
 
         if (filterWeek !== "all") {
-          users = users.filter(user => userMatchesWeek(user, filterWeek));
+          const matched = users.filter(user => user.week && userMatchesWeek(user, filterWeek));
+          if (matched.length > 0) {
+            const unassigned = users.filter(user => !user.week);
+            users = [...matched, ...unassigned];
+          } else {
+            users = [];
+          }
         }
 
         return { ...section, users, filtered_count: users.length };
@@ -266,26 +271,39 @@ export default function UsersBySectionPage() {
                 const sectionLeader = getSectionLeader(section.users);
                 const otherUsers = getOtherUsers(section.users);
 
+                const triggerId = `section-trigger-${section.name.replace(/\s+/g, '-')}`;
+                const panelId = `section-panel-${section.name.replace(/\s+/g, '-')}`;
+                const userCount = isFiltering ? section.users.length : section.user_count;
+
                 return (
                   <div key={section.name} className={`section-card ${isCollapsed ? 'section-card--collapsed' : ''}`}>
-                    <button
-                      className="section-card-header section-card-header--clickable"
-                      onClick={() => toggleSection(section.name)}
-                      aria-expanded={!isCollapsed}
-                    >
-                      <h3 className="section-title">{section.name}</h3>
-                      <div className="section-header-right">
-                        <div className="user-count-badge">
-                          {isFiltering ? section.users.length : section.user_count} user{(isFiltering ? section.users.length : section.user_count) !== 1 ? 's' : ''}
-                        </div>
-                        <span className={`collapse-chevron ${isCollapsed ? 'collapse-chevron--collapsed' : ''}`}>
-                          ▼
+                    <h3 className="section-title">
+                      <button
+                        id={triggerId}
+                        className="section-card-header section-card-header--clickable"
+                        onClick={() => toggleSection(section.name)}
+                        aria-expanded={!isCollapsed}
+                        aria-controls={panelId}
+                      >
+                        <span className="section-title-text">{section.name}</span>
+                        <span className="section-header-right">
+                          <span className="user-count-badge">
+                            {userCount} user{userCount !== 1 ? 's' : ''}
+                          </span>
+                          <span className={`collapse-chevron ${isCollapsed ? 'collapse-chevron--collapsed' : ''}`}>
+                            ▼
+                          </span>
                         </span>
-                      </div>
-                    </button>
+                      </button>
+                    </h3>
 
                     {!isCollapsed && (
-                      <div className="section-card-body">
+                      <div
+                        id={panelId}
+                        role="region"
+                        aria-labelledby={triggerId}
+                        className="section-card-body"
+                      >
                         {section.users.length > 0 ? (
                           <div className="users-list">
                             {sectionLeader && (

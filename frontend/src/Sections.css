@@ -195,11 +195,17 @@
 }
 
 .section-title {
+  margin: 0;
+  display: block;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.section-title-text {
+  flex: 1;
   font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--color-text-primary);
-  margin: 0;
-  flex: 1;
 }
 
 .user-count-badge {
@@ -475,8 +481,11 @@
 @media (prefers-reduced-motion: reduce) {
   .section-card,
   .filter-container,
-  .user-item {
-    transition-duration: 0.01ms !important;
+  .user-item,
+  .toggle-all-btn,
+  .collapse-chevron {
+    transition: none !important;
+    animation: none !important;
   }
 }
 
