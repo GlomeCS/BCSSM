@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { ThemeProvider, useTheme } from '../ThemeContext';
+import { ThemeProvider } from '../ThemeContext';
+import { useTheme } from '../useTheme';
 
 // Helper to create a matchMedia mock that captures the 'change' listener
 function mockMatchMediaWithListener(initialDark: boolean) {
   let changeHandler: ((e: Partial<MediaQueryListEvent>) => void) | null = null;
+  const removeEventListenerMock = vi.fn();
   vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
     matches: query === '(prefers-color-scheme: dark)' ? initialDark : false,
     media: query,
@@ -16,10 +18,14 @@ function mockMatchMediaWithListener(initialDark: boolean) {
         changeHandler = handler;
       }
     ),
-    removeEventListener: vi.fn(),
+    removeEventListener: removeEventListenerMock,
     dispatchEvent: vi.fn(),
   } as unknown as MediaQueryList));
-  return { fireChange: (matches: boolean) => act(() => { changeHandler?.({ matches }); }) };
+  return {
+    fireChange: (matches: boolean) => act(() => { changeHandler?.({ matches }); }),
+    removeEventListenerMock,
+    getHandler: () => changeHandler,
+  };
 }
 
 // Helper component that exposes theme state
@@ -58,16 +64,7 @@ describe('ThemeContext', () => {
     });
 
     it('defaults to dark when no localStorage value and system prefers dark', () => {
-      vi.spyOn(window, 'matchMedia').mockImplementation((query: string) => ({
-        matches: query === '(prefers-color-scheme: dark)',
-        media: query,
-        onchange: null,
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      } as MediaQueryList));
+      mockMatchMediaWithListener(true);
       renderWithProvider();
       expect(screen.getByTestId('theme')).toHaveTextContent('dark');
     });
@@ -203,6 +200,15 @@ describe('ThemeContext', () => {
       renderWithProvider();
       fireChange(true);
       expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    });
+
+    it('removes the OS preference listener on unmount', () => {
+      const { removeEventListenerMock, getHandler } = mockMatchMediaWithListener(false);
+      const { unmount } = renderWithProvider();
+      const handler = getHandler();
+      expect(handler).not.toBeNull();
+      unmount();
+      expect(removeEventListenerMock).toHaveBeenCalledWith('change', handler);
     });
   });
 });

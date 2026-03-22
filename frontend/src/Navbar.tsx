@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useTheme } from "./ThemeContext";
+import { useTheme } from "./useTheme";
 import "./Navbar.css";
 
 function Navbar() {
