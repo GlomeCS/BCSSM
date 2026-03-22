@@ -90,9 +90,11 @@ test('lists users within each section', async ({ page }) => {
   await expect(page.getByText('Frank')).toBeVisible();
 });
 
+// ── Role filter ──────────────────────────────────────────────────────────────
+
 test('role filter dropdown exists with correct options', async ({ page }) => {
   await setupSectionsPage(page);
-  const select = page.getByRole('combobox');
+  const select = page.locator('select#role-filter');
   await expect(select).toBeVisible();
   await expect(page.getByRole('option', { name: 'All Roles' })).toBeAttached();
   await expect(page.getByRole('option', { name: 'Section Leaders Only', exact: true })).toBeAttached();
@@ -103,10 +105,8 @@ test('role filter dropdown exists with correct options', async ({ page }) => {
 test('filtering by Section Leader shows only section leaders', async ({ page }) => {
   await setupSectionsPage(page);
   await page.selectOption('select#role-filter', 'Section Leader');
-  // Section leaders should be visible
   await expect(page.getByText('Alice')).toBeVisible();
   await expect(page.getByText('Eve')).toBeVisible();
-  // Non-leaders should not be visible
   await expect(page.getByText('Bob')).not.toBeVisible();
   await expect(page.getByText('Carol')).not.toBeVisible();
 });
@@ -120,11 +120,110 @@ test('filtering by Team Leader shows only team leaders', async ({ page }) => {
 
 test('filtering by Team Leader hides sections with no matching users', async ({ page }) => {
   await setupSectionsPage(page);
-  // Juniors has no Team Leaders, so it should be filtered out
   await page.selectOption('select#role-filter', 'Team Leader');
   await expect(page.getByText('Juniors')).not.toBeVisible();
   await expect(page.getByText('Seniors')).toBeVisible();
 });
+
+// ── Week filter ──────────────────────────────────────────────────────────────
+
+test('week filter dropdown exists with correct options', async ({ page }) => {
+  await setupSectionsPage(page);
+  const select = page.locator('select#week-filter');
+  await expect(select).toBeVisible();
+  await expect(page.getByRole('option', { name: 'All Weeks' })).toBeAttached();
+  await expect(page.getByRole('option', { name: 'Week A', exact: true })).toBeAttached();
+  await expect(page.getByRole('option', { name: 'Week B', exact: true })).toBeAttached();
+});
+
+test('filtering by Week A shows Week A and Both users', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.selectOption('select#week-filter', 'Week A');
+  // Week A leader
+  await expect(page.getByText('Carol')).toBeVisible();
+  // Both leader — should appear in Week A filter
+  await expect(page.getByText('Frank')).toBeVisible();
+  // Week B leader — should be hidden
+  await expect(page.getByText('Dave')).not.toBeVisible();
+});
+
+test('filtering by Week B shows Week B and Both users', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.selectOption('select#week-filter', 'Week B');
+  // Week B leader
+  await expect(page.getByText('Dave')).toBeVisible();
+  // Both leader — should appear in Week B filter
+  await expect(page.getByText('Frank')).toBeVisible();
+  // Week A leader — should be hidden
+  await expect(page.getByText('Carol')).not.toBeVisible();
+  await expect(page.getByText('Grace')).not.toBeVisible();
+});
+
+test('week filter shows section leaders regardless of week', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.selectOption('select#week-filter', 'Week A');
+  // Section leaders have no week, so they always show
+  await expect(page.getByText('Alice')).toBeVisible();
+  await expect(page.getByText('Eve')).toBeVisible();
+});
+
+test('week filter hides sections where no users match', async ({ page }) => {
+  await setupSectionsPage(page);
+  // Filter to Leaders Only + Week B — Juniors has Frank (Both) so stays; Seniors has Dave (Week B) so stays
+  // But if we filter Leaders Only + Week A, Juniors has Frank (Both) + Grace (Week A), Seniors has Carol (Week A)
+  // Let's test: Leaders Only + Week B — Juniors has Frank only (Both maps to B), Seniors has Dave
+  await page.selectOption('select#role-filter', 'Leader');
+  await page.selectOption('select#week-filter', 'Week B');
+  await expect(page.getByText('Dave')).toBeVisible();
+  await expect(page.getByText('Frank')).toBeVisible();
+  await expect(page.getByText('Grace')).not.toBeVisible();
+});
+
+// ── Collapse / expand ────────────────────────────────────────────────────────
+
+test('clicking a section header collapses and hides its users', async ({ page }) => {
+  await setupSectionsPage(page);
+  await expect(page.getByText('Alice')).toBeVisible();
+  // Click the Seniors header button to collapse it
+  await page.getByRole('button', { name: /Seniors/ }).click();
+  await expect(page.getByText('Alice')).not.toBeVisible();
+  await expect(page.getByText('Bob')).not.toBeVisible();
+});
+
+test('clicking a collapsed section header expands it again', async ({ page }) => {
+  await setupSectionsPage(page);
+  const seniorsHeader = page.getByRole('button', { name: /Seniors/ });
+  await seniorsHeader.click();
+  await expect(page.getByText('Alice')).not.toBeVisible();
+  await seniorsHeader.click();
+  await expect(page.getByText('Alice')).toBeVisible();
+});
+
+test('collapse all button hides all section bodies', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.getByRole('button', { name: /Collapse All/i }).click();
+  await expect(page.getByText('Alice')).not.toBeVisible();
+  await expect(page.getByText('Eve')).not.toBeVisible();
+});
+
+test('expand all button after collapse all restores all section bodies', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.getByRole('button', { name: /Collapse All/i }).click();
+  await page.getByRole('button', { name: /Expand All/i }).click();
+  await expect(page.getByText('Alice')).toBeVisible();
+  await expect(page.getByText('Eve')).toBeVisible();
+});
+
+test('collapsing a section keeps other sections visible', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.getByRole('button', { name: /Seniors/ }).click();
+  // Seniors collapsed, Juniors still expanded
+  await expect(page.getByText('Alice')).not.toBeVisible();
+  await expect(page.getByText('Eve')).toBeVisible();
+  await expect(page.getByText('Frank')).toBeVisible();
+});
+
+// ── Visual snapshots ─────────────────────────────────────────────────────────
 
 test('sections page visual snapshot - all roles', async ({ page }) => {
   await setupSectionsPage(page);
@@ -137,6 +236,19 @@ test('sections page visual snapshot - section leaders only', async ({ page }) =>
   await page.selectOption('select#role-filter', 'Section Leader');
   await expect(page.getByText('Alice')).toBeVisible();
   await expect(page).toHaveScreenshot('sections-leaders-only.png', { fullPage: true });
+});
+
+test('sections page visual snapshot - week a filter', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.selectOption('select#week-filter', 'Week A');
+  await expect(page.getByText('Carol')).toBeVisible();
+  await expect(page).toHaveScreenshot('sections-week-a.png', { fullPage: true });
+});
+
+test('sections page visual snapshot - collapsed', async ({ page }) => {
+  await setupSectionsPage(page);
+  await page.getByRole('button', { name: /Collapse All/i }).click();
+  await expect(page).toHaveScreenshot('sections-collapsed.png', { fullPage: true });
 });
 
 test('sections page visual snapshot - mobile', async ({ page, isMobile }) => {
