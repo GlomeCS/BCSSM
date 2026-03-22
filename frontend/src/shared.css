@@ -152,7 +152,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .loading-spinner,
-  .button-spinner {
+  .button-spinner,
+  .error-message,
+  .page-header::before {
     animation: none;
+    transition: none;
   }
 }

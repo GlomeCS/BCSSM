@@ -320,7 +320,9 @@
 
   .edit-title {
     background: none;
-    -webkit-text-fill-color: black;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-fill-color: currentColor;
     color: black;
   }
 
@@ -333,8 +335,8 @@
     border: 2px solid black;
   }
 
-  .cancel-btn,
-  .save-btn {
+  .edit-feedback-page .cancel-btn,
+  .edit-feedback-page .save-btn {
     background: black;
     color: white;
   }
