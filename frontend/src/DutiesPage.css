@@ -1,0 +1,642 @@
+/* ── Duties page ────────────────────────────────────────────────────────── */
+
+.duties-page {
+  min-height: 100vh;
+  padding: var(--space-16) var(--space-4) var(--space-8);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.duties-header {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-8);
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.duties-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent), var(--color-success));
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
+}
+
+.duties-header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.duties-title {
+  font-size: clamp(var(--font-size-2xl), 4vw, var(--font-size-4xl));
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-primary-dark), var(--color-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: var(--space-2);
+  line-height: 1.2;
+}
+
+.duties-date {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  margin: 0;
+  opacity: 0.8;
+}
+
+/* ── Tab navigation ─────────────────────────────────────────────────────── */
+
+.tab-navigation {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.tab-button {
+  padding: 12px 24px;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 3px solid transparent;
+}
+
+.tab-button:hover {
+  color: #374151;
+  background-color: #f9fafb;
+}
+
+.tab-button.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  background-color: #eff6ff;
+}
+
+/* ── Main content ───────────────────────────────────────────────────────── */
+
+.duties-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+/* ── Duties sections ────────────────────────────────────────────────────── */
+
+.duties-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.section-title {
+  font-size: var(--font-size-2xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4) 0;
+}
+
+.section-icon {
+  font-size: 1.2em;
+}
+
+/* ── Duties grid ────────────────────────────────────────────────────────── */
+
+.duties-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: var(--space-6);
+}
+
+/* ── Duty cards ─────────────────────────────────────────────────────────── */
+
+.duty-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.duty-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+
+.your-duty-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent));
+}
+
+.other-duty-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-success), #059669);
+}
+
+.duty-card-header {
+  padding: var(--space-4) var(--space-6);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.03), rgba(234, 179, 8, 0.03));
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.duty-name {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.duty-badge {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.your-duty-badge {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.other-duty-badge {
+  background: linear-gradient(135deg, var(--color-success), #059669);
+  color: white;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
+.duty-card-body {
+  padding: var(--space-6);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.duty-description {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.duty-members {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.members-label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.members-list-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.member-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #e2e8f0;
+  transition: background-color 0.2s ease;
+}
+
+.member-tag:hover {
+  background: #e2e8f0;
+}
+
+.member-name {
+  color: #1e293b;
+}
+
+.member-week {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 2px 4px;
+  background: #e2e8f0;
+  border-radius: 4px;
+}
+
+/* ── No duties message ──────────────────────────────────────────────────── */
+
+.no-duties-message {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-xl);
+  padding: var(--space-12) var(--space-8);
+  text-align: center;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  opacity: 0.8;
+}
+
+.no-duties-icon {
+  font-size: 3rem;
+  opacity: 0.6;
+}
+
+.no-duties-title {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.no-duties-text {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 400px;
+}
+
+/* ── Schedule section ───────────────────────────────────────────────────── */
+
+.schedule-section {
+  margin-top: 24px;
+}
+
+.schedule-table-container {
+  margin-top: 16px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: auto;
+  max-height: 70vh;
+}
+
+.schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.schedule-table th {
+  background: #f8fafc;
+  padding: 16px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.schedule-table thead th::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.date-column {
+  width: 15%;
+}
+
+.duty-column {
+  width: auto;
+}
+
+.schedule-row {
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s ease;
+}
+
+.schedule-row:hover {
+  background-color: #f9fafb;
+}
+
+.schedule-row:last-child {
+  border-bottom: none;
+}
+
+.schedule-table td {
+  padding: 12px;
+  vertical-align: top;
+}
+
+.date-cell {
+  font-weight: 500;
+  color: #374151;
+}
+
+.date-with-week {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.date-text {
+  font-size: 14px;
+}
+
+.week-badge-small {
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  align-self: flex-start;
+}
+
+.week-badge-small.week-a {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.week-badge-small.week-b {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.week-badge-small.prep-week {
+  background-color: #fef9c3;
+  color: #ca8a04;
+}
+
+.duty-cell {
+  text-align: center;
+}
+
+.team-number {
+  display: inline-block;
+  background: #eff6ff;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  min-width: 24px;
+  text-align: center;
+}
+
+.no-duty {
+  color: #d1d5db;
+  font-size: 14px;
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.duties-footer {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-md);
+}
+
+.footer-content {
+  text-align: center;
+}
+
+.footer-text {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  margin: 0;
+  font-style: italic;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .duties-page {
+    padding: var(--space-16) var(--space-3) var(--space-6);
+    gap: var(--space-6);
+  }
+
+  .duties-header {
+    padding: var(--space-6);
+    border-radius: var(--radius-xl);
+  }
+
+  .duties-main {
+    gap: var(--space-8);
+  }
+
+  .duties-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .duty-card-header {
+    padding: var(--space-3) var(--space-4);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .duty-badge {
+    align-self: flex-end;
+  }
+
+  .no-duties-message {
+    padding: var(--space-8) var(--space-4);
+  }
+
+  .tab-navigation {
+    flex-direction: column;
+  }
+
+  .tab-button {
+    text-align: left;
+  }
+
+  .schedule-table-container {
+    overflow-x: auto;
+  }
+
+  .schedule-table {
+    min-width: 600px;
+  }
+
+  .date-column {
+    width: 120px;
+    min-width: 120px;
+  }
+
+  .duty-column {
+    min-width: 70px;
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+
+  .duty-cell {
+    padding: 8px 4px;
+  }
+
+  .team-number {
+    font-size: 12px;
+    padding: 3px 6px;
+    min-width: 16px;
+  }
+
+  .date-with-week {
+    gap: 2px;
+  }
+
+  .date-text {
+    font-size: 13px;
+  }
+
+  .week-badge-small {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+
+  .member-tag {
+    font-size: 12px;
+    padding: 3px 6px;
+    gap: 4px;
+  }
+
+  .member-week {
+    font-size: 11px;
+    padding: 1px 3px;
+  }
+}
+
+@media (max-width: 480px) {
+  .duties-page {
+    padding: var(--space-16) var(--space-2) var(--space-4);
+  }
+
+  .duties-header {
+    padding: var(--space-4);
+  }
+
+  .duty-card-body {
+    padding: var(--space-4);
+  }
+
+  .duties-grid {
+    gap: var(--space-3);
+  }
+
+  .section-title {
+    font-size: var(--font-size-xl);
+  }
+
+  .member-tag {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+}
+
+/* ── Accessibility ──────────────────────────────────────────────────────── */
+
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .duty-card {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .duty-card,
+  .duties-header,
+  .duties-footer,
+  .no-duties-message {
+    background: white;
+    border: 2px solid black;
+  }
+
+  .duties-title,
+  .section-title,
+  .duty-name,
+  .duty-description {
+    color: black;
+  }
+
+  .duty-badge {
+    background: black;
+    color: white;
+  }
+}
+
+.duty-card:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

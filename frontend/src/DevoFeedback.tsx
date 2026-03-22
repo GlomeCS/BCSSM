@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-// Import the API utilities that automatically include username
 import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from '../api';
+import "./DevoFeedback.css";
 
 type FeedbackData = {
   [section: string]: string | null;

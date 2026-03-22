@@ -1,8 +1,8 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-// Import the API utilities that automatically include username
 import { apiGet, apiPost, getCurrentUser, isLoggedIn, validateAuth } from '../api';
+import "./DevoFeedbackEdit.css";
 
 const DevoFeedbackEdit: React.FC = () => {
   const [searchParams] = useSearchParams();
