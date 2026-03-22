@@ -28,60 +28,43 @@ export default function UsersBySectionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterRole, setFilterRole] = useState<string>("all");
+  const [filterWeek, setFilterWeek] = useState<string>("all");
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const navigate = useNavigate();
 
   useEffect(() => {
     const initializePage = async () => {
-      // Check if user is logged in using the same method as other pages
       if (!isLoggedIn()) {
-        console.log("No user logged in, redirecting to login");
         navigate("/login");
         return;
       }
-      
+
       const user = getCurrentUser();
-      console.log("Current user from localStorage:", user);
-      
       if (!user) {
         navigate("/login");
         return;
       }
-      
-      // Validate that the user is still valid
+
       const isValid = await validateAuth();
       if (!isValid) {
-        console.log("User validation failed, redirecting to login");
         localStorage.clear();
         navigate("/login");
         return;
       }
 
-      // Now load the sections data
       await fetchUsersBySection();
     };
 
     const fetchUsersBySection = async () => {
       try {
-        // Add cache busting parameter to force fresh data
         const timestamp = new Date().getTime();
-        // Use apiGet which automatically includes username in header/params
         const res = await apiGet(`/api/users/by-section?t=${timestamp}`);
         if (!res.ok) throw new Error(`Failed to fetch users: ${res.statusText}`);
-        
+
         const data: SectionData = await res.json();
-        console.log("Users by section data:", data);
-        
-        // Debug: Log all users and their roles
-        data.sections.forEach(section => {
-          console.log(`Section: ${section.name}`);
-          section.users.forEach(user => {
-            console.log(`  User: ${user.name}, Role: ${user.role}, Week: ${user.week}`);
-          });
-        });
-        
         setSectionsData(data);
-        
+
       } catch (err) {
         console.error("Error fetching users by section:", err);
         setError((err as Error).message);
@@ -93,8 +76,19 @@ export default function UsersBySectionPage() {
     initializePage();
   }, [navigate]);
 
+  const toggleSection = (sectionName: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionName)) {
+        next.delete(sectionName);
+      } else {
+        next.add(sectionName);
+      }
+      return next;
+    });
+  };
+
   const getSectionLeader = (users: User[]): User | null => {
-    // Look for both 'Section Leader' and 'Admin' (Admin gets displayed as Section Leader)
     return users.find(user => user.role === 'Section Leader') || null;
   };
 
@@ -104,7 +98,7 @@ export default function UsersBySectionPage() {
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'Section Leader': return 'bg-purple-100 text-purple-800 border-purple-200'; // This now includes Admin users
+      case 'Section Leader': return 'bg-purple-100 text-purple-800 border-purple-200';
       case 'Team Leader': return 'bg-blue-100 text-blue-800 border-blue-200';
       case 'Leader': return 'bg-green-100 text-green-800 border-green-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
@@ -115,23 +109,18 @@ export default function UsersBySectionPage() {
     switch (week) {
       case 'Week A': return 'bg-green-100 text-green-800 border-green-200';
       case 'Week B': return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'Both': return 'bg-indigo-100 text-indigo-800 border-indigo-200'; // Changed to indigo to avoid conflict
+      case 'Both': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
-  // Function to determine what to display in the badge
   const getBadgeContent = (user: User) => {
-    console.log(`getBadgeContent for ${user.name}: role=${user.role}, week=${user.week}`);
     if (user.role === 'Leader' && user.week) {
-      console.log(`Returning week: ${user.week}`);
       return user.week;
     }
-    console.log(`Returning role: ${user.role}`);
     return user.role;
   };
 
-  // Function to get the appropriate badge color
   const getBadgeColor = (user: User) => {
     if (user.role === 'Leader' && user.week) {
       return getWeekBadgeColor(user.week);
@@ -139,32 +128,53 @@ export default function UsersBySectionPage() {
     return getRoleBadgeColor(user.role);
   };
 
-  // Filter sections based on role filter
+  const userMatchesWeek = (user: User, week: string): boolean => {
+    if (week === "all") return true;
+    if (!user.week) return true; // no week assigned (e.g. Section/Team Leaders), always show
+    return user.week === week || user.week === 'Both';
+  };
+
   const getFilteredSections = () => {
     if (!sectionsData) return [];
-    
-    if (filterRole === "all") {
-      return sectionsData.sections;
-    }
-    
+
+    const isFiltering = filterRole !== "all" || filterWeek !== "all";
+
     return sectionsData.sections
-      .map(section => ({
-        ...section,
-        users: section.users.filter(user => {
-          // Handle the role filtering - Section Leader filter should match both Section Leader and Admin
-          if (filterRole === "Section Leader") {
-            return user.role === "Section Leader"; // This now includes converted Admin users
-          }
-          return user.role === filterRole;
-        }),
-        filtered_count: section.users.filter(user => {
-          if (filterRole === "Section Leader") {
-            return user.role === "Section Leader";
-          }
-          return user.role === filterRole;
-        }).length
-      }))
-      .filter(section => section.filtered_count > 0);
+      .map(section => {
+        let users = section.users;
+
+        if (filterRole !== "all") {
+          users = users.filter(user => {
+            if (filterRole === "Section Leader") return user.role === "Section Leader";
+            return user.role === filterRole;
+          });
+        }
+
+        if (filterWeek !== "all") {
+          users = users.filter(user => userMatchesWeek(user, filterWeek));
+        }
+
+        return { ...section, users, filtered_count: users.length };
+      })
+      .filter(section => !isFiltering || section.filtered_count > 0);
+  };
+
+  const filteredSections = getFilteredSections();
+  const isFiltering = filterRole !== "all" || filterWeek !== "all";
+
+  const allSectionNames = filteredSections.map(s => s.name);
+  const allCollapsed = allSectionNames.length > 0 && allSectionNames.every(name => collapsedSections.has(name));
+
+  const toggleAll = () => {
+    if (allCollapsed) {
+      setCollapsedSections(prev => {
+        const next = new Set(prev);
+        allSectionNames.forEach(name => next.delete(name));
+        return next;
+      });
+    } else {
+      setCollapsedSections(prev => new Set([...prev, ...allSectionNames]));
+    }
   };
 
   if (loading) {
@@ -180,8 +190,6 @@ export default function UsersBySectionPage() {
       </>
     );
   }
-
-  const filteredSections = getFilteredSections();
 
   return (
     <>
@@ -207,20 +215,46 @@ export default function UsersBySectionPage() {
 
         <section className="filter-section">
           <div className="filter-container">
-            <label htmlFor="role-filter" className="filter-label">
-              🔍 Filter by Role
-            </label>
-            <select
-              id="role-filter"
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-              className="role-filter"
-            >
-              <option value="all">All Roles</option>
-              <option value="Section Leader">Section Leaders Only</option>
-              <option value="Team Leader">Team Leaders Only</option>
-              <option value="Leader">Leaders Only</option>
-            </select>
+            <div className="filter-row">
+              <div className="filter-group">
+                <label htmlFor="role-filter" className="filter-label">
+                  Filter by Role
+                </label>
+                <select
+                  id="role-filter"
+                  value={filterRole}
+                  onChange={(e) => setFilterRole(e.target.value)}
+                  className="role-filter"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="Section Leader">Section Leaders Only</option>
+                  <option value="Team Leader">Team Leaders Only</option>
+                  <option value="Leader">Leaders Only</option>
+                </select>
+              </div>
+
+              <div className="filter-group">
+                <label htmlFor="week-filter" className="filter-label">
+                  Filter by Week
+                </label>
+                <select
+                  id="week-filter"
+                  value={filterWeek}
+                  onChange={(e) => setFilterWeek(e.target.value)}
+                  className="role-filter"
+                >
+                  <option value="all">All Weeks</option>
+                  <option value="Week A">Week A</option>
+                  <option value="Week B">Week B</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredSections.length > 0 && (
+              <button className="toggle-all-btn" onClick={toggleAll}>
+                {allCollapsed ? '▶ Expand All' : '▼ Collapse All'}
+              </button>
+            )}
           </div>
         </section>
 
@@ -228,51 +262,44 @@ export default function UsersBySectionPage() {
           <div className="sections-grid">
             {filteredSections.length > 0 ? (
               filteredSections.map((section) => {
+                const isCollapsed = collapsedSections.has(section.name);
                 const sectionLeader = getSectionLeader(section.users);
                 const otherUsers = getOtherUsers(section.users);
-                const displayUsers = filterRole === "all" ? section.users : section.users.filter(user => user.role === filterRole);
-                
+
                 return (
-                  <div key={section.name} className="section-card">
-                    <div className="section-card-header">
+                  <div key={section.name} className={`section-card ${isCollapsed ? 'section-card--collapsed' : ''}`}>
+                    <button
+                      className="section-card-header section-card-header--clickable"
+                      onClick={() => toggleSection(section.name)}
+                      aria-expanded={!isCollapsed}
+                    >
                       <h3 className="section-title">{section.name}</h3>
-                      <div className="user-count-badge">
-                        {filterRole === "all" ? section.user_count : displayUsers.length} users
+                      <div className="section-header-right">
+                        <div className="user-count-badge">
+                          {isFiltering ? section.users.length : section.user_count} user{(isFiltering ? section.users.length : section.user_count) !== 1 ? 's' : ''}
+                        </div>
+                        <span className={`collapse-chevron ${isCollapsed ? 'collapse-chevron--collapsed' : ''}`}>
+                          ▼
+                        </span>
                       </div>
-                    </div>
-                    
-                    <div className="section-card-body">
-                      {displayUsers.length > 0 ? (
-                        <div className="users-list">
-                          {filterRole === "all" ? (
-                            <>
-                              {/* Section Leader First */}
-                              {sectionLeader && (
-                                <div className="user-item leader-item">
-                                  <div className="user-info">
-                                    <span className="user-name leader-name">{sectionLeader.name}</span>
-                                    <span className={`role-badge ${getBadgeColor(sectionLeader)}`}>
-                                      {getBadgeContent(sectionLeader)}
-                                    </span>
-                                  </div>
+                    </button>
+
+                    {!isCollapsed && (
+                      <div className="section-card-body">
+                        {section.users.length > 0 ? (
+                          <div className="users-list">
+                            {sectionLeader && (
+                              <div className="user-item leader-item">
+                                <div className="user-info">
+                                  <span className="user-name leader-name">{sectionLeader.name}</span>
+                                  <span className={`role-badge ${getBadgeColor(sectionLeader)}`}>
+                                    {getBadgeContent(sectionLeader)}
+                                  </span>
                                 </div>
-                              )}
-                              
-                              {/* Other Users */}
-                              {otherUsers.map((user, index) => (
-                                <div key={index} className="user-item">
-                                  <div className="user-info">
-                                    <span className="user-name">{user.name}</span>
-                                    <span className={`role-badge ${getBadgeColor(user)}`}>
-                                      {getBadgeContent(user)}
-                                    </span>
-                                  </div>
-                                </div>
-                              ))}
-                            </>
-                          ) : (
-                            /* Filtered View */
-                            displayUsers.map((user, index) => (
+                              </div>
+                            )}
+
+                            {otherUsers.map((user, index) => (
                               <div key={index} className="user-item">
                                 <div className="user-info">
                                   <span className="user-name">{user.name}</span>
@@ -281,21 +308,16 @@ export default function UsersBySectionPage() {
                                   </span>
                                 </div>
                               </div>
-                            ))
-                          )}
-                        </div>
-                      ) : (
-                        <div className="no-users">
-                          <div className="no-users-icon">👤</div>
-                          <p className="no-users-text">
-                            {filterRole === "all" 
-                              ? "No users in this section"
-                              : `No ${filterRole.toLowerCase()}s in this section`
-                            }
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="no-users">
+                            <div className="no-users-icon">👤</div>
+                            <p className="no-users-text">No matching users in this section</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -304,9 +326,9 @@ export default function UsersBySectionPage() {
                 <div className="no-sections-icon">🔍</div>
                 <h3 className="no-sections-title">No Results Found</h3>
                 <p className="no-sections-text">
-                  {filterRole === "all" 
+                  {!isFiltering
                     ? "No sections available"
-                    : `No sections have users with the role "${filterRole}"`
+                    : "No sections match the selected filters"
                   }
                 </p>
               </div>
@@ -316,7 +338,7 @@ export default function UsersBySectionPage() {
 
         <footer className="sections-page-footer">
           <p className="footer-text">
-            💡 Section leaders are highlighted and appear first in each section.
+            💡 Section leaders are highlighted and appear first. Click a section header to collapse it.
           </p>
         </footer>
       </div>
