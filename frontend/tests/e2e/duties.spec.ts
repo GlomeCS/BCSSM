@@ -140,7 +140,7 @@ test('switching to Schedule tab shows the schedule table', async ({ page }) => {
   await expect(page.getByRole('columnheader', { name: 'Setup' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Teardown' })).toBeVisible();
   // Date rows
-  await expect(page.getByText(/Sat.*Jul.*5/i)).toBeVisible();
+  await expect(page.getByText(/Sat.*5.*Jul/i)).toBeVisible();
 });
 
 test('duties page visual snapshot - today tab', async ({ page }) => {

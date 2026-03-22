@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
 import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from "../api";
+import "./Home.css";
 
 function Home() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -81,29 +82,9 @@ function Home() {
   if (loading) {
     return (
       <div className="home-page">
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          height: '100vh',
-          flexDirection: 'column',
-          gap: '1rem'
-        }}>
-          <div className="loading-spinner" style={{
-            width: '40px',
-            height: '40px',
-            border: '4px solid #f3f3f3',
-            borderTop: '4px solid #3498db',
-            borderRadius: '50%',
-            animation: 'spin 2s linear infinite'
-          }}></div>
+        <div className="home-loading">
+          <div className="loading-spinner"></div>
           <p>Loading your dashboard...</p>
-          <style>{`
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          `}</style>
         </div>
       </div>
     );
@@ -133,63 +114,16 @@ function Home() {
         
         {/* Forms access for Section Leaders, Team Leaders, and Admins */}
         {hasFormsAccess(userRole) && (
-          <div 
-            className="forms-section"
-            style={{
-              marginTop: '2.5rem',
-              padding: '2rem',
-              background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-              borderRadius: '16px',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-            }}
-          >
-            <h3 
-              style={{
-                fontSize: '1.5rem',
-                fontWeight: '600',
-                color: '#1e293b',
-                marginBottom: '1.25rem',
-                letterSpacing: '-0.025em',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-              }}
-            >
-              Receipts & Expenses
-            </h3>
-            <div style={{ marginTop: '1rem' }}>
-              <a 
-                href="https://forms.gle/c6gaUmwMMBEATmbc8" 
-                target="_blank" 
+          <div className="forms-section">
+            <h3>Receipts & Expenses</h3>
+            <div className="forms-section-links">
+              <a
+                href="https://forms.gle/c6gaUmwMMBEATmbc8"
+                target="_blank"
                 rel="noopener noreferrer"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0.875rem 1.5rem',
-                  backgroundColor: '#3b82f6',
-                  color: 'white',
-                  textDecoration: 'none',
-                  borderRadius: '12px',
-                  fontSize: '1rem',
-                  fontWeight: '500',
-                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-                  letterSpacing: '-0.01em',
-                  transition: 'all 0.2s ease-in-out',
-                  boxShadow: '0 2px 4px -1px rgba(59, 130, 246, 0.3)',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#2563eb';
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.boxShadow = '0 4px 8px -1px rgba(59, 130, 246, 0.4)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#3b82f6';
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 4px -1px rgba(59, 130, 246, 0.3)';
-                }}
+                className="receipt-link"
               >
-                <span style={{ marginRight: '0.5rem' }}>📋</span>
+                <span>📋</span>
                 Submit Receipt
               </a>
             </div>
@@ -198,139 +132,28 @@ function Home() {
 
         {/* Bank Details for non-Section Leaders */}
         {!hasFormsAccess(userRole) && (
-          <div 
-            className="bank-details-section"
-            style={{
-              marginTop: '2.5rem',
-              padding: '2rem',
-              background: 'linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%)',
-              borderRadius: '16px',
-              border: '1px solid #bae6fd',
-              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-            }}
-          >
-            <h3 
-              style={{
-                fontSize: '1.5rem',
-                fontWeight: '600',
-                color: '#1e293b',
-                marginBottom: '1.25rem',
-                letterSpacing: '-0.025em',
-                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
-              }}
-            >
-              Ballyholme CSSM Bank Account
-            </h3>
-            <div style={{ 
-              background: 'white',
-              padding: '1.5rem',
-              borderRadius: '12px',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)'
-            }}>
-              <div style={{ display: 'grid', gap: '1rem' }}>
-                <div>
-                  <label style={{ 
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Account Name
-                  </label>
-                  <div style={{
-                    padding: '0.75rem',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '0.95rem',
-                    color: '#1f2937',
-                    fontFamily: 'monospace'
-                  }}>
-                    Scripture Union Northern Ireland
-                  </div>
+          <div className="bank-details-section">
+            <h3>Ballyholme CSSM Bank Account</h3>
+            <div className="bank-details-card">
+              <div className="bank-details-grid">
+                <div className="bank-field">
+                  <label>Account Name</label>
+                  <div className="bank-field-value">Scripture Union Northern Ireland</div>
                 </div>
-                
-                <div>
-                  <label style={{ 
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Sort Code
-                  </label>
-                  <div style={{
-                    padding: '0.75rem',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '0.95rem',
-                    color: '#1f2937',
-                    fontFamily: 'monospace'
-                  }}>
-                    98-00-30
-                  </div>
+                <div className="bank-field">
+                  <label>Sort Code</label>
+                  <div className="bank-field-value">98-00-30</div>
                 </div>
-                
-                <div>
-                  <label style={{ 
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Account Number
-                  </label>
-                  <div style={{
-                    padding: '0.75rem',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '0.95rem',
-                    color: '#1f2937',
-                    fontFamily: 'monospace'
-                  }}>
-                    05391716
-                  </div>
+                <div className="bank-field">
+                  <label>Account Number</label>
+                  <div className="bank-field-value">05391716</div>
                 </div>
-                
-                <div>
-                  <label style={{ 
-                    display: 'block',
-                    fontSize: '0.875rem',
-                    fontWeight: '500',
-                    color: '#374151',
-                    marginBottom: '0.5rem'
-                  }}>
-                    Bank Name
-                  </label>
-                  <div style={{
-                    padding: '0.75rem',
-                    backgroundColor: '#f8fafc',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '8px',
-                    fontSize: '0.95rem',
-                    color: '#1f2937',
-                    fontFamily: 'monospace'
-                  }}>
-                    Ulster Bank
-                  </div>
+                <div className="bank-field">
+                  <label>Bank Name</label>
+                  <div className="bank-field-value">Ulster Bank</div>
                 </div>
               </div>
-              
-              <div style={{
-                marginTop: '1.5rem',
-                padding: '1rem',
-                backgroundColor: '#fef3c7',
-                border: '1px solid #f59e0b',
-                borderRadius: '8px',
-                fontSize: '0.875rem',
-                color: '#92400e'
-              }}>
+              <div className="bank-note">
                 <strong>Note:</strong> Please include your name and "Team Fees" in the payment reference when making transfers e.g. "Ross Team Fees" or "Harrison TF"
               </div>
             </div>

@@ -1,0 +1,350 @@
+/* ── Devo Feedback Edit page ────────────────────────────────────────────── */
+
+.edit-feedback-page {
+  min-height: 100vh;
+  padding: var(--space-16) var(--space-4) var(--space-8);
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* ── Edit header ────────────────────────────────────────────────────────── */
+
+.edit-header {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-2xl);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.edit-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary), var(--color-accent), var(--color-success));
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+.edit-header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.edit-title {
+  font-size: clamp(var(--font-size-xl), 3vw, var(--font-size-3xl));
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--color-primary-dark), var(--color-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: var(--space-4);
+  line-height: 1.2;
+  text-align: center;
+}
+
+.edit-info {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.edit-info-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: rgba(37, 99, 235, 0.05);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+.info-label {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.info-value {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-primary-dark);
+}
+
+/* ── Main content ───────────────────────────────────────────────────────── */
+
+.edit-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ── Feedback form ──────────────────────────────────────────────────────── */
+
+.feedback-form {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-xl);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  flex: 1;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+}
+
+.form-label {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.textarea-container {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.feedback-textarea {
+  width: 100%;
+  padding: var(--space-4);
+  border: 2px solid var(--color-primary-light);
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  background: white;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  resize: vertical;
+  min-height: 200px;
+  flex: 1;
+}
+
+.feedback-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  transform: scale(1.005);
+}
+
+.feedback-textarea:disabled {
+  background: rgba(148, 163, 184, 0.1);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.feedback-textarea::placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.character-counter {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.character-counter .warning {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+/* ── Form actions ───────────────────────────────────────────────────────── */
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.edit-feedback-page .cancel-btn,
+.edit-feedback-page .save-btn {
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+  min-width: 120px;
+  justify-content: center;
+}
+
+.edit-feedback-page .cancel-btn {
+  background: linear-gradient(135deg, var(--color-text-secondary), var(--color-text-muted));
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+.edit-feedback-page .cancel-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--color-text-primary), var(--color-text-secondary));
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.edit-feedback-page .save-btn {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
+
+.edit-feedback-page .save-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--color-primary-dark), #1e40af);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.edit-feedback-page .save-btn:disabled {
+  background: linear-gradient(135deg, var(--color-text-muted), #cbd5e1);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .edit-feedback-page {
+    padding: var(--space-16) var(--space-3) var(--space-6);
+    gap: var(--space-6);
+  }
+
+  .edit-header {
+    padding: var(--space-6);
+    border-radius: var(--radius-xl);
+  }
+
+  .edit-info {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .edit-info-item {
+    justify-content: center;
+    min-width: 200px;
+  }
+
+  .feedback-form {
+    padding: var(--space-6);
+  }
+
+  .form-actions {
+    flex-direction: column-reverse;
+    gap: var(--space-3);
+  }
+
+  .cancel-btn,
+  .save-btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .edit-feedback-page {
+    padding: var(--space-16) var(--space-2) var(--space-4);
+  }
+
+  .edit-header {
+    padding: var(--space-4);
+  }
+
+  .feedback-form {
+    padding: var(--space-4);
+  }
+
+  .feedback-textarea {
+    padding: var(--space-3);
+    min-height: 150px;
+  }
+
+  .edit-title {
+    font-size: var(--font-size-xl);
+  }
+}
+
+/* ── Accessibility ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .edit-header::before {
+    animation: none;
+  }
+
+  .feedback-textarea,
+  .edit-feedback-page .cancel-btn,
+  .edit-feedback-page .save-btn {
+    transition-duration: 0.01ms !important;
+    transform: none !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .edit-header,
+  .feedback-form {
+    background: white;
+    border: 2px solid black;
+  }
+
+  .edit-title {
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    -webkit-text-fill-color: currentColor;
+    color: black;
+  }
+
+  .form-label,
+  .feedback-textarea {
+    color: black;
+  }
+
+  .feedback-textarea {
+    border: 2px solid black;
+  }
+
+  .edit-feedback-page .cancel-btn,
+  .edit-feedback-page .save-btn {
+    background: black;
+    color: white;
+  }
+}
+
+.feedback-textarea:focus,
+.cancel-btn:focus,
+.save-btn:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
