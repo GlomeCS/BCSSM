@@ -37,11 +37,6 @@
   animation: shimmer 3s ease-in-out infinite;
 }
 
-@keyframes shimmer {
-  0%, 100% { opacity: 0.5; }
-  50%       { opacity: 1; }
-}
-
 .hero:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-xl), 0 0 40px rgba(37, 99, 235, 0.2);

@@ -35,11 +35,6 @@
   animation: shimmer 3s ease-in-out infinite;
 }
 
-@keyframes shimmer {
-  0%, 100% { opacity: 0.6; }
-  50%       { opacity: 1; }
-}
-
 .edit-header-content {
   position: relative;
   z-index: 1;
@@ -191,8 +186,8 @@
   border-top: 1px solid rgba(148, 163, 184, 0.2);
 }
 
-.cancel-btn,
-.save-btn {
+.edit-feedback-page .cancel-btn,
+.edit-feedback-page .save-btn {
   padding: var(--space-3) var(--space-6);
   border: none;
   border-radius: var(--radius-lg);
@@ -208,31 +203,31 @@
   justify-content: center;
 }
 
-.cancel-btn {
+.edit-feedback-page .cancel-btn {
   background: linear-gradient(135deg, var(--color-text-secondary), var(--color-text-muted));
   color: white;
   box-shadow: var(--shadow-sm);
 }
 
-.cancel-btn:hover:not(:disabled) {
+.edit-feedback-page .cancel-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--color-text-primary), var(--color-text-secondary));
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-.save-btn {
+.edit-feedback-page .save-btn {
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
   color: white;
   box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
 }
 
-.save-btn:hover:not(:disabled) {
+.edit-feedback-page .save-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--color-primary-dark), #1e40af);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
-.save-btn:disabled {
+.edit-feedback-page .save-btn:disabled {
   background: linear-gradient(135deg, var(--color-text-muted), #cbd5e1);
   cursor: not-allowed;
   transform: none;
@@ -304,10 +299,15 @@
 /* ── Accessibility ──────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
+  .edit-header::before {
+    animation: none;
+  }
+
   .feedback-textarea,
-  .cancel-btn,
-  .save-btn {
+  .edit-feedback-page .cancel-btn,
+  .edit-feedback-page .save-btn {
     transition-duration: 0.01ms !important;
+    transform: none !important;
   }
 }
 
@@ -318,7 +318,12 @@
     border: 2px solid black;
   }
 
-  .edit-title,
+  .edit-title {
+    background: none;
+    -webkit-text-fill-color: black;
+    color: black;
+  }
+
   .form-label,
   .feedback-textarea {
     color: black;

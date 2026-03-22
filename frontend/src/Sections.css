@@ -170,8 +170,8 @@
 
 .leader-item {
   background: linear-gradient(135deg, rgba(147, 51, 234, 0.1), rgba(196, 181, 253, 0.1));
-  border-left-color: var(--color-accent);
   border: 1px solid rgba(147, 51, 234, 0.2);
+  border-left-color: var(--color-accent);
 }
 
 .leader-item:hover {

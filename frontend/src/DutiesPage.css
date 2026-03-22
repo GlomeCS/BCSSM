@@ -36,11 +36,6 @@
   animation: shimmer 3s ease-in-out infinite;
 }
 
-@keyframes shimmer {
-  0%, 100% { opacity: 0.6; }
-  50%       { opacity: 1; }
-}
-
 .duties-header-content {
   position: relative;
   z-index: 1;
@@ -602,11 +597,6 @@
 }
 
 /* ── Accessibility ──────────────────────────────────────────────────────── */
-
-@keyframes spin {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 @media (prefers-reduced-motion: reduce) {
   .duty-card {

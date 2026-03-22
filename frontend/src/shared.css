@@ -12,7 +12,7 @@
   50%       { opacity: 1; }
 }
 
-@keyframes errorSlideIn {
+@keyframes error-slide-in {
   from {
     opacity: 0;
     transform: translateY(-10px);
@@ -68,7 +68,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  animation: errorSlideIn 0.3s ease-out;
+  animation: error-slide-in 0.3s ease-out;
 }
 
 .error-icon {
