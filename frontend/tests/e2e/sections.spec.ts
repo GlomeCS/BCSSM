@@ -167,11 +167,8 @@ test('week filter shows section leaders regardless of week', async ({ page }) =>
   await expect(page.getByText('Eve')).toBeVisible();
 });
 
-test('week filter hides sections where no users match', async ({ page }) => {
+test('combined role and week filter shows only matching users', async ({ page }) => {
   await setupSectionsPage(page);
-  // Filter to Leaders Only + Week B — Juniors has Frank (Both) so stays; Seniors has Dave (Week B) so stays
-  // But if we filter Leaders Only + Week A, Juniors has Frank (Both) + Grace (Week A), Seniors has Carol (Week A)
-  // Let's test: Leaders Only + Week B — Juniors has Frank only (Both maps to B), Seniors has Dave
   await page.selectOption('select#role-filter', 'Leader');
   await page.selectOption('select#week-filter', 'Week B');
   await expect(page.getByText('Dave')).toBeVisible();
@@ -248,6 +245,7 @@ test('sections page visual snapshot - week a filter', async ({ page }) => {
 test('sections page visual snapshot - collapsed', async ({ page }) => {
   await setupSectionsPage(page);
   await page.getByRole('button', { name: /Collapse All/i }).click();
+  await expect(page.getByText('Carol')).not.toBeVisible();
   await expect(page).toHaveScreenshot('sections-collapsed.png', { fullPage: true });
 });
 
