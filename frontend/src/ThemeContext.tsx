@@ -13,8 +13,12 @@ export const ThemeContext = createContext<ThemeContextValue>({
 });
 
 function getInitialTheme(): Theme {
-  const saved = localStorage.getItem('theme');
-  if (saved === 'light' || saved === 'dark') return saved;
+  try {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    // localStorage unavailable (e.g. private browsing, SSR); fall through
+  }
   if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   }
@@ -26,7 +30,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    try {
+      localStorage.setItem('theme', theme);
+    } catch {
+      // Storage unavailable or quota exceeded; DOM attribute is already set above
+    }
   }, [theme]);
 
   // Keep in sync with OS preference changes in real-time
