@@ -18,4 +18,4 @@ Flask-Cors==6.0.2
 gunicorn==25.1.0
 redis==7.3.0
 pytest-cov==7.0.0
-pylint==3.3.8
+pylint==4.0.5
