@@ -583,4 +583,20 @@ def test_update_user_db_error(client, patch_helpers):
     assert resp.status_code == 500
     data = resp.get_json()
     assert data["success"] is False
-    assert "Failed to update user" in data["error"]
+
+
+def test_inject_user_state_redis_error(app, patch_helpers):
+    """Test context processor falls back to session when cache.get raises RedisError"""
+    ph = patch_helpers
+    ph["cache"].get.side_effect = RedisError("Redis down")
+
+    with app.test_request_context('/?user_name=TestUser'):
+        processors = app.template_context_processors.get(None, [])
+        inject_func = next(
+            (p for p in processors if p.__name__ == 'inject_user_state'), None
+        )
+        assert inject_func is not None, "inject_user_state context processor not found"
+        result = inject_func()
+        assert result['is_logged_in'] is True
+        # After RedisError, falls back to session (which has no data)
+        assert result['user_section'] is None

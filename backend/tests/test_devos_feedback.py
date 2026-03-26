@@ -294,16 +294,12 @@ def test_edit_upsert_error(client, mock_execute_query):
 
 def test_edit_section_lookup_db_error(client, mock_execute_query):
     """Test edit when section lookup raises SQLAlchemyError (covers lines 152-154)"""
-    def side_effect(query, params=None):
-        if "SELECT u.id FROM users u WHERE u.name" in query:
-            return [(1,)]
-        elif "SELECT id FROM sections" in query:
-            raise SQLAlchemyError("section DB error")
-        return None
+    mock_execute_query.side_effect = SQLAlchemyError("section DB error")
 
-    mock_execute_query.side_effect = side_effect
+    with client.session_transaction() as sess:
+        sess['user_id'] = 1
 
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
     assert resp.status_code == 500
     assert "Internal server error" in resp.get_json()["error"]

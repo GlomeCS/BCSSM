@@ -8,6 +8,9 @@ from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app, utils
 import unittest.mock
 
+# Save reference to the real function before autouse patching replaces it
+_real_execute_readonly_query = utils.execute_readonly_query
+
 # ─── 0) Autouse fixture to push a Flask app context ─────────────────────────
 @pytest.fixture(autouse=True)
 def flask_app_context(monkeypatch):
@@ -203,17 +206,37 @@ def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly, mo
     FakeDatetime.today_weekday = 0
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
     monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
-    
+
     mock_readonly.side_effect = SQLAlchemyError("Something broke")
     result = utils.get_user_duty("SomeUser")
     assert isinstance(result, dict)
     assert "Failed to fetch duty for user" in result["error"]
     assert "Something broke" in result["error"]
-    
+
     # Verify error was cached with shorter timeout
     mock_cache.set.assert_called_once()
     cache_set_args = mock_cache.set.call_args
     assert cache_set_args[1]['timeout'] == 60  # Short timeout for errors
+
+def test_get_user_duty_short_row(monkeypatch, mock_readonly, mock_cache):
+    """Test get_user_duty when row has fewer than 5 columns (covers len(row) < 5 branch)"""
+    FakeDatetime.today_weekday = 0
+    monkeypatch.setattr(utils, 'datetime', FakeDatetime)
+    monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
+
+    # Return a row with only 3 columns instead of 5
+    mock_readonly.return_value = [('Alice', 'Section1', 'Role1')]
+    result = utils.get_user_duty("Alice")
+    assert isinstance(result, dict)
+    assert "error" in result
+    assert "Unexpected data format" in result["error"]
+
+def test_execute_readonly_query_db_error():
+    """Test execute_readonly_query except SQLAlchemyError block (covers lines 39-43)"""
+    with patch('backend.bcssm_backend.utils.db') as mock_db:
+        mock_db.engine.connect.side_effect = SQLAlchemyError("connection failed")
+        with pytest.raises(SQLAlchemyError, match="connection failed"):
+            _real_execute_readonly_query("SELECT 1")
 
 # ─── 6) Tests for get_users_by_section() ───────────────────────────────────
 def test_get_users_by_section_returns_list_of_dicts(mock_readonly, mock_cache):
