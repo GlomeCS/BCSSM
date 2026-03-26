@@ -224,6 +224,11 @@ def test_edit_authenticated_via_session(client, mock_execute_query):
                        json={"feedback": "Test"})
     assert resp.status_code == 200
     assert resp.get_json() == {"success": True}
+    # Verify no user ID lookup was made (session user_id used directly)
+    assert not any("SELECT u.id FROM users" in call[0] for call in calls)
+    # Verify the upsert was called with editor_id from session
+    upsert_call = next(call for call in calls if "INSERT INTO feedback" in call[0])
+    assert upsert_call[1]['editor_id'] == 1
 
 def test_edit_missing_params(client):
     """Test edit with missing parameters"""
@@ -327,7 +332,7 @@ def test_get_user_id_from_request_db_error(client, mock_execute_query):
 
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):
     """Test GET route outer except SQLAlchemyError (covers lines 124-126)"""
-    fake_fb, fake_ui = patch_helpers
+    _, fake_ui = patch_helpers
     # Make get_user_info raise SQLAlchemyError (bypassing its internal handler)
     fake_ui.side_effect = SQLAlchemyError("outer db error")
 
