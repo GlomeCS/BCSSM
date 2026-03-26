@@ -293,7 +293,12 @@ def test_edit_upsert_error(client, mock_execute_query):
 
 def test_edit_section_lookup_db_error(client, mock_execute_query):
     """Test edit when section lookup raises SQLAlchemyError (covers lines 152-154)"""
-    mock_execute_query.side_effect = SQLAlchemyError("section DB error")
+    def side_effect(query, params=None):
+        if "SELECT id FROM sections" in query:
+            raise SQLAlchemyError("section DB error")
+        return None
+
+    mock_execute_query.side_effect = side_effect
 
     with client.session_transaction() as sess:
         sess['user_id'] = 1
@@ -306,7 +311,12 @@ def test_edit_section_lookup_db_error(client, mock_execute_query):
 
 def test_get_user_id_from_request_db_error(client, mock_execute_query):
     """Test get_user_id_from_request re-raises SQLAlchemyError when username supplied (covers lines 46-48)"""
-    mock_execute_query.side_effect = SQLAlchemyError("lookup failed")
+    def side_effect(query, params=None):
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            raise SQLAlchemyError("lookup failed")
+        return None
+
+    mock_execute_query.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})
