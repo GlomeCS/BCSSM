@@ -159,11 +159,12 @@ test('filtering by Week B shows Week B and Both users', async ({ page }) => {
   await expect(page.getByText('Grace')).not.toBeVisible();
 });
 
-test('week filter shows section leaders regardless of week', async ({ page }) => {
+test('week filter preserves users without week (including section leaders)', async ({ page }) => {
   await setupSectionsPage(page);
   await page.selectOption('select#week-filter', 'Week A');
-  // Section leaders have no week; they show alongside week-matched users for context
+  // Users with no week show alongside week-matched users for context
   await expect(page.getByText('Alice')).toBeVisible();
+  await expect(page.getByText('Bob')).toBeVisible();
   await expect(page.getByText('Eve')).toBeVisible();
 });
 
