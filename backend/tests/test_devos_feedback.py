@@ -61,8 +61,8 @@ def test_get_user_info_not_found(mock_execute_query):
 
 def test_get_user_info_exception(mock_execute_query):
     mock_execute_query.side_effect = SQLAlchemyError("Oops")
-    info = get_user_info("Alice")
-    assert info is None
+    with pytest.raises(SQLAlchemyError):
+        get_user_info("Alice")
 
 # ─── 5) Integration tests for GET /api/devos-feedback ───────────────────────────
 @pytest.fixture(autouse=True)
@@ -206,11 +206,10 @@ def test_edit_authenticated_via_header(client, mock_execute_query):
     assert resp.get_json() == {"success": True}
 
 def test_edit_authenticated_via_session(client, mock_execute_query):
-    """Test edit with session (backward compatibility)"""
+    """Test edit with session user_id (no username in request, falls back to session)"""
     with client.session_transaction() as sess:
         sess["user_id"] = 1
-        sess["user_name"] = "TestUser"  # For username lookup fallback
-    
+
     calls = []
     def side_effect(query, params=None):
         calls.append((query, params))
@@ -218,9 +217,9 @@ def test_edit_authenticated_via_session(client, mock_execute_query):
             return [(5,)]  # Return section ID
         else:
             return None  # Upsert query
-    
+
     mock_execute_query.side_effect = side_effect
-    
+
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
     assert resp.status_code == 200
@@ -306,15 +305,14 @@ def test_edit_section_lookup_db_error(client, mock_execute_query):
 
 
 def test_get_user_id_from_request_db_error(client, mock_execute_query):
-    """Test get_user_id_from_request SQLAlchemyError path (covers lines 46-47)"""
-    # User lookup raises, should fall back to session (no session → no editor_id → 400)
+    """Test get_user_id_from_request re-raises SQLAlchemyError when username supplied (covers lines 46-48)"""
     mock_execute_query.side_effect = SQLAlchemyError("lookup failed")
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})
-    # Falls back to session (no session user_id) → editor_id is None → 400
-    assert resp.status_code == 400
-    assert "Username required" in resp.get_json()["error"]
+    # DB error propagates to global handler → 500
+    assert resp.status_code == 500
+    assert "database error" in resp.get_json()["error"].lower()
 
 
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):

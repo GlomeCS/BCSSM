@@ -177,12 +177,7 @@ def get_user_duty(user_name):
 
     except SQLAlchemyError as e:
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
-        error_data = {"error": f"Failed to fetch duty for user: {e}"}
-
-        # Cache errors for shorter time to allow recovery
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
-
-        return error_data
+        raise
 
 def get_todays_duties(user_name):
     """

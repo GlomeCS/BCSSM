@@ -45,8 +45,10 @@ def get_user_id_from_request():
                 return user_rows[0][0]
         except SQLAlchemyError as e:
             logger.error("Error looking up user ID for %s: %s", user_name, e)
-    
-    # Fallback to session
+            raise
+        return None
+
+    # Fallback to session only when no username was supplied
     return session.get('user_id')
 
 
@@ -85,7 +87,7 @@ def get_user_info(user_name):
         return None  # User not found
     except SQLAlchemyError as e:
         logger.error("Failed to fetch user info for %s: %s", user_name, e)
-        return None
+        raise
 
 
 def init_feedback_routes(app):

@@ -208,15 +208,11 @@ def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly, mo
     monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
 
     mock_readonly.side_effect = SQLAlchemyError("Something broke")
-    result = utils.get_user_duty("SomeUser")
-    assert isinstance(result, dict)
-    assert "Failed to fetch duty for user" in result["error"]
-    assert "Something broke" in result["error"]
+    with pytest.raises(SQLAlchemyError, match="Something broke"):
+        utils.get_user_duty("SomeUser")
 
-    # Verify error was cached with shorter timeout
-    mock_cache.set.assert_called_once()
-    cache_set_args = mock_cache.set.call_args
-    assert cache_set_args[1]['timeout'] == 60  # Short timeout for errors
+    # Error is re-raised, so no caching occurs
+    mock_cache.set.assert_not_called()
 
 def test_get_user_duty_short_row(monkeypatch, mock_readonly, mock_cache):
     """Test get_user_duty when row has fewer than 5 columns (covers len(row) < 5 branch)"""
