@@ -557,11 +557,30 @@ def test_clear_user_cache_endpoint_error(client, patch_helpers):
 def test_update_user_endpoint(client, patch_helpers):
     """Test the new user update endpoint"""
     ph = patch_helpers
-    
+
     resp = client.put("/admin/users/123", json={"name": "New Name"})
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["success"] is True
-    
+
     # Verify clear_user_cache was called after update
     ph["clear_cache"].assert_called_once()
+
+
+def test_update_user_no_data(client, patch_helpers):
+    """Test update_user returns 400 when JSON body is empty (covers line 330)"""
+    resp = client.put("/admin/users/123", json={})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "No data provided"
+
+
+def test_update_user_db_error(client, patch_helpers):
+    """Test update_user returns 500 when clear_user_cache raises SQLAlchemyError (covers lines 343-345)"""
+    ph = patch_helpers
+    ph["clear_cache"].side_effect = SQLAlchemyError("cache clear failed")
+
+    resp = client.put("/admin/users/123", json={"name": "New Name"})
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert data["success"] is False
+    assert "Failed to update user" in data["error"]

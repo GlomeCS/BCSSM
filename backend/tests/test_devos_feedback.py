@@ -275,18 +275,58 @@ def test_edit_success(client, mock_execute_query):
     assert any("INSERT INTO feedback" in call[0] for call in calls)
 
 def test_edit_upsert_error(client, mock_execute_query):
-    """Test edit when upsert operation fails"""
+    """Test edit when upsert operation fails with SQLAlchemyError"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             return [(1,)]  # Return user ID
         elif "SELECT id FROM sections" in query:
             return [(5,)]  # Return section ID
         else:
-            raise Exception("oops")  # Upsert fails
-    
+            raise SQLAlchemyError("oops")  # Upsert fails
+
     mock_execute_query.side_effect = side_effect
-    
+
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})
+    assert resp.status_code == 500
+    assert "Internal server error" in resp.get_json()["error"]
+
+
+def test_edit_section_lookup_db_error(client, mock_execute_query):
+    """Test edit when section lookup raises SQLAlchemyError (covers lines 152-154)"""
+    def side_effect(query, params=None):
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]
+        elif "SELECT id FROM sections" in query:
+            raise SQLAlchemyError("section DB error")
+        return None
+
+    mock_execute_query.side_effect = side_effect
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
+                       json={"feedback": "X"})
+    assert resp.status_code == 500
+    assert "Internal server error" in resp.get_json()["error"]
+
+
+def test_get_user_id_from_request_db_error(client, mock_execute_query):
+    """Test get_user_id_from_request SQLAlchemyError path (covers lines 46-47)"""
+    # User lookup raises, should fall back to session (no session → no editor_id → 400)
+    mock_execute_query.side_effect = SQLAlchemyError("lookup failed")
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
+                       json={"feedback": "X"})
+    # Falls back to session (no session user_id) → editor_id is None → 400
+    assert resp.status_code == 400
+    assert "Username required" in resp.get_json()["error"]
+
+
+def test_route_get_outer_sqlalchemy_error(client, patch_helpers):
+    """Test GET route outer except SQLAlchemyError (covers lines 124-126)"""
+    fake_fb, fake_ui = patch_helpers
+    # Make get_user_info raise SQLAlchemyError (bypassing its internal handler)
+    fake_ui.side_effect = SQLAlchemyError("outer db error")
+
+    resp = client.get("/api/devos-feedback?user_name=TestUser")
     assert resp.status_code == 500
     assert "Internal server error" in resp.get_json()["error"]

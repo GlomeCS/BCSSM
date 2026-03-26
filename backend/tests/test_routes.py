@@ -347,3 +347,33 @@ def test_login_invalid_target_logs_warning(client, env_and_deny_db, caplog):
     resp = client.post("/login?target=http://evil.com", data={"user_name": "A"}, follow_redirects=False)
     assert resp.status_code == 302
     assert urlparse(resp.headers["Location"]).path == "/"
+
+
+# ─── 8) Login POST with user in user_assignments ────────────────────────────────
+def test_login_post_valid_user_in_assignments(client):
+    """Test login POST when user IS in user_assignments (covers logger.debug lines 49-57)"""
+    from unittest.mock import patch as _patch
+    # Patch user_assignments in the routes module directly to include our test user
+    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
+        resp = client.post("/login", data={"user_name": "ValidUser"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert urlparse(resp.headers["Location"]).path == "/"
+
+
+def test_login_post_valid_user_valid_target(client):
+    """Test login POST with valid relative target redirects to that target"""
+    from unittest.mock import patch as _patch
+    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
+        resp = client.post("/login?target=/dashboard", data={"user_name": "ValidUser"}, follow_redirects=False)
+    assert resp.status_code == 302
+    # Relative target is accepted
+    assert urlparse(resp.headers["Location"]).path == "/dashboard"
+
+
+def test_login_post_valid_user_external_target(client):
+    """Test login POST with external URL target redirects to / (covers lines 56-57)"""
+    from unittest.mock import patch as _patch
+    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
+        resp = client.post("/login?target=http://evil.com", data={"user_name": "ValidUser"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert urlparse(resp.headers["Location"]).path == "/"

@@ -613,6 +613,15 @@ def error_handler_app(mock_db_cache, clean_env):
     def trigger_unhandled():
         raise RuntimeError("totally unexpected")
 
+    @app.route('/test/db-error')
+    def trigger_db_error():
+        raise SQLAlchemyError("unhandled db error")
+
+    @app.route('/test/http-exception')
+    def trigger_http_exception():
+        from flask import abort
+        abort(403)  # No 403 handler registered → falls through to Exception handler
+
     return app
 
 
@@ -647,6 +656,24 @@ def test_global_handler_405_method_not_allowed(error_handler_app):
     assert resp.status_code == 405
     data = resp.get_json()
     assert data["error"] == "Method not allowed"
+
+
+def test_global_handler_db_error(error_handler_app):
+    """Test handle_db_error catches unhandled SQLAlchemyError (covers lines 186-187)"""
+    client = error_handler_app.test_client()
+    resp = client.get('/test/db-error')
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert data["error"] == "A database error occurred"
+
+
+def test_global_handler_http_exception_passthrough(error_handler_app):
+    """Test handle_exception passes HTTPException through unchanged (covers line 202)"""
+    client = error_handler_app.test_client()
+    resp = client.get('/test/http-exception')
+    # 403 Forbidden — no specific 403 handler, goes to Exception handler,
+    # isinstance check passes and the HTTPException is returned as-is
+    assert resp.status_code == 403
 
 
 @patch('backend.bcssm_backend.get_all_sections')
