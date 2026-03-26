@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
 from backend.bcssm_backend.routes.devos_feedback import (
     get_feedback_by_date,
@@ -42,7 +43,7 @@ def test_get_feedback_by_date_success(mock_execute_query):
     }
 
 def test_get_feedback_by_date_exception(mock_execute_query):
-    mock_execute_query.side_effect = Exception("DB fail")
+    mock_execute_query.side_effect = SQLAlchemyError("DB fail")
     result, error = get_feedback_by_date("2025-06-07")
     assert result is None
     assert error == "An error occurred while fetching feedback"
@@ -59,7 +60,7 @@ def test_get_user_info_not_found(mock_execute_query):
     assert info is None
 
 def test_get_user_info_exception(mock_execute_query):
-    mock_execute_query.side_effect = Exception("Oops")
+    mock_execute_query.side_effect = SQLAlchemyError("Oops")
     info = get_user_info("Alice")
     assert info is None
 

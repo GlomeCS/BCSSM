@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 import logging
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app, utils
 import unittest.mock
 
@@ -111,7 +113,7 @@ def test_get_all_users_cache_hit(mock_readonly, mock_cache):
     mock_cache.set.assert_not_called()
 
 def test_get_all_users_db_failure_returns_empty_list(mock_readonly, mock_cache):
-    mock_readonly.side_effect = Exception("DB is down")
+    mock_readonly.side_effect = SQLAlchemyError("DB is down")
     result = utils.get_all_users()
     assert result == []
     assert isinstance(result, list)
@@ -202,7 +204,7 @@ def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly, mo
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
     monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 0)
     
-    mock_readonly.side_effect = Exception("Something broke")
+    mock_readonly.side_effect = SQLAlchemyError("Something broke")
     result = utils.get_user_duty("SomeUser")
     assert isinstance(result, dict)
     assert "Failed to fetch duty for user" in result["error"]
@@ -246,7 +248,7 @@ def test_get_users_by_section_returns_list_of_dicts(mock_readonly, mock_cache):
     assert params == {"section": "Minis"}
 
 def test_get_users_by_section_db_error_returns_error(mock_readonly, mock_cache):
-    mock_readonly.side_effect = Exception("DB error on section query")
+    mock_readonly.side_effect = SQLAlchemyError("DB error on section query")
     result = utils.get_users_by_section("Minis")
     assert isinstance(result, dict)
     assert "Failed to fetch users by section" in result["error"]
@@ -272,7 +274,7 @@ def test_get_all_sections_no_records(mock_readonly, mock_cache):
     assert result == []
 
 def test_get_all_sections_exception(mock_readonly, mock_cache):
-    mock_readonly.side_effect = Exception("Database failure")
+    mock_readonly.side_effect = SQLAlchemyError("Database failure")
     result = utils.get_all_sections()
     assert isinstance(result, dict)
     assert "Failed to fetch sections" in result["error"]
@@ -302,7 +304,7 @@ def test_get_all_feedback_dates_no_records(mock_readonly, mock_cache):
     assert result == []
 
 def test_get_all_feedback_dates_exception(mock_readonly, mock_cache):
-    mock_readonly.side_effect = Exception("Database error")
+    mock_readonly.side_effect = SQLAlchemyError("Database error")
     result = utils.get_all_feedback_dates()
     assert isinstance(result, dict)
     assert "Failed to fetch feedback dates" in result["error"]
@@ -334,7 +336,7 @@ def test_execute_query_success_no_results(mock_db_session):
     assert rows is None
 
 def test_execute_query_failure_triggers_rollback(mock_db_session):
-    mock_db_session.execute.side_effect = Exception("DB error")
+    mock_db_session.execute.side_effect = SQLAlchemyError("DB error")
     with pytest.raises(Exception, match="DB error"):
         utils.execute_query("DELETE FROM users")
     mock_db_session.rollback.assert_called_once()
@@ -506,8 +508,8 @@ def test_clear_all_cache(mock_cache):
 def test_clear_cache_methods_handle_errors_gracefully(mock_cache, caplog):
     """Test that cache clearing methods handle Redis errors gracefully"""
     # Arrange - make cache operations fail
-    mock_cache.delete.side_effect = Exception("Redis connection failed")
-    mock_cache.clear.side_effect = Exception("Redis connection failed")
+    mock_cache.delete.side_effect = RedisError("Redis connection failed")
+    mock_cache.clear.side_effect = RedisError("Redis connection failed")
     
     # Act & Assert - should not raise exceptions
     with caplog.at_level(logging.WARNING):
@@ -776,7 +778,7 @@ def test_get_all_sections_with_users_empty_result(mock_readonly, mock_cache):
 def test_get_all_sections_with_users_db_failure_returns_error(mock_readonly, mock_cache):
     """Test get_all_sections_with_users with database failure"""
     # Arrange: database error
-    mock_readonly.side_effect = Exception("Database connection failed")
+    mock_readonly.side_effect = SQLAlchemyError("Database connection failed")
     
     # Act
     result = utils.get_all_sections_with_users()
@@ -918,7 +920,7 @@ def test_get_section_statistics_empty_result(mock_readonly, mock_cache):
 def test_get_section_statistics_db_failure_returns_error(mock_readonly, mock_cache):
     """Test get_section_statistics with database failure"""
     # Arrange: database error
-    mock_readonly.side_effect = Exception("Statistics query failed")
+    mock_readonly.side_effect = SQLAlchemyError("Statistics query failed")
     
     # Act
     result = utils.get_section_statistics()
@@ -1054,7 +1056,7 @@ def test_get_users_by_section_optimized_empty_result(mock_readonly, mock_cache):
 def test_get_users_by_section_optimized_db_failure_returns_error(mock_readonly, mock_cache):
     """Test get_users_by_section_optimized with database failure"""
     # Arrange: database error
-    mock_readonly.side_effect = Exception("Section query failed")
+    mock_readonly.side_effect = SQLAlchemyError("Section query failed")
     
     # Act
     result = utils.get_users_by_section_optimized("TestSection")
@@ -1225,7 +1227,7 @@ def test_section_methods_integration_workflow(mock_readonly, mock_cache):
 def test_error_handling_consistency_across_methods(mock_readonly, mock_cache):
     """Test that all three methods handle errors consistently"""
     error_message = "Database connection lost"
-    mock_readonly.side_effect = Exception(error_message)
+    mock_readonly.side_effect = SQLAlchemyError(error_message)
     
     # Test each method returns error dict with consistent structure
     methods_to_test = [

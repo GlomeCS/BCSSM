@@ -3,6 +3,7 @@ from urllib.parse import urlparse, quote
 
 import pytest
 from unittest.mock import patch, MagicMock
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend import create_app
 
@@ -80,7 +81,7 @@ def mock_cache(monkeypatch):
 @pytest.fixture(autouse=True)
 def mock_db_queries(monkeypatch):
     """Mock database query functions to avoid SQLAlchemy initialization issues"""
-    mock_readonly = MagicMock(side_effect=Exception("Database access not allowed in tests"))
+    mock_readonly = MagicMock(side_effect=SQLAlchemyError("Database access not allowed in tests"))
     monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
     
     return mock_readonly
@@ -312,7 +313,7 @@ def test_duty_team_helper_called_with_session_user(client, patch_utils_helpers, 
 
 def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
-    fake_duty.side_effect = RuntimeError("oops")
+    fake_duty.side_effect = SQLAlchemyError("oops")
     
     # Setup database to return valid user
     setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])

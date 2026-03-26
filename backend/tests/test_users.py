@@ -2,6 +2,8 @@
 # Updated tests for new cache integration where utils functions handle caching
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app
 from unittest.mock import MagicMock, patch
 
@@ -100,7 +102,7 @@ def test_users_by_section_missing_param(client, patch_helpers):
 def test_users_by_section_exception(client, patch_helpers):
     """Test exception handling in route"""
     ph = patch_helpers
-    ph["by_section"].side_effect = Exception("DB error")
+    ph["by_section"].side_effect = SQLAlchemyError("DB error")
 
     resp = client.get("/users-by-section?section=Minors")
     assert resp.status_code == 500
@@ -148,7 +150,7 @@ def test_user_duty_missing_param(client, patch_helpers):
 def test_user_duty_exception(client, patch_helpers):
     """Test exception handling in route"""
     ph = patch_helpers
-    ph["duty"].side_effect = Exception("Oops")
+    ph["duty"].side_effect = SQLAlchemyError("Oops")
 
     resp = client.get("/user-duty?user=Alice")
     assert resp.status_code == 500
@@ -206,7 +208,7 @@ def test_select_user_missing_name(client, patch_helpers):
 
 def test_select_user_error(client, patch_helpers):
     ph = patch_helpers
-    ph["execute"].side_effect = Exception("DB connection failed")
+    ph["execute"].side_effect = SQLAlchemyError("DB connection failed")
 
     resp = client.post("/select-user", json={"user_name": "Alice"})
     assert resp.status_code == 500
@@ -218,7 +220,7 @@ def test_select_user_cache_error_handling(client, patch_helpers):
     ph = patch_helpers
     ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
     # Make cache.set fail
-    ph["cache"].set.side_effect = Exception("Cache failed")
+    ph["cache"].set.side_effect = RedisError("Cache failed")
 
     resp = client.post("/select-user", json={"user_name": "Alice"})
     # Should still succeed even if caching fails
@@ -265,7 +267,7 @@ def test_get_selected_user_no_cache(client, patch_helpers):
 def test_get_selected_user_cache_error(client, patch_helpers):
     """Test cache error handling doesn't break the response"""
     ph = patch_helpers
-    ph["cache"].get.side_effect = Exception("Cache failed")
+    ph["cache"].get.side_effect = RedisError("Cache failed")
     
     with client.session_transaction() as sess:
         sess["user_name"] = "Zed"
@@ -300,7 +302,7 @@ def test_get_users_success(client, patch_helpers):
 
 def test_get_users_error(client, patch_helpers):
     ph = patch_helpers
-    ph["all_users"].side_effect = Exception("Database error")
+    ph["all_users"].side_effect = SQLAlchemyError("Database error")
 
     resp = client.get("/get-users")
     assert resp.status_code == 500
@@ -332,7 +334,7 @@ def test_logout(client, patch_helpers):
 def test_logout_cache_error_handling(client, patch_helpers):
     """Test that cache errors don't break logout - fixed for JSON content type"""
     ph = patch_helpers
-    ph["cache"].delete.side_effect = Exception("Cache failed")
+    ph["cache"].delete.side_effect = RedisError("Cache failed")
     
     with client.session_transaction() as sess:
         sess["user_name"] = "Someone"
@@ -370,7 +372,7 @@ def test_cache_stats_healthy(client, patch_helpers):
 def test_cache_stats_unhealthy(client, patch_helpers):
     ph = patch_helpers
     # Mock cache failure
-    ph["cache"].set.side_effect = Exception("Redis connection failed")
+    ph["cache"].set.side_effect = RedisError("Redis connection failed")
 
     resp = client.get("/cache-stats")
     assert resp.status_code == 500
@@ -465,7 +467,7 @@ def test_validate_user_database_error(client, patch_helpers):
     """Test /api/auth/validate with database error"""
     ph = patch_helpers
     # Mock database error
-    ph["execute"].side_effect = Exception("Database connection failed")
+    ph["execute"].side_effect = SQLAlchemyError("Database connection failed")
 
     resp = client.get("/api/auth/validate?user_name=Alice")
     assert resp.status_code == 500
@@ -545,7 +547,7 @@ def test_clear_user_cache_endpoint(client, patch_helpers):
 def test_clear_user_cache_endpoint_error(client, patch_helpers):
     """Test cache clearing endpoint error handling"""
     ph = patch_helpers
-    ph["clear_cache"].side_effect = Exception("Cache clear failed")
+    ph["clear_cache"].side_effect = RedisError("Cache clear failed")
     
     resp = client.post("/admin/clear-user-cache")
     assert resp.status_code == 500

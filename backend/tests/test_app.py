@@ -8,8 +8,13 @@ import json
 import pytest
 from flask import Flask
 from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend import configure_logging, create_app
+from backend.bcssm_backend.exceptions import (
+    BaseError, DatabaseError, CacheError, ValidationError,
+    AuthenticationError, NotFoundError,
+)
 
 
 @pytest.fixture(scope="function")
@@ -520,20 +525,146 @@ def test_run_app_function(clean_env, mock_db_cache):
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
-    
+
     mock_db, mock_cache = mock_db_cache
-    
+
     with patch('backend.bcssm_backend.create_app') as mock_create_app:
         mock_app = MagicMock()
         mock_create_app.return_value = mock_app
-        
+
         # Import and call the extracted function
         from backend.bcssm_backend import run_app
         run_app()
-        
+
         mock_create_app.assert_called_once()
         mock_app.run.assert_called_once_with(
             host="0.0.0.0",
             port=8080,
             debug=True
         )
+
+
+# ─── Tests for custom exceptions module ──────────────────────────────────────
+
+def test_base_error_defaults():
+    e = BaseError("something went wrong")
+    assert e.message == "something went wrong"
+    assert e.status_code == 500
+    assert str(e) == "something went wrong"
+
+
+def test_base_error_custom_status():
+    e = BaseError("custom", status_code=422)
+    assert e.status_code == 422
+
+
+def test_database_error_defaults():
+    e = DatabaseError()
+    assert e.status_code == 500
+    assert "database" in e.message.lower()
+
+
+def test_cache_error_defaults():
+    e = CacheError()
+    assert e.status_code == 500
+
+
+def test_validation_error_defaults():
+    e = ValidationError()
+    assert e.status_code == 400
+
+
+def test_authentication_error_defaults():
+    e = AuthenticationError()
+    assert e.status_code == 401
+
+
+def test_not_found_error_defaults():
+    e = NotFoundError()
+    assert e.status_code == 404
+
+
+def test_exceptions_are_base_error_subclasses():
+    for cls in (DatabaseError, CacheError, ValidationError, AuthenticationError, NotFoundError):
+        assert issubclass(cls, BaseError)
+        assert issubclass(cls, Exception)
+
+
+# ─── Tests for global Flask error handlers ───────────────────────────────────
+
+@pytest.fixture
+def error_handler_app(mock_db_cache, clean_env):
+    """App fixture with a test route that can raise on demand."""
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+
+    # Register test-only routes to trigger specific exceptions
+    @app.route('/test/base-error')
+    def trigger_base_error():
+        raise ValidationError("test validation failed")
+
+    @app.route('/test/unhandled')
+    def trigger_unhandled():
+        raise RuntimeError("totally unexpected")
+
+    return app
+
+
+def test_global_handler_base_error(error_handler_app):
+    client = error_handler_app.test_client()
+    resp = client.get('/test/base-error')
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["error"] == "test validation failed"
+
+
+def test_global_handler_unhandled_exception(error_handler_app):
+    client = error_handler_app.test_client()
+    resp = client.get('/test/unhandled')
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert data["error"] == "Internal server error"
+
+
+def test_global_handler_404_api_path(error_handler_app):
+    client = error_handler_app.test_client()
+    resp = client.get('/api/this-does-not-exist-at-all-xyz')
+    assert resp.status_code == 404
+    data = resp.get_json()
+    assert data["error"] == "Resource not found"
+
+
+def test_global_handler_405_method_not_allowed(error_handler_app):
+    client = error_handler_app.test_client()
+    # /api/health only allows GET — POST should get 405
+    resp = client.post('/api/health')
+    assert resp.status_code == 405
+    data = resp.get_json()
+    assert data["error"] == "Method not allowed"
+
+
+@patch('backend.bcssm_backend.get_all_sections')
+def test_api_sections_error_dict_returns_500(mock_get_all_sections, mock_db_cache, clean_env):
+    """Test /api/sections returns 500 when get_all_sections returns an error dict."""
+    mock_get_all_sections.return_value = {"error": "DB unavailable"}
+
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    mock_db, mock_cache = mock_db_cache
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get("/api/sections")
+    assert response.status_code == 500
+    data = response.get_json()
+    assert data["error"] == "Failed to fetch sections"

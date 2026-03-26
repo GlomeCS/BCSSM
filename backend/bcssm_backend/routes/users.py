@@ -2,6 +2,8 @@ from flask import jsonify, request, session
 from markupsafe import escape
 from functools import wraps
 
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
 from backend.globals import cache
 from backend.bcssm_backend.utils import (
     get_all_users, get_user_duty, get_users_by_section, execute_query,
@@ -73,8 +75,8 @@ def init_users_routes(app):
                 return jsonify({"error": "Failed to fetch users for this section."}), 500
             
             return jsonify({"users": users}), 200
-        except Exception as e:
-            app.logger.error(f"Failed to fetch users by section: {str(e)}")
+        except SQLAlchemyError as e:
+            app.logger.error("Failed to fetch users by section: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/user-duty')
@@ -91,8 +93,8 @@ def init_users_routes(app):
             duty_data = get_user_duty(user_name)
             
             return jsonify(duty_data), 200
-        except Exception as e:
-            app.logger.error(f"Failed to fetch duty for user: {str(e)}")
+        except SQLAlchemyError as e:
+            app.logger.error("Failed to fetch duty for user: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/select-user', methods=['POST'])
@@ -140,9 +142,9 @@ def init_users_routes(app):
                     'is_leader': is_leader
                 }
                 cache.set(user_cache_key, user_data, timeout=1800)  # 30 minutes
-            except Exception as cache_error:
+            except RedisError as cache_error:
                 # Log cache error but don't fail the request
-                app.logger.warning(f"Failed to cache user data for {user_name}: {cache_error}")
+                app.logger.warning("Failed to cache user data for %s: %s", user_name, cache_error)
 
             # Return comprehensive user data for frontend
             return jsonify({
@@ -154,8 +156,8 @@ def init_users_routes(app):
                 "is_leader": is_leader
             }), 200
 
-        except Exception as e:
-            app.logger.error(f"Failed to select user: {str(e)}")
+        except SQLAlchemyError as e:
+            app.logger.error("Failed to select user: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/get-selected-user')
@@ -177,9 +179,9 @@ def init_users_routes(app):
                     "user": user_name,
                     "user_data": user_data
                 })
-        except Exception as cache_error:
+        except RedisError as cache_error:
             # Log cache error but continue with basic response
-            app.logger.warning(f"Failed to retrieve cached user data for {user_name}: {cache_error}")
+            app.logger.warning("Failed to retrieve cached user data for %s: %s", user_name, cache_error)
         
         return jsonify({"user": user_name})
 
@@ -198,9 +200,9 @@ def init_users_routes(app):
                 ]
                 for key in cache_keys_to_delete:
                     cache.delete(key)
-            except Exception as cache_error:
+            except RedisError as cache_error:
                 # Log cache error but don't fail logout
-                app.logger.warning(f"Failed to clear cache for user {user_name}: {cache_error}")
+                app.logger.warning("Failed to clear cache for user %s: %s", user_name, cache_error)
         
         # Clear session
         session.clear()
@@ -215,8 +217,8 @@ def init_users_routes(app):
             users = get_all_users()
             
             return jsonify({"users": users}), 200
-        except Exception as e:
-            app.logger.error(f"Failed to fetch users: {str(e)}")
+        except SQLAlchemyError as e:
+            app.logger.error("Failed to fetch users: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
     # Add username validation endpoint for persistent auth
@@ -252,8 +254,8 @@ def init_users_routes(app):
                 "is_leader": is_leader
             })
             
-        except Exception as e:
-            app.logger.error(f"User validation failed for {user_name}: {str(e)}")
+        except SQLAlchemyError as e:
+            app.logger.error("User validation failed for %s: %s", user_name, e)
             return jsonify({"is_valid": False, "error": "Validation failed"}), 500
 
     # Enhanced cache stats endpoint
@@ -285,8 +287,8 @@ def init_users_routes(app):
             }
             
             return jsonify(cache_info)
-        except Exception as e:
-            app.logger.error(f"Cache health check failed: {str(e)}")
+        except RedisError as e:
+            app.logger.error("Cache health check failed: %s", e)
             return jsonify({
                 "cache_status": "unhealthy",
                 "error": "Cache operations failed"
@@ -307,8 +309,8 @@ def init_users_routes(app):
                 "success": True,
                 "message": "User caches cleared successfully"
             })
-        except Exception as e:
-            app.logger.error(f"Failed to clear user cache: {str(e)}")
+        except RedisError as e:
+            app.logger.error("Failed to clear user cache: %s", e)
             return jsonify({
                 "success": False,
                 "error": "Failed to clear user cache"
@@ -338,8 +340,8 @@ def init_users_routes(app):
                 "success": True,
                 "message": f"User {user_id} updated successfully"
             })
-        except Exception as e:
-            app.logger.error(f"Failed to update user {user_id}: {str(e)}")
+        except SQLAlchemyError as e:
+            app.logger.error("Failed to update user %s: %s", user_id, e)
             return jsonify({
                 "success": False,
                 "error": "Failed to update user"
@@ -361,8 +363,8 @@ def init_users_routes(app):
                         'is_leader': user_data.get('is_leader'),
                         'user_id': user_data.get('id')
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                app.logger.warning("Failed to retrieve cached user data in context processor: %s", e)
             
             # Fallback to session data
             return {

@@ -2,6 +2,7 @@ from datetime import datetime
 from urllib.parse import unquote
 from flask import request, session, jsonify
 from markupsafe import escape
+from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend.utils import execute_query
 
 import logging
@@ -42,8 +43,8 @@ def get_user_id_from_request():
             )
             if user_rows:
                 return user_rows[0][0]
-        except Exception as e:
-            logger.error(f"Error looking up user ID for {user_name}: {e}")
+        except SQLAlchemyError as e:
+            logger.error("Error looking up user ID for %s: %s", user_name, e)
     
     # Fallback to session
     return session.get('user_id')
@@ -60,9 +61,9 @@ def get_feedback_by_date(date_str):
         feedback_rows = execute_query(query, {"date": date_str})
         daily_feedback = {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
         return daily_feedback, None  # Always return two values
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Error in get_feedback_by_date for date %s: %s", date_str, e)
-        return None, "An error occurred while fetching feedback"  # Return None for feedback, and a generic error message
+        return None, "An error occurred while fetching feedback"
 
 
 def get_user_info(user_name):
@@ -82,8 +83,9 @@ def get_user_info(user_name):
                 "section": user_rows[0][2],
             }
         return None  # User not found
-    except Exception:
-        return None  # Handle errors gracefully
+    except SQLAlchemyError as e:
+        logger.error("Failed to fetch user info for %s: %s", user_name, e)
+        return None
 
 
 def init_feedback_routes(app):
@@ -119,7 +121,7 @@ def init_feedback_routes(app):
                 "user": user_info,
                 "is_leader": is_leader
             })
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.exception("Unhandled exception in get_devos_feedback_data: %s", e)
             return jsonify({"error": "Internal server error"}), 500
 
@@ -145,7 +147,11 @@ def init_feedback_routes(app):
 
         # Retrieve the section ID
         sec_query = "SELECT id FROM sections WHERE name = :section_name;"
-        sec_rows = execute_query(sec_query, {'section_name': section_name})
+        try:
+            sec_rows = execute_query(sec_query, {'section_name': section_name})
+        except SQLAlchemyError as e:
+            logger.error("Failed to fetch section '%s': %s", section_name, e)
+            return jsonify({'error': 'Internal server error'}), 500
         if not sec_rows:
             return jsonify({'error': f"Section '{section_name}' not found"}), 400
         section_id = sec_rows[0][0]
@@ -167,6 +173,6 @@ def init_feedback_routes(app):
                 'editor_id': editor_id
             })
             return jsonify({'success': True}), 200
-        except Exception as e:
+        except SQLAlchemyError as e:
             logger.exception("Error editing feedback for date %s, section %s: %s", date_str, section_name, e)
             return jsonify({'error': 'Internal server error'}), 500

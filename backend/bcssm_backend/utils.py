@@ -5,6 +5,8 @@ from functools import lru_cache
 import hashlib
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
 
 from backend.globals import db, cache
 
@@ -34,7 +36,7 @@ def execute_readonly_query(query, params=None):
             rows = result.fetchall()
             logger.info("Rows fetched: %s", rows)
             return rows
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error(
             "Read-only query failed. Query: %s, Params: %s, Error: %s", query, params, e
         )
@@ -56,10 +58,10 @@ def execute_query(query, params=None):
         logger.info("Query executed successfully with no rows returned.")
         return None
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         db.session.rollback()
         logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
-        raise e
+        raise
 
 def get_all_users():
     """
@@ -105,7 +107,7 @@ def get_all_users():
         logger.info("Cached users list")
         
         return user_names
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch users: %s", e)
         return []
 
@@ -169,13 +171,13 @@ def get_user_duty(user_name):
         
         return duty_data
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch duty for user %s: %s", user_name, e)
         error_data = {"error": f"Failed to fetch duty for user: {e}"}
-        
+
         # Cache errors for shorter time to allow recovery
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
 
 def get_todays_duties(user_name):
@@ -249,12 +251,12 @@ def get_todays_duties(user_name):
         logger.info("Cached today's duties")
         
         return duties
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
-        
+
         # Cache empty result for short time to avoid repeated failures
         cache.set(cache_key, [], timeout=60)  # 1 minute
-        
+
         return []
 def get_duty_schedule():
     """
@@ -328,12 +330,12 @@ def get_duty_schedule():
         cycles = list(set(combo[1] for combo in day_cycle_combinations))
         
         rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch 2-week duty schedule: %s", e)
-        
+
         # Cache empty result for short time to avoid repeated failures
         cache.set(cache_key, [], timeout=60)  # 1 minute
-        
+
         return []
 
     # Group duties by (day, cycle_week) combination
@@ -394,13 +396,13 @@ def get_all_sections():
         logger.info("Cached sections list")
         
         return sections
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch sections: %s", e)
         error_data = {"error": f"Failed to fetch sections: {e}"}
-        
+
         # Cache error for short time
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
 
 def get_users_by_section(section):
@@ -432,13 +434,13 @@ def get_users_by_section(section):
         logger.info("Cached users by section for %s", section)
         
         return users
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch users by section %s: %s", section, e)
         error_data = {"error": f"Failed to fetch users by section: {e}"}
-        
+
         # Cache error for short time
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
 
 def get_all_feedback_dates():
@@ -468,13 +470,13 @@ def get_all_feedback_dates():
         logger.info("Cached feedback dates")
         
         return dates
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch feedback dates: %s", e)
         error_data = {"error": f"Failed to fetch feedback dates: {e}"}
-        
+
         # Cache error for short time
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
 
 def clear_duty_cache():
@@ -485,7 +487,7 @@ def clear_duty_cache():
         # Clear today's duties (harder to clear all variations, so clear all)
         cache.clear()  # Nuclear option for duties
         logger.info("Cleared duty-related caches")
-    except Exception as e:
+    except RedisError as e:
         logger.warning("Failed to clear duty caches: %s", e)
 
 def clear_feedback_cache():
@@ -493,7 +495,7 @@ def clear_feedback_cache():
     try:
         cache.delete('feedback:dates:all')
         logger.info("Cleared feedback caches")
-    except Exception as e:
+    except RedisError as e:
         logger.warning("Failed to clear feedback caches: %s", e)
 
 def clear_all_cache():
@@ -501,7 +503,7 @@ def clear_all_cache():
     try:
         cache.clear()
         logger.info("Cleared all caches")
-    except Exception as e:
+    except RedisError as e:
         logger.warning("Failed to clear all caches: %s", e)
 
 # Add these functions to your backend/bcssm_backend/utils.py file
@@ -594,13 +596,13 @@ def get_all_sections_with_users():
         
         return sections_list
         
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch sections with users: %s", e)
         error_data = {"error": f"Failed to fetch sections with users: {e}"}
-        
+
         # Cache error for short time
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
     
 def get_section_statistics():
@@ -652,13 +654,13 @@ def get_section_statistics():
         
         return statistics
         
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch section statistics: %s", e)
         error_data = {"error": f"Failed to fetch section statistics: {e}"}
-        
+
         # Cache error for short time
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
 
 def get_users_by_section_optimized(section_name):
@@ -710,13 +712,13 @@ def get_users_by_section_optimized(section_name):
         logger.info("Cached users by section for %s", section_name)
         
         return users
-    except Exception as e:
+    except SQLAlchemyError as e:
         logger.error("Failed to fetch users by section %s: %s", section_name, e)
         error_data = {"error": f"Failed to fetch users by section: {e}"}
-        
+
         # Cache error for short time
         cache.set(cache_key, error_data, timeout=60)  # 1 minute
-        
+
         return error_data
 
 # Update the clear_user_cache function to include new cache keys
@@ -743,5 +745,5 @@ def clear_user_cache():
         cache.delete('users:section:Unassigned:detailed')
         
         logger.info("Cleared user-related caches")
-    except Exception as e:
+    except RedisError as e:
         logger.warning("Failed to clear user caches: %s", e)
