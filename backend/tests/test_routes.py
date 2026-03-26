@@ -314,7 +314,7 @@ def test_duty_team_helper_called_with_session_user(client, patch_utils_helpers, 
 def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
     fake_duty.side_effect = SQLAlchemyError("oops")
-    
+
     # Setup database to return valid user
     setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
 
@@ -323,6 +323,19 @@ def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpe
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
+    assert "Failed to get duty information" in data["error"]
+
+
+def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_db):
+    """Test that IndexError from get_user_duty is caught by the broadened handler"""
+    _, _, fake_duty = patch_utils_helpers
+    fake_duty.side_effect = IndexError("row index out of range")
+
+    setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
+
+    resp = client.get("/duty-teams?user_name=User1")
+    assert resp.status_code == 500
+    data = resp.get_json()
     assert "Failed to get duty information" in data["error"]
 
 

@@ -150,6 +150,17 @@ def test_get_duties_today_exception_handling(client, patch_duties_helpers):
     data = resp.get_json()
     assert "Failed to fetch today's duties" in data["error"]
 
+
+def test_get_duties_today_unexpected_exception(client, patch_duties_helpers):
+    """Test /api/duties/today when get_todays_duties raises a non-SQLAlchemy error"""
+    ph = patch_duties_helpers
+    ph["todays_duties"].side_effect = IndexError("row index out of range")
+
+    resp = client.get("/api/duties/today?user_name=Alice")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "Failed to fetch today's duties" in data["error"]
+
 def test_get_duties_today_empty_result(client, patch_duties_helpers):
     """Test /api/duties/today when user has no duties"""
     ph = patch_duties_helpers
@@ -278,6 +289,17 @@ def test_get_duty_schedule_exception_handling(client, patch_duties_helpers):
     """Test /api/duties/schedule when get_duty_schedule raises exception"""
     ph = patch_duties_helpers
     ph["duty_schedule"].side_effect = SQLAlchemyError("Schedule service unavailable")
+
+    resp = client.get("/api/duties/schedule?user_name=Alice")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "Failed to fetch duty schedule" in data["error"]
+
+
+def test_get_duty_schedule_unexpected_exception(client, patch_duties_helpers):
+    """Test /api/duties/schedule when get_duty_schedule raises a non-SQLAlchemy error"""
+    ph = patch_duties_helpers
+    ph["duty_schedule"].side_effect = ValueError("unexpected data format")
 
     resp = client.get("/api/duties/schedule?user_name=Alice")
     assert resp.status_code == 500

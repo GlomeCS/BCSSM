@@ -97,6 +97,6 @@ def init_main_routes(app):
                 "role": user_role
             })
             
-        except SQLAlchemyError as e:
+        except (SQLAlchemyError, IndexError) as e:
             app.logger.error("Error getting duty teams: %s", e)
             return jsonify({"error": "Failed to get duty information"}), 500

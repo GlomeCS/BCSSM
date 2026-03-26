@@ -157,13 +157,17 @@ def get_user_duty(user_name):
         else:
             # Extract the user's duty information
             row = result[0]
-            duty_data = {
-                "user": row[0],  # user_name
-                "section": row[1],  # section name
-                "role": row[2],  # role
-                "team": row[3],  # team name
-                "duty": row[4],  # duty name
-            }
+            if len(row) < 5:
+                logger.error("Unexpected row format in get_user_duty for %s: %s", user_name, row)
+                duty_data = {"error": "Unexpected data format from database"}
+            else:
+                duty_data = {
+                    "user": row[0],  # user_name
+                    "section": row[1],  # section name
+                    "role": row[2],  # role
+                    "team": row[3],  # team name
+                    "duty": row[4],  # duty name
+                }
         
         # Cache the results (even errors, to avoid repeated failed queries)
         cache.set(cache_key, duty_data, timeout=600)  # 10 minutes
