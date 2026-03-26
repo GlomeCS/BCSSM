@@ -135,7 +135,7 @@ def init_feedback_routes(app):
         
         # Get editor ID from multiple sources
         editor_id = get_user_id_from_request()
-        logger.info(f"DEBUG edit_devos_feedback - editor_id: {editor_id}")
+        logger.info("DEBUG edit_devos_feedback - editor_id: %s", editor_id)
         
         if not editor_id:
             logger.warning("No user ID found in request for /api/devos-feedback/edit")

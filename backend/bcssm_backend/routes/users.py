@@ -363,7 +363,7 @@ def init_users_routes(app):
                         'is_leader': user_data.get('is_leader'),
                         'user_id': user_data.get('id')
                     }
-            except Exception as e:
+            except RedisError as e:
                 app.logger.warning("Failed to retrieve cached user data in context processor: %s", e)
             
             # Fallback to session data

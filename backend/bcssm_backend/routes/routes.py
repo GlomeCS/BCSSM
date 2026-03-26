@@ -74,7 +74,7 @@ def init_main_routes(app):
             )
             
             if not user_rows:
-                app.logger.warning(f"User '{user_name}' not found in database")
+                app.logger.warning("User '%s' not found in database", user_name)
                 return jsonify({
                     "error": "Invalid user",
                     "provided_username": user_name
