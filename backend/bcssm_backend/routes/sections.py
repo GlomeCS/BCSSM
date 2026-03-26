@@ -1,5 +1,6 @@
 import logging
 from flask import jsonify, session
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend.utils import get_all_sections_with_users, get_users_by_section_optimized
 
@@ -39,7 +40,7 @@ def init_users_sections_routes(app):
             
             return jsonify(response)
             
-        except Exception as e:
+        except (SQLAlchemyError, TypeError) as e:
             logger.error("Failed to fetch users by section: %s", e)
             return jsonify({"error": "Failed to fetch users by section"}), 500
 
@@ -69,6 +70,6 @@ def init_users_sections_routes(app):
             
             return jsonify(response)
             
-        except Exception as e:
+        except (SQLAlchemyError, TypeError) as e:
             logger.error("Failed to fetch users for section %s: %s", section_name, e)
             return jsonify({"error": f"Failed to fetch users for section {section_name}"}), 500

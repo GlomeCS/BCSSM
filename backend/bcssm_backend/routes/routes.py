@@ -1,6 +1,7 @@
 from urllib.parse import urlparse, unquote
 from flask import redirect, request, session, jsonify
 from markupsafe import escape
+from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend.utils import get_user_duty, user_assignments, execute_query
 
 
@@ -42,19 +43,19 @@ def init_main_routes(app):
         # Handle POST request for user login (legacy support):
         user_name = request.form.get('user_name')
         user_name = escape(user_name)  # Escape to prevent XSS
-        print(f"Received user_name: {user_name}")  # Debug log
-        
+        app.logger.debug("Received user_name: %s", user_name)
+
         if user_name in user_assignments:
             session['user_name'] = user_name
             target = request.args.get('target', '/').strip()  # Default to '/' if target is empty
             target = target.replace('\\', '')  # Remove backslashes
-            print(f"Processed target: {target}")  # Debug log
+            app.logger.debug("Processed target: %s", target)
             if not urlparse(target).netloc and not urlparse(target).scheme:
-                print(f"Redirecting to: {target}")  # Debug log
+                app.logger.debug("Redirecting to: %s", target)
                 return redirect(target, code=302)
-            print("Target invalid, redirecting to '/'")  # Debug log
+            app.logger.debug("Target invalid, redirecting to '/'")
             return redirect('/')
-        print("User not found, redirecting to index")  # Debug log
+        app.logger.debug("User not found, redirecting to index")
         return redirect('/')
 
     @app.route('/duty-teams')
@@ -73,7 +74,7 @@ def init_main_routes(app):
             )
             
             if not user_rows:
-                app.logger.warning(f"User '{user_name}' not found in database")
+                app.logger.warning("User '%s' not found in database", user_name)
                 return jsonify({
                     "error": "Invalid user",
                     "provided_username": user_name
@@ -96,6 +97,6 @@ def init_main_routes(app):
                 "role": user_role
             })
             
-        except Exception as e:
-            app.logger.error(f"Error getting duty teams: {e}")
+        except (SQLAlchemyError, IndexError) as e:
+            app.logger.error("Error getting duty teams: %s", e)
             return jsonify({"error": "Failed to get duty information"}), 500

@@ -2,6 +2,7 @@ import pytest
 import json
 import logging
 from unittest.mock import patch, MagicMock
+from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
 
 # ─── 0) Fixture: use TestingConfig and register routes ──────────────────────────
@@ -169,7 +170,7 @@ def test_get_users_by_section_route_empty_data(client, mock_utils):
 def test_get_users_by_section_route_exception_handling(client, mock_utils):
     """Test endpoint handles unexpected exceptions"""
     mock_sections, _ = mock_utils
-    mock_sections.side_effect = Exception("Unexpected error")
+    mock_sections.side_effect = SQLAlchemyError("Unexpected error")
     
     # Set up authenticated session
     with client.session_transaction() as sess:
@@ -362,7 +363,7 @@ def test_get_section_users_route_unassigned_section(client, mock_utils):
 def test_get_section_users_route_exception_handling(client, mock_utils):
     """Test endpoint handles unexpected exceptions"""
     _, mock_users = mock_utils
-    mock_users.side_effect = Exception("Unexpected database error")
+    mock_users.side_effect = SQLAlchemyError("Unexpected database error")
     
     # Set up authenticated session
     with client.session_transaction() as sess:
@@ -450,7 +451,7 @@ def test_get_section_users_route_error_logging(client, mock_utils, caplog):
 def test_get_section_users_route_exception_logging(client, mock_utils, caplog):
     """Test exception logging"""
     _, mock_users = mock_utils
-    mock_users.side_effect = Exception("Database timeout")
+    mock_users.side_effect = SQLAlchemyError("Database timeout")
     
     # Set up authenticated session
     with client.session_transaction() as sess:

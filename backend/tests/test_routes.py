@@ -3,6 +3,7 @@ from urllib.parse import urlparse, quote
 
 import pytest
 from unittest.mock import patch, MagicMock
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend import create_app
 
@@ -80,7 +81,7 @@ def mock_cache(monkeypatch):
 @pytest.fixture(autouse=True)
 def mock_db_queries(monkeypatch):
     """Mock database query functions to avoid SQLAlchemy initialization issues"""
-    mock_readonly = MagicMock(side_effect=Exception("Database access not allowed in tests"))
+    mock_readonly = MagicMock(side_effect=SQLAlchemyError("Database access not allowed in tests"))
     monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
     
     return mock_readonly
@@ -312,8 +313,8 @@ def test_duty_team_helper_called_with_session_user(client, patch_utils_helpers, 
 
 def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
-    fake_duty.side_effect = RuntimeError("oops")
-    
+    fake_duty.side_effect = SQLAlchemyError("oops")
+
     # Setup database to return valid user
     setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
 
@@ -322,6 +323,19 @@ def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpe
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
+    assert "Failed to get duty information" in data["error"]
+
+
+def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_db):
+    """Test that IndexError from get_user_duty is caught by the broadened handler"""
+    _, _, fake_duty = patch_utils_helpers
+    fake_duty.side_effect = IndexError("row index out of range")
+
+    setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
+
+    resp = client.get("/duty-teams?user_name=User1")
+    assert resp.status_code == 500
+    data = resp.get_json()
     assert "Failed to get duty information" in data["error"]
 
 
@@ -344,5 +358,35 @@ def test_login_invalid_target_logs_warning(client, env_and_deny_db, caplog):
 
     caplog.set_level(logging.DEBUG)
     resp = client.post("/login?target=http://evil.com", data={"user_name": "A"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert urlparse(resp.headers["Location"]).path == "/"
+
+
+# ─── 8) Login POST with user in user_assignments ────────────────────────────────
+def test_login_post_valid_user_in_assignments(client):
+    """Test login POST when user IS in user_assignments (covers logger.debug lines 49-57)"""
+    from unittest.mock import patch as _patch
+    # Patch user_assignments in the routes module directly to include our test user
+    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
+        resp = client.post("/login", data={"user_name": "ValidUser"}, follow_redirects=False)
+    assert resp.status_code == 302
+    assert urlparse(resp.headers["Location"]).path == "/"
+
+
+def test_login_post_valid_user_valid_target(client):
+    """Test login POST with valid relative target redirects to that target"""
+    from unittest.mock import patch as _patch
+    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
+        resp = client.post("/login?target=/dashboard", data={"user_name": "ValidUser"}, follow_redirects=False)
+    assert resp.status_code == 302
+    # Relative target is accepted
+    assert urlparse(resp.headers["Location"]).path == "/dashboard"
+
+
+def test_login_post_valid_user_external_target(client):
+    """Test login POST with external URL target redirects to / (covers lines 56-57)"""
+    from unittest.mock import patch as _patch
+    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
+        resp = client.post("/login?target=http://evil.com", data={"user_name": "ValidUser"}, follow_redirects=False)
     assert resp.status_code == 302
     assert urlparse(resp.headers["Location"]).path == "/"

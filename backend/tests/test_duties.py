@@ -2,6 +2,7 @@
 # Comprehensive unit tests for duties routes with persistent authentication
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
 from unittest.mock import MagicMock, patch
 import logging
@@ -142,7 +143,18 @@ def test_get_duties_today_url_encoded_username(client, patch_duties_helpers):
 def test_get_duties_today_exception_handling(client, patch_duties_helpers):
     """Test /api/duties/today when get_todays_duties raises exception"""
     ph = patch_duties_helpers
-    ph["todays_duties"].side_effect = Exception("Database connection failed")
+    ph["todays_duties"].side_effect = SQLAlchemyError("Database connection failed")
+
+    resp = client.get("/api/duties/today?user_name=Alice")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "Failed to fetch today's duties" in data["error"]
+
+
+def test_get_duties_today_unexpected_exception(client, patch_duties_helpers):
+    """Test /api/duties/today when get_todays_duties raises a non-SQLAlchemy error"""
+    ph = patch_duties_helpers
+    ph["todays_duties"].side_effect = IndexError("row index out of range")
 
     resp = client.get("/api/duties/today?user_name=Alice")
     assert resp.status_code == 500
@@ -276,7 +288,18 @@ def test_get_duty_schedule_no_username(client, patch_duties_helpers):
 def test_get_duty_schedule_exception_handling(client, patch_duties_helpers):
     """Test /api/duties/schedule when get_duty_schedule raises exception"""
     ph = patch_duties_helpers
-    ph["duty_schedule"].side_effect = Exception("Schedule service unavailable")
+    ph["duty_schedule"].side_effect = SQLAlchemyError("Schedule service unavailable")
+
+    resp = client.get("/api/duties/schedule?user_name=Alice")
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert "Failed to fetch duty schedule" in data["error"]
+
+
+def test_get_duty_schedule_unexpected_exception(client, patch_duties_helpers):
+    """Test /api/duties/schedule when get_duty_schedule raises a non-SQLAlchemy error"""
+    ph = patch_duties_helpers
+    ph["duty_schedule"].side_effect = ValueError("unexpected data format")
 
     resp = client.get("/api/duties/schedule?user_name=Alice")
     assert resp.status_code == 500
@@ -454,7 +477,7 @@ def test_logging_on_missing_username(client, patch_duties_helpers, caplog):
 def test_logging_on_exception(client, patch_duties_helpers, caplog):
     """Test that exceptions are logged with proper context"""
     ph = patch_duties_helpers
-    ph["todays_duties"].side_effect = Exception("Test error")
+    ph["todays_duties"].side_effect = SQLAlchemyError("Test error")
 
     with caplog.at_level(logging.ERROR):
         resp = client.get("/api/duties/today?user_name=Alice")

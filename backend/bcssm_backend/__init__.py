@@ -21,7 +21,10 @@ from backend.bcssm_backend.routes.sections import (
 )
 
 from redis.exceptions import RedisError
+from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.exceptions import HTTPException
 
+from backend.bcssm_backend.exceptions import BaseError
 from backend.bcssm_backend.utils import (
     get_all_sections, clear_user_cache, clear_duty_cache,
     clear_feedback_cache, clear_all_cache
@@ -69,6 +72,9 @@ def _setup_routes(app):
     def api_sections():
         """Return list of section names in configured display order."""
         sections = get_all_sections()
+        if isinstance(sections, dict) and "error" in sections:
+            app.logger.error("api_sections failed: %s", sections["error"])
+            return jsonify({"error": "Failed to fetch sections"}), 500
         return jsonify(sections)
 
     # Enhanced health check
@@ -168,6 +174,34 @@ def create_app():
 
     # Set up routes
     _setup_routes(app)
+
+    # Global error handlers
+    @app.errorhandler(BaseError)
+    def handle_bcssm_error(e):
+        app.logger.error("Application error: %s", e.message)
+        return jsonify({"error": e.message}), e.status_code
+
+    @app.errorhandler(SQLAlchemyError)
+    def handle_db_error(e):
+        app.logger.error("Unhandled database error: %s", e)
+        return jsonify({"error": "A database error occurred"}), 500
+
+    @app.errorhandler(404)
+    def handle_404(e):
+        if request.path.startswith('/api/'):
+            return jsonify({"error": "Resource not found"}), 404
+        return e
+
+    @app.errorhandler(405)
+    def handle_405(e):
+        return jsonify({"error": "Method not allowed"}), 405
+
+    @app.errorhandler(Exception)
+    def handle_exception(e):
+        if isinstance(e, HTTPException):
+            return e
+        app.logger.error("Unhandled exception: %s", e)
+        return jsonify({"error": "Internal server error"}), 500
 
     # Teardown and logging
     @app.teardown_appcontext
