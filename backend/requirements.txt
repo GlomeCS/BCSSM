@@ -17,5 +17,5 @@ pytest-mock==3.15.1
 Flask-Cors==6.0.2
 gunicorn==25.1.0
 redis==7.3.0
-pytest-cov==7.0.0
-pylint==3.3.8
+pytest-cov==7.1.0
+pylint==4.0.5
