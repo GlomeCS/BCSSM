@@ -22,12 +22,16 @@ def app(monkeypatch):
 def client(app):
     return app.test_client()
 
-# ─── 2) Patch execute_query in devos_feedback ───────────────────────────────────
+# ─── 2) Patch execute_query in devos_feedback and auth ──────────────────────────
 @pytest.fixture(autouse=True)
 def mock_execute_query(monkeypatch):
     mock_exec = MagicMock()
     monkeypatch.setattr(
         "backend.bcssm_backend.routes.devos_feedback.execute_query",
+        mock_exec
+    )
+    monkeypatch.setattr(
+        "backend.bcssm_backend.auth.execute_query",
         mock_exec
     )
     return mock_exec
