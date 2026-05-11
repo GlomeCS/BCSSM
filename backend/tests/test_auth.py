@@ -2,6 +2,8 @@ import pytest
 from unittest.mock import MagicMock
 from sqlalchemy.exc import SQLAlchemyError
 
+from flask import session
+
 from backend.bcssm_backend import create_app
 from backend.bcssm_backend.auth import get_username_from_request, get_user_id_from_request
 
@@ -43,13 +45,8 @@ def test_username_from_header(app):
 
 def test_username_from_session(app):
     with app.test_request_context('/test'):
-        with app.test_client() as client:
-            with client.session_transaction() as sess:
-                sess['user_name'] = 'Eve'
-            with app.test_request_context('/test'):
-                from flask import session
-                session['user_name'] = 'Eve'
-                assert get_username_from_request() == 'Eve'
+        session['user_name'] = 'Eve'
+        assert get_username_from_request() == 'Eve'
 
 
 def test_username_url_decoded(app):
@@ -103,4 +100,11 @@ def test_user_id_db_error_reraised(app, mock_execute_query):
 def test_user_id_no_username_returns_none(app, mock_execute_query):
     with app.test_request_context('/test'):
         assert get_user_id_from_request() is None
+    mock_execute_query.assert_not_called()
+
+
+def test_user_id_falls_back_to_session(app, mock_execute_query):
+    with app.test_request_context('/test'):
+        session['user_id'] = 99
+        assert get_user_id_from_request() == 99
     mock_execute_query.assert_not_called()

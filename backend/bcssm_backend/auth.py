@@ -40,6 +40,5 @@ def get_user_id_from_request():
         except SQLAlchemyError as e:
             logger.error("Error looking up user ID for %s: %s", user_name, e)
             raise
-        return None
 
     return session.get('user_id')

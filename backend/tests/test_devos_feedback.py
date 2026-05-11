@@ -167,7 +167,7 @@ def test_edit_unauthenticated(client):
                        json={"feedback": "Test"})
     assert resp.status_code == 400
     data = resp.get_json()
-    assert "Username required" in data["error"]
+    assert "Invalid user" in data["error"]
 
 def test_edit_authenticated_via_query_param(client, mock_execute_query):
     """Test edit with username via query parameter"""
@@ -319,7 +319,7 @@ def test_edit_section_lookup_db_error(client, mock_execute_query):
 
 
 def test_get_user_id_from_request_db_error(client, mock_execute_query):
-    """Test get_user_id_from_request re-raises SQLAlchemyError when username supplied (covers lines 46-48)"""
+    """Test SQLAlchemyError during user ID lookup is caught by the route and returns 500"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             raise SQLAlchemyError("lookup failed")
@@ -329,9 +329,8 @@ def test_get_user_id_from_request_db_error(client, mock_execute_query):
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})
-    # DB error propagates to global handler → 500
     assert resp.status_code == 500
-    assert "database error" in resp.get_json()["error"].lower()
+    assert "Internal server error" in resp.get_json()["error"]
 
 
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):

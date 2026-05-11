@@ -91,13 +91,16 @@ def init_feedback_routes(app):
         payload = request.get_json() or {}
         new_feedback = payload.get('feedback')
         
-        # Get editor ID from multiple sources
-        editor_id = get_user_id_from_request()
-        logger.info("DEBUG edit_devos_feedback - editor_id: %s", editor_id)
-        
+        try:
+            editor_id = get_user_id_from_request()
+        except SQLAlchemyError as e:
+            logger.error("Failed to resolve editor id: %s", e)
+            return jsonify({'error': 'Internal server error'}), 500
+        logger.debug("edit_devos_feedback - editor_id: %s", editor_id)
+
         if not editor_id:
             logger.warning("No user ID found in request for /api/devos-feedback/edit")
-            return jsonify({'error': 'Username required'}), 400
+            return jsonify({'error': 'Invalid user'}), 400
 
         # Validate input
         if not date_str or not section_name or new_feedback is None:
