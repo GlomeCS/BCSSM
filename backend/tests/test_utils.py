@@ -32,16 +32,14 @@ def mock_readonly(mocker):
 def mock_cache(monkeypatch):
     """Mock the cache to avoid Redis connection during tests"""
     fake_cache = MagicMock()
-    # Configure cache.get to return None by default (cache miss)
     fake_cache.get.return_value = None
-    # Configure cache.set to return True (success)
     fake_cache.set.return_value = True
-    # Configure cache.delete to return True (success)
     fake_cache.delete.return_value = True
-    # Configure cache.clear to return True (success)
     fake_cache.clear.return_value = True
-    
+
     monkeypatch.setattr('backend.bcssm_backend.utils.cache', fake_cache)
+    # Also patch globals.cache so the cached_result decorator's lazy import gets the mock
+    monkeypatch.setattr('backend.globals.cache', fake_cache)
     return fake_cache
 
 # ─── 2) Fixture to mock db.session directly (for testing execute_query) ─────
@@ -80,19 +78,19 @@ def test_get_all_users_happy_path(mock_readonly, mock_cache):
     params = None
     assert params is None
     expected_sql = """
-    SELECT 
-        u.name, 
-        COALESCE(s.name, 'Unassigned') AS section,  
-        u.role, 
-        COALESCE(dt.name, 'No Team') AS team 
+    SELECT
+        u.name,
+        COALESCE(s.name, 'Unassigned') AS section,
+        u.role,
+        COALESCE(dt.name, 'No Team') AS team
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    ORDER BY 
-        CASE 
-            WHEN POSITION(' ' IN u.name) > 0 
+    ORDER BY
+        CASE
+            WHEN POSITION(' ' IN u.name) > 0
             THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
-            ELSE u.name 
+            ELSE u.name
         END,
         u.name;
     """
@@ -1493,11 +1491,92 @@ def test_get_current_cycle_week_real_calculation():
 def test_get_current_cycle_week_specific_monday_july_14():
     """Test specifically for Monday July 14, 2025 which should be cycle week 1"""
     test_datetime = datetime(2025, 7, 14, 12, 0, 0)  # Monday July 14, 2025 at noon
-    
+
     with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
         utils.get_current_cycle_week.cache_clear()
         result = utils.get_current_cycle_week()
-        
+
         # July 14, 2025 is exactly 7 days after July 7, 2025
         # (7 // 7) % 2 = 1 % 2 = 1
         assert result == 1, f"July 14, 2025 should be cycle week 1, got {result}"
+
+
+# ─── Tests for get_feedback_by_date ─────────────────────────────────────────
+
+def test_get_feedback_by_date_success(monkeypatch):
+    mock_exec = MagicMock(return_value=[("Minis", "Great job"), ("Majors", None)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    result, error = utils.get_feedback_by_date("2025-06-07")
+    assert error is None
+    assert result == {"Minis": "Great job", "Majors": "No feedback available"}
+
+
+def test_get_feedback_by_date_exception(monkeypatch):
+    mock_exec = MagicMock(side_effect=SQLAlchemyError("DB fail"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    result, error = utils.get_feedback_by_date("2025-06-07")
+    assert result is None
+    assert error == "An error occurred while fetching feedback"
+
+
+# ─── Tests for get_user_info ─────────────────────────────────────────────────
+
+def test_get_user_info_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[("Alice", "Leader", "Minis")])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    info = utils.get_user_info("Alice")
+    assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
+
+
+def test_get_user_info_not_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    assert utils.get_user_info("Bob") is None
+
+
+def test_get_user_info_exception(monkeypatch):
+    mock_exec = MagicMock(side_effect=SQLAlchemyError("Oops"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    with pytest.raises(SQLAlchemyError):
+        utils.get_user_info("Alice")
+
+
+# ─── Tests for save_devos_feedback ───────────────────────────────────────────
+
+def test_save_devos_feedback_success(monkeypatch):
+    calls = []
+    def side_effect(query, params=None):
+        calls.append(query)
+        if "SELECT id FROM sections" in query:
+            return [(5,)]
+        return None
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", side_effect)
+    utils.save_devos_feedback("Minis", "2025-06-07", "Great session", 1)
+    assert any("SELECT id FROM sections" in q for q in calls)
+    assert any("INSERT INTO feedback" in q for q in calls)
+
+
+def test_save_devos_feedback_section_not_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    with pytest.raises(ValueError, match="Section 'Unknown' not found"):
+        utils.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
+
+
+def test_save_devos_feedback_section_lookup_db_error(monkeypatch):
+    mock_exec = MagicMock(side_effect=SQLAlchemyError("DB error"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    with pytest.raises(SQLAlchemyError):
+        utils.save_devos_feedback("Minis", "2025-06-07", "feedback", 1)
+
+
+def test_save_devos_feedback_upsert_db_error(monkeypatch):
+    call_count = [0]
+    def side_effect(query, params=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return [(5,)]
+        raise SQLAlchemyError("upsert failed")
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", side_effect)
+    with pytest.raises(SQLAlchemyError):
+        utils.save_devos_feedback("Minis", "2025-06-07", "feedback", 1)

@@ -1,10 +1,7 @@
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
-from backend.bcssm_backend.routes.devos_feedback import (
-    get_feedback_by_date,
-    get_user_info,
-)
+from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info
 from urllib.parse import quote
 from unittest.mock import MagicMock
 
@@ -27,7 +24,7 @@ def client(app):
 def mock_execute_query(monkeypatch):
     mock_exec = MagicMock()
     monkeypatch.setattr(
-        "backend.bcssm_backend.routes.devos_feedback.execute_query",
+        "backend.bcssm_backend.utils.execute_query",
         mock_exec
     )
     monkeypatch.setattr(

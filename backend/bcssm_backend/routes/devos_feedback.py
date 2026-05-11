@@ -1,49 +1,11 @@
 from datetime import datetime
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
-from backend.bcssm_backend.utils import execute_query
+from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info, save_devos_feedback
 from backend.bcssm_backend.auth import get_username_from_request, get_user_id_from_request
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-def get_feedback_by_date(date_str):
-    """Fetch feedback from the database for a given date."""
-    query = """
-    SELECT s.name AS section_name, f.feedback
-    FROM sections s
-    LEFT JOIN feedback f ON s.id = f.section_id AND f.date = :date;
-    """
-    try:
-        feedback_rows = execute_query(query, {"date": date_str})
-        daily_feedback = {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
-        return daily_feedback, None  # Always return two values
-    except SQLAlchemyError as e:
-        logger.error("Error in get_feedback_by_date for date %s: %s", date_str, e)
-        return None, "An error occurred while fetching feedback"
-
-
-def get_user_info(user_name):
-    """Fetch user role and section for permission checking."""
-    user_info_query = """
-    SELECT u.name, u.role, s.name AS section_name
-    FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE u.name = :user_name;
-    """
-    try:
-        user_rows = execute_query(user_info_query, {"user_name": user_name})
-        if user_rows:
-            return {
-                "name": user_rows[0][0],
-                "role": user_rows[0][1],
-                "section": user_rows[0][2],
-            }
-        return None  # User not found
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch user info for %s: %s", user_name, e)
-        raise
 
 
 def init_feedback_routes(app):
@@ -106,34 +68,11 @@ def init_feedback_routes(app):
         if not date_str or not section_name or new_feedback is None:
             return jsonify({'error': 'Missing date, section, or feedback'}), 400
 
-        # Retrieve the section ID
-        sec_query = "SELECT id FROM sections WHERE name = :section_name;"
         try:
-            sec_rows = execute_query(sec_query, {'section_name': section_name})
-        except SQLAlchemyError as e:
-            logger.error("Failed to fetch section '%s': %s", section_name, e)
-            return jsonify({'error': 'Internal server error'}), 500
-        if not sec_rows:
-            return jsonify({'error': f"Section '{section_name}' not found"}), 400
-        section_id = sec_rows[0][0]
-
-        try:
-            # Upsert feedback (PostgreSQL syntax)
-            upsert_query = """
-                INSERT INTO feedback (section_id, date, feedback, last_edited_by, last_edited_at)
-                VALUES (:section_id, :date_str, :new_feedback, :editor_id, CURRENT_TIMESTAMP)
-                ON CONFLICT (section_id, date) DO UPDATE
-                  SET feedback = EXCLUDED.feedback,
-                      last_edited_by = EXCLUDED.last_edited_by,
-                      last_edited_at = EXCLUDED.last_edited_at;
-            """
-            execute_query(upsert_query, {
-                'section_id': section_id,
-                'date_str': date_str,
-                'new_feedback': new_feedback,
-                'editor_id': editor_id
-            })
+            save_devos_feedback(section_name, date_str, new_feedback, editor_id)
             return jsonify({'success': True}), 200
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
         except SQLAlchemyError as e:
             logger.exception("Error editing feedback for date %s, section %s: %s", date_str, section_name, e)
             return jsonify({'error': 'Internal server error'}), 500
