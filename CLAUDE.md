@@ -102,3 +102,17 @@ GitHub Actions (`.github/workflows/python-app.yml`) runs on push/PR to `develop`
 3. Upload to Codecov (85% coverage target enforced)
 
 Active development happens on `develop`; `main` is production.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`github.com/GlomeCS/BCSSM`). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default label vocabulary — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

@@ -9,28 +9,7 @@ from backend.bcssm_backend.utils import (
     get_all_users, get_user_duty, get_users_by_section, execute_query,
     clear_user_cache  # Import cache management function
 )
-
-
-def get_username_from_request():
-    """Helper function to get username from various request sources"""
-    # Try request body first (for POST requests)
-    if request.method == 'POST' and request.json:
-        username = request.json.get('user_name')
-        if username:
-            return escape(username)
-    
-    # Try query parameters (for GET requests)
-    username = request.args.get('user_name') or request.args.get('user')
-    if username:
-        return escape(username)
-    
-    # Try headers (sent by frontend API wrapper)
-    username = request.headers.get('X-Current-User')
-    if username:
-        return escape(username)
-    
-    # Fallback to session for backward compatibility
-    return session.get('user_name')
+from backend.bcssm_backend.auth import get_username_from_request
 
 
 def validate_params(*required_params):

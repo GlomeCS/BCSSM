@@ -1,55 +1,11 @@
 from datetime import datetime
-from urllib.parse import unquote
-from flask import request, session, jsonify
-from markupsafe import escape
+from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend.utils import execute_query
+from backend.bcssm_backend.auth import get_username_from_request, get_user_id_from_request
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-def get_username_from_request():
-    """Helper function to get username from various request sources"""
-    # Try request body first (for POST requests)
-    if request.method == 'POST' and request.json:
-        username = request.json.get('user_name')
-        if username:
-            return escape(unquote(username))
-    
-    # Try query parameters (for GET requests)
-    username = request.args.get('user_name') or request.args.get('user')
-    if username:
-        return escape(unquote(username))
-    
-    # Try headers (sent by frontend API wrapper)
-    username = request.headers.get('X-Current-User')
-    if username:
-        return escape(unquote(username))
-    
-    # Fallback to session for backward compatibility
-    return session.get('user_name')
-
-
-def get_user_id_from_request():
-    """Helper function to get user_id from various request sources"""
-    # First try to get username and look it up
-    user_name = get_username_from_request()
-    if user_name:
-        try:
-            user_rows = execute_query(
-                "SELECT u.id FROM users u WHERE u.name = :user_name",
-                {'user_name': user_name}
-            )
-            if user_rows:
-                return user_rows[0][0]
-        except SQLAlchemyError as e:
-            logger.error("Error looking up user ID for %s: %s", user_name, e)
-            raise
-        return None
-
-    # Fallback to session only when no username was supplied
-    return session.get('user_id')
 
 
 def get_feedback_by_date(date_str):
@@ -135,13 +91,16 @@ def init_feedback_routes(app):
         payload = request.get_json() or {}
         new_feedback = payload.get('feedback')
         
-        # Get editor ID from multiple sources
-        editor_id = get_user_id_from_request()
-        logger.info("DEBUG edit_devos_feedback - editor_id: %s", editor_id)
-        
+        try:
+            editor_id = get_user_id_from_request()
+        except SQLAlchemyError as e:
+            logger.error("Failed to resolve editor id: %s", e)
+            return jsonify({'error': 'Internal server error'}), 500
+        logger.debug("edit_devos_feedback - editor_id: %s", editor_id)
+
         if not editor_id:
             logger.warning("No user ID found in request for /api/devos-feedback/edit")
-            return jsonify({'error': 'Username required'}), 400
+            return jsonify({'error': 'Invalid user'}), 400
 
         # Validate input
         if not date_str or not section_name or new_feedback is None:

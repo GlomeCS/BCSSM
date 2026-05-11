@@ -1,30 +1,9 @@
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse
 from flask import redirect, request, session, jsonify
 from markupsafe import escape
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend.utils import get_user_duty, user_assignments, execute_query
-
-
-def get_username_from_request():
-    """Helper function to get username from various request sources"""
-    # Try request body first (for POST requests)
-    if request.method == 'POST' and request.json:
-        username = request.json.get('user_name')
-        if username:
-            return escape(unquote(username))  # URL decode and escape
-    
-    # Try query parameters (for GET requests)
-    username = request.args.get('user_name') or request.args.get('user')
-    if username:
-        return escape(unquote(username))  # URL decode and escape
-    
-    # Try headers (sent by frontend API wrapper)
-    username = request.headers.get('X-Current-User')
-    if username:
-        return escape(unquote(username))  # URL decode and escape
-    
-    # Fallback to session for backward compatibility
-    return session.get('user_name')
+from backend.bcssm_backend.auth import get_username_from_request
 
 
 def init_main_routes(app):
