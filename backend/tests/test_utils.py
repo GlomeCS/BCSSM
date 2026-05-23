@@ -1578,3 +1578,22 @@ def test_save_devos_feedback_uses_single_query(monkeypatch):
     assert "INSERT INTO feedback" in query_text
     assert "FROM sections" in query_text
     assert "RETURNING" in query_text
+
+
+def test_save_devos_feedback_clears_feedback_cache_on_success(monkeypatch):
+    mock_exec = MagicMock(return_value=[(5,)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    mock_clear = MagicMock()
+    monkeypatch.setattr("backend.bcssm_backend.utils.clear_feedback_cache", mock_clear)
+    utils.save_devos_feedback("Minis", "2025-06-07", "Great session", 1)
+    mock_clear.assert_called_once()
+
+
+def test_save_devos_feedback_does_not_clear_cache_when_section_not_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    mock_clear = MagicMock()
+    monkeypatch.setattr("backend.bcssm_backend.utils.clear_feedback_cache", mock_clear)
+    with pytest.raises(ValidationError):
+        utils.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
+    mock_clear.assert_not_called()
