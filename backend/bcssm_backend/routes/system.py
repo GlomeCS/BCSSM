@@ -3,6 +3,7 @@ import os
 from flask import jsonify, send_from_directory
 from redis.exceptions import RedisError
 
+from backend.bcssm_backend.exceptions import CacheError
 from backend.bcssm_backend.utils import get_all_sections, get_health_status
 
 
@@ -19,7 +20,7 @@ def init_system_routes(app):
     def health_check():
         try:
             return jsonify(get_health_status())
-        except RedisError as e:
+        except (RedisError, CacheError) as e:
             app.logger.error("Health check failed: %s", e)
             return jsonify({
                 "status": "unhealthy",

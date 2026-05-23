@@ -12,7 +12,7 @@ from redis.exceptions import RedisError
 
 from backend.globals import db, cache
 from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
-from backend.bcssm_backend.exceptions import ValidationError
+from backend.bcssm_backend.exceptions import ValidationError, CacheError
 
 logger = logging.getLogger(__name__)
 
@@ -568,10 +568,13 @@ def _redact_redis_url(url: str) -> str:
 
 
 def get_cache_status() -> dict:
-    test_key = 'status_test'
-    cache.set(test_key, 'working', timeout=10)
-    test_result = cache.get(test_key)
-    cache.delete(test_key)
+    test_key = 'status:test'
+    try:
+        cache.set(test_key, 'working', timeout=10)
+        test_result = cache.get(test_key)
+        cache.delete(test_key)
+    except Exception as e:
+        raise CacheError(f"Cache probe failed: {e}") from e
     return {
         "status": "healthy" if test_result == 'working' else "unhealthy",
         "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
@@ -606,9 +609,12 @@ def get_cache_info() -> dict:
 
 
 def get_health_status() -> dict:
-    cache.set('health_test', 'ok', timeout=10)
-    cache_ok = cache.get('health_test') == 'ok'
-    cache.delete('health_test')
+    try:
+        cache.set('health:test', 'ok', timeout=10)
+        cache_ok = cache.get('health:test') == 'ok'
+        cache.delete('health:test')
+    except Exception as e:
+        raise CacheError(f"Cache probe failed: {e}") from e
     health = {
         "status": "healthy",
         "database": "connected",

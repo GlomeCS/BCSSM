@@ -149,7 +149,7 @@ describe('useRequireAuth', () => {
     });
 
     expect(result.current.currentUser).toBe('Dave');
-    expect(mockNavigate).not.toHaveBeenCalledWith('/login');
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   // Finding 4 (stale metadata trade-off): during an outage the hook keeps users logged in,

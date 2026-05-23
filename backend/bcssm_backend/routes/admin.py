@@ -6,7 +6,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
-from backend.bcssm_backend.exceptions import BaseError
+from backend.bcssm_backend.exceptions import BaseError, CacheError
 from backend.bcssm_backend.utils import (
     clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
     get_cache_status, get_cache_info, _redact_redis_url,
@@ -50,7 +50,7 @@ def init_admin_routes(app):
     def cache_status():
         try:
             return jsonify(get_cache_status())
-        except RedisError as e:
+        except (RedisError, CacheError) as e:
             app.logger.error("Cache status check failed: %s", e)
             return jsonify({
                 "status": "unhealthy",

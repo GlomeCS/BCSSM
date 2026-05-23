@@ -106,7 +106,7 @@ npm run test:e2e
 
 ## Project Structure
 
-```
+```text
 BCSSM/
 ├── backend/
 │   ├── bcssm_backend/

@@ -91,16 +91,24 @@ const DevoFeedback: React.FC = () => {
 
   useEffect(() => {
     const fetchSections = async () => {
+      const parseSections = async (res: Response): Promise<string[]> => {
+        if (!res.ok) throw new Error(`Sections fetch failed: ${res.status}`);
+        const data: unknown = await res.json();
+        if (!Array.isArray(data) || !data.every((x) => typeof x === 'string')) {
+          throw new Error('Sections response is not a string array');
+        }
+        return data;
+      };
       try {
         const res = await apiGet('/api/sections');
-        const data: string[] = await res.json();
+        const data = await parseSections(res);
         console.log('Fetched sections:', data);
         setSections(data);
       } catch (error) {
         console.error('Error fetching sections:', error);
         try {
           const res = await apiGet('/api/sections');
-          const data: string[] = await res.json();
+          const data = await parseSections(res);
           setSections(data);
         } catch (fallbackError) {
           console.error('Fallback fetch also failed:', fallbackError);

@@ -403,9 +403,9 @@ def test_cache_status_endpoint(mock_db_cache, clean_env):
     assert data["redis_url"] == "localhost:6379"
 
     # Verify the cache was tested properly
-    mock_cache.set.assert_called_with('status_test', 'working', timeout=10)
-    mock_cache.get.assert_called_with('status_test')
-    mock_cache.delete.assert_called_with('status_test')
+    mock_cache.set.assert_called_with('status:test', 'working', timeout=10)
+    mock_cache.get.assert_called_with('status:test')
+    mock_cache.delete.assert_called_with('status:test')
 
 def test_cache_status_endpoint_exception(mock_db_cache, clean_env):
     """Test cache status endpoint when cache throws exception"""
