@@ -50,14 +50,12 @@ def execute_query(query, params=None):
         with db.session.begin():
             logger.info("Executing query: %s with params: %s", query, params)
             result = db.session.execute(text(query), params)
-
-        # Return rows only if the query expects a result
-        if result.returns_rows:
-            rows = result.fetchall()
-            logger.info("Raw rows fetched: %s", rows)
-            return rows
-        logger.info("Query executed successfully with no rows returned.")
-        return None
+            if result.returns_rows:
+                rows = result.fetchall()
+                logger.info("Raw rows fetched: %s", rows)
+                return rows
+            logger.info("Query executed successfully with no rows returned.")
+            return None
 
     except SQLAlchemyError as e:
         db.session.rollback()
@@ -318,7 +316,7 @@ def get_feedback_by_date(date_str):
     LEFT JOIN feedback f ON s.id = f.section_id AND f.date = :date;
     """
     try:
-        feedback_rows = execute_query(query, {"date": date_str})
+        feedback_rows = execute_readonly_query(query, {"date": date_str})
         daily_feedback = {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
         return daily_feedback, None
     except SQLAlchemyError as e:
@@ -334,7 +332,7 @@ def get_user_info(user_name):
     WHERE u.name = :user_name;
     """
     try:
-        user_rows = execute_query(user_info_query, {"user_name": user_name})
+        user_rows = execute_readonly_query(user_info_query, {"user_name": user_name})
         if user_rows:
             return {
                 "name": user_rows[0][0],
@@ -348,28 +346,26 @@ def get_user_info(user_name):
 
 
 def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, editor_id: int) -> None:
-    sec_rows = execute_query(
-        "SELECT id FROM sections WHERE name = :section_name;",
-        {'section_name': section_name}
-    )
-    if not sec_rows:
-        raise ValueError(f"Section '{section_name}' not found")
-    section_id = sec_rows[0][0]
-
-    upsert_query = """
+    # Single-query approach: INSERT...SELECT eliminates the TOCTOU gap between
+    # the section lookup and the upsert. RETURNING lets us detect a missing section.
+    query = """
         INSERT INTO feedback (section_id, date, feedback, last_edited_by, last_edited_at)
-        VALUES (:section_id, :date_str, :new_feedback, :editor_id, CURRENT_TIMESTAMP)
+        SELECT s.id, :date_str, :new_feedback, :editor_id, CURRENT_TIMESTAMP
+        FROM sections s WHERE s.name = :section_name
         ON CONFLICT (section_id, date) DO UPDATE
           SET feedback = EXCLUDED.feedback,
               last_edited_by = EXCLUDED.last_edited_by,
-              last_edited_at = EXCLUDED.last_edited_at;
+              last_edited_at = EXCLUDED.last_edited_at
+        RETURNING section_id;
     """
-    execute_query(upsert_query, {
-        'section_id': section_id,
+    rows = execute_query(query, {
+        'section_name': section_name,
         'date_str': date_str,
         'new_feedback': new_feedback,
         'editor_id': editor_id
     })
+    if not rows:
+        raise ValueError(f"Section '{section_name}' not found")
 
 
 def clear_duty_cache():
@@ -528,9 +524,10 @@ def clear_user_cache():
         cache.delete('users:all:list')
         cache.delete('sections:all:list')
         cache.delete('sections:with_users:all')
-        cache.delete('sections:with_users:all_v2')  # Old cache key
-        cache.delete('sections:with_users:all_v3')  # Old cache key with week data
-        cache.delete('sections:with_users:all_v4')  # New cache key with better week handling
+        cache.delete('sections:with_users:all_v2')
+        cache.delete('sections:with_users:all_v3')
+        cache.delete('sections:with_users:all_v4')
+        cache.delete('sections:with_users:all_v6')
         cache.delete('sections:statistics:summary')
         
         # Clear individual section caches using pattern matching if supported

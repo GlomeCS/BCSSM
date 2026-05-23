@@ -19,18 +19,14 @@ def app(monkeypatch):
 def client(app):
     return app.test_client()
 
-# ─── 2) Patch execute_query in devos_feedback and auth ──────────────────────────
+# ─── 2) Patch execute_query and execute_readonly_query ──────────────────────────
 @pytest.fixture(autouse=True)
 def mock_execute_query(monkeypatch):
     mock_exec = MagicMock()
-    monkeypatch.setattr(
-        "backend.bcssm_backend.utils.execute_query",
-        mock_exec
-    )
-    monkeypatch.setattr(
-        "backend.bcssm_backend.auth.execute_query",
-        mock_exec
-    )
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.auth.execute_query", mock_exec)
+    # get_feedback_by_date and get_user_info now use execute_readonly_query
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
     return mock_exec
 
 # ─── 3) Unit tests for get_feedback_by_date ──────────────────────────────────────
@@ -168,19 +164,16 @@ def test_edit_unauthenticated(client):
 
 def test_edit_authenticated_via_query_param(client, mock_execute_query):
     """Test edit with username via query parameter"""
-    # Mock user lookup and section lookup
-    calls = []
     def side_effect(query, params=None):
-        calls.append((query, params))
         if "SELECT u.id FROM users u WHERE u.name" in query:
-            return [(1,)]  # Return user ID
-        elif "SELECT id FROM sections" in query:
-            return [(5,)]  # Return section ID
-        else:
-            return None  # Upsert query
-    
+            return [(1,)]
+        # Combined INSERT...SELECT...RETURNING query from save_devos_feedback
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None
+
     mock_execute_query.side_effect = side_effect
-    
+
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 200
@@ -188,18 +181,15 @@ def test_edit_authenticated_via_query_param(client, mock_execute_query):
 
 def test_edit_authenticated_via_header(client, mock_execute_query):
     """Test edit with username via header"""
-    calls = []
     def side_effect(query, params=None):
-        calls.append((query, params))
         if "SELECT u.id FROM users u WHERE u.name" in query:
-            return [(1,)]  # Return user ID
-        elif "SELECT id FROM sections" in query:
-            return [(5,)]  # Return section ID
-        else:
-            return None  # Upsert query
-    
+            return [(1,)]
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None
+
     mock_execute_query.side_effect = side_effect
-    
+
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"},
                        headers={"X-Current-User": "TestUser"})
@@ -214,10 +204,9 @@ def test_edit_authenticated_via_session(client, mock_execute_query):
     calls = []
     def side_effect(query, params=None):
         calls.append((query, params))
-        if "SELECT id FROM sections" in query:
-            return [(5,)]  # Return section ID
-        else:
-            return None  # Upsert query
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None
 
     mock_execute_query.side_effect = side_effect
 
@@ -227,7 +216,7 @@ def test_edit_authenticated_via_session(client, mock_execute_query):
     assert resp.get_json() == {"success": True}
     # Verify no user ID lookup was made (session user_id used directly)
     assert not any("SELECT u.id FROM users" in call[0] for call in calls)
-    # Verify the upsert was called with editor_id from session
+    # Verify the combined query was called with editor_id from session
     upsert_call = next(call for call in calls if "INSERT INTO feedback" in call[0])
     assert upsert_call[1]['editor_id'] == 1
 
@@ -239,55 +228,50 @@ def test_edit_missing_params(client):
     assert "Missing date, section, or feedback" in resp.get_json()["error"]
 
 def test_edit_section_not_found(client, mock_execute_query):
-    """Test edit when section doesn't exist"""
-    # Mock user lookup to succeed, section lookup to fail
+    """Test edit when section doesn't exist — RETURNING returns [] from the combined query"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
-            return [(1,)]  # Return user ID
-        elif "SELECT id FROM sections" in query:
-            return []  # Section not found
-        else:
-            return None
-    
+            return [(1,)]
+        if "INSERT INTO feedback" in query:
+            return []  # Section not found: subquery matched 0 rows
+        return None
+
     mock_execute_query.side_effect = side_effect
-    
+
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 400
     assert "Section 'Minis' not found" in resp.get_json()["error"]
 
 def test_edit_success(client, mock_execute_query):
-    """Test successful edit operation"""
+    """Test successful edit — single atomic INSERT...SELECT...RETURNING query"""
     calls = []
     def side_effect(query, params=None):
         calls.append((query, params))
         if "SELECT u.id FROM users u WHERE u.name" in query:
-            return [(1,)]  # Return user ID
-        elif "SELECT id FROM sections" in query:
-            return [(5,)]  # Return section ID
-        else:
-            return None  # Upsert query
-    
+            return [(1,)]
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None
+
     mock_execute_query.side_effect = side_effect
-    
+
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "New"})
     assert resp.status_code == 200
     assert resp.get_json() == {"success": True}
-    assert len(calls) == 3  # User lookup, section lookup, upsert
+    assert len(calls) == 2  # User lookup + combined INSERT...SELECT
     assert any("SELECT u.id FROM users u WHERE u.name" in call[0] for call in calls)
-    assert any("SELECT id FROM sections" in call[0] for call in calls)
     assert any("INSERT INTO feedback" in call[0] for call in calls)
 
 def test_edit_upsert_error(client, mock_execute_query):
-    """Test edit when upsert operation fails with SQLAlchemyError"""
+    """Test edit when the combined INSERT...SELECT query fails"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
-            return [(1,)]  # Return user ID
-        elif "SELECT id FROM sections" in query:
-            return [(5,)]  # Return section ID
-        else:
-            raise SQLAlchemyError("oops")  # Upsert fails
+            return [(1,)]
+        if "INSERT INTO feedback" in query:
+            raise SQLAlchemyError("oops")
+        return None
 
     mock_execute_query.side_effect = side_effect
 
@@ -298,9 +282,9 @@ def test_edit_upsert_error(client, mock_execute_query):
 
 
 def test_edit_section_lookup_db_error(client, mock_execute_query):
-    """Test edit when section lookup raises SQLAlchemyError (covers lines 152-154)"""
+    """Test edit when the combined INSERT...SELECT query raises SQLAlchemyError"""
     def side_effect(query, params=None):
-        if "SELECT id FROM sections" in query:
+        if "INSERT INTO feedback" in query:
             raise SQLAlchemyError("section DB error")
         return None
 

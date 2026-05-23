@@ -15,6 +15,7 @@ from backend.bcssm_backend.exceptions import (
     BaseError, DatabaseError, CacheError, ValidationError,
     AuthenticationError, NotFoundError,
 )
+from backend.bcssm_backend.routes.admin import _fmt_ttl
 
 
 @pytest.fixture(scope="function")
@@ -696,3 +697,24 @@ def test_api_sections_error_dict_returns_500(mock_get_all_sections, mock_db_cach
     assert response.status_code == 500
     data = response.get_json()
     assert data["error"] == "Failed to fetch sections"
+
+
+# ─── _fmt_ttl unit tests ───────────────────────────────────────────────────────
+
+def test_fmt_ttl_seconds():
+    assert _fmt_ttl(30) == "30 seconds"
+    assert _fmt_ttl(1) == "1 seconds"
+    assert _fmt_ttl(59) == "59 seconds"
+
+
+def test_fmt_ttl_minutes():
+    assert _fmt_ttl(60) == "1 minutes"
+    assert _fmt_ttl(120) == "2 minutes"
+    assert _fmt_ttl(900) == "15 minutes"
+    assert _fmt_ttl(3599) == "59 minutes"
+
+
+def test_fmt_ttl_hours():
+    assert _fmt_ttl(3600) == "1 hour"
+    assert _fmt_ttl(7200) == "2 hours"
+    assert _fmt_ttl(7800) == "2 hours"

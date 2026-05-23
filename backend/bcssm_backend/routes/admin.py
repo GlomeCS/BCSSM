@@ -16,6 +16,15 @@ from backend.bcssm_backend.utils import (
 logger = logging.getLogger(__name__)
 
 
+def _fmt_ttl(ttl: int) -> str:
+    if ttl >= 3600:
+        hours = ttl // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    if ttl >= 60:
+        return f"{ttl // 60} minutes"
+    return f"{ttl} seconds"
+
+
 def init_admin_routes(app):
     @app.route("/api/admin/cache/clear", methods=['POST'])
     def clear_cache_endpoint():
@@ -79,11 +88,6 @@ def init_admin_routes(app):
 
     @app.route("/api/admin/cache/info", methods=['GET'])
     def cache_info():
-        def _fmt(ttl):
-            if ttl >= 3600:
-                return f"{ttl // 3600} hour{'s' if ttl // 3600 != 1 else ''}"
-            return f"{ttl // 60} minutes"
-
         return jsonify({
             "cache_config": {
                 "type": "RedisCache",
@@ -91,7 +95,7 @@ def init_admin_routes(app):
                 "default_timeout": 300
             },
             "cached_functions": {
-                name: _fmt(ttl) for name, ttl in get_ttl_registry().items()
+                name: _fmt_ttl(ttl) for name, ttl in get_ttl_registry().items()
             },
             "management_endpoints": {
                 "status": "GET /api/admin/cache/status",

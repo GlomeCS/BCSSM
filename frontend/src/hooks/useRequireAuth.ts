@@ -9,18 +9,26 @@ export function useRequireAuth(): { currentUser: string | null; loading: boolean
 
   useEffect(() => {
     const check = async () => {
-      if (!isLoggedIn() || !getCurrentUser()) {
-        navigate("/login");
-        return;
-      }
-      const isValid = await validateAuth();
-      if (!isValid) {
+      try {
+        if (!isLoggedIn() || !getCurrentUser()) {
+          navigate("/login");
+          setLoading(false);
+          return;
+        }
+        const isValid = await validateAuth();
+        if (!isValid) {
+          localStorage.clear();
+          navigate("/login");
+          setLoading(false);
+          return;
+        }
+        setCurrentUser(getCurrentUser());
+        setLoading(false);
+      } catch {
         localStorage.clear();
         navigate("/login");
-        return;
+        setLoading(false);
       }
-      setCurrentUser(getCurrentUser());
-      setLoading(false);
     };
     check();
   }, [navigate]);

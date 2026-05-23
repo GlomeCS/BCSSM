@@ -107,6 +107,21 @@ def test_on_error_without_error_ttl_returns_fallback_but_does_not_cache():
     fake_cache.set.assert_not_called()
 
 
+# ─── on_error mutable default isolation ──────────────────────────────────────
+
+def test_on_error_list_returns_independent_copy_each_call():
+    fake_cache = _make_cache()
+
+    @cached_result('key:mut', 300, on_error=[], cache=fake_cache)
+    def fn():
+        raise SQLAlchemyError("oops")
+
+    result1 = fn()
+    result1.append('mutation')
+    result2 = fn()
+    assert result2 == [], "Mutation of first fallback should not affect subsequent calls"
+
+
 # ─── TTL registry ─────────────────────────────────────────────────────────────
 
 def test_ttl_registry_records_decorated_functions():

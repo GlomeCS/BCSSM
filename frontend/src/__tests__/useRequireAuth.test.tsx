@@ -76,4 +76,20 @@ describe('useRequireAuth', () => {
 
     expect(localStorage.getItem('currentUser')).toBeNull();
   });
+
+  it('redirects to /login, clears storage, and sets loading=false when validateAuth throws', async () => {
+    localStorage.setItem('is_logged_in', 'true');
+    localStorage.setItem('currentUser', 'Charlie');
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Network error'));
+
+    const { result } = renderHook(() => useRequireAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.currentUser).toBe(null);
+    expect(localStorage.getItem('currentUser')).toBeNull();
+  });
 });
