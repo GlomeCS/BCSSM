@@ -1,7 +1,8 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-import { apiGet, apiPost, getCurrentUser, isLoggedIn, validateAuth } from '../api';
+import { apiGet, apiPost } from '../api';
+import { useRequireAuth } from './hooks/useRequireAuth';
 import "./DevoFeedbackEdit.css";
 
 const DevoFeedbackEdit: React.FC = () => {
@@ -10,88 +11,65 @@ const DevoFeedbackEdit: React.FC = () => {
   const section = searchParams.get('section') || '';
   const navigate = useNavigate();
 
+  const { currentUser, loading: authLoading } = useRequireAuth();
   const [feedback, setFeedback] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [characterCount, setCharacterCount] = useState<number>(0);
 
-  // Load existing feedback
   useEffect(() => {
-    const initializePage = async () => {
-      if (!dateStr || !section) {
-        setError('Missing date or section parameters');
-        setLoading(false);
-        return;
-      }
+    if (!currentUser) return;
+    setDataLoading(true);
+    setError(null);
+    setFeedback('');
+    setCharacterCount(0);
 
-      // Check if user is logged in using the same method as other pages
-      if (!isLoggedIn()) {
-        console.log("No user logged in, redirecting to login");
-        navigate("/login");
-        return;
-      }
-      
-      const user = getCurrentUser();
-      console.log("Current user from localStorage:", user);
-      
-      if (!user) {
-        navigate("/login");
-        return;
-      }
-      
-      // Validate that the user is still valid
-      const isValid = await validateAuth();
-      if (!isValid) {
-        console.log("User validation failed, redirecting to login");
-        localStorage.clear();
-        navigate("/login");
-        return;
-      }
+    if (!dateStr || !section) {
+      setError('Missing date or section parameters');
+      setDataLoading(false);
+      return;
+    }
 
-      // Now load the feedback data
-      await loadFeedback();
-    };
-    
+    const controller = new AbortController();
+
     const loadFeedback = async () => {
       try {
-        // Use apiGet which automatically includes username in header/params
         const res = await apiGet(
-          `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`
+          `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`,
+          { signal: controller.signal }
         );
         if (!res.ok) throw new Error(`Failed to load feedback: ${res.statusText}`);
-        
+
         const data = await res.json();
         console.log('Fetched feedback response:', data);
-        
-        // Populate the textarea with the specific section's feedback string
+
         const existingFeedback = data.feedback?.[section] ?? '';
         setFeedback(existingFeedback);
         setCharacterCount(existingFeedback.length);
       } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
         console.error('Error loading feedback:', err);
         setError((err as Error).message);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setDataLoading(false);
       }
     };
 
-    initializePage();
-  }, [dateStr, section, navigate]);
+    loadFeedback();
+    return () => controller.abort();
+  }, [currentUser, dateStr, section]);
 
-  // Handle textarea changes
   const handleFeedbackChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setFeedback(value);
     setCharacterCount(value.length);
-    // Clear error when user starts typing
     if (error) setError(null);
   };
 
-  // Submit handler
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    
+
     if (!feedback.trim()) {
       setError('Please enter some feedback before saving');
       return;
@@ -99,19 +77,17 @@ const DevoFeedbackEdit: React.FC = () => {
 
     setSaving(true);
     setError(null);
-    
+
     try {
-      // Use apiPost which automatically includes username in header/body
       const res = await apiPost(
         `/api/devos-feedback/edit?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`,
         { feedback }
       );
-      
+
       if (!res.ok) {
         throw new Error(`Failed to save feedback: ${res.statusText}`);
       }
-      
-      // Navigate back to the feedback page
+
       navigate(`/react/devos-feedback?date=${encodeURIComponent(dateStr)}`, { replace: true });
     } catch (err) {
       console.error('Error saving feedback:', err);
@@ -121,12 +97,10 @@ const DevoFeedbackEdit: React.FC = () => {
     }
   };
 
-  // Cancel handler
   const handleCancel = () => {
     navigate(`/react/devos-feedback?date=${encodeURIComponent(dateStr)}`);
   };
 
-  // Format date for display
   const formatDate = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString('en-GB', {
@@ -140,7 +114,7 @@ const DevoFeedbackEdit: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (authLoading || dataLoading) {
     return (
       <>
         <Navbar />
@@ -217,8 +191,8 @@ const DevoFeedbackEdit: React.FC = () => {
               >
                 ❌ Cancel
               </button>
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="save-btn"
                 disabled={saving || !feedback.trim()}
               >

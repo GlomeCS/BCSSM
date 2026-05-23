@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
-import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from "../api";
+import { apiGet } from "../api";
+import { useRequireAuth } from "./hooks/useRequireAuth";
 import "./DutiesPage.css";
 
 type Duty = {
@@ -39,53 +39,25 @@ type ScheduleData = {
 };
 
 export default function DutiesPage() {
+  const { currentUser, loading: authLoading } = useRequireAuth();
   const [duties, setDuties] = useState<Duty[]>([]);
   const [schedule, setSchedule] = useState<ScheduleDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'today' | 'schedule'>('today');
-  const navigate = useNavigate();
 
   useEffect(() => {
-    const initializePage = async () => {
-      // Check if user is logged in using the same method as Home page
-      if (!isLoggedIn()) {
-        console.log("No user logged in, redirecting to login");
-        navigate("/login");
-        return;
-      }
-      
-      const user = getCurrentUser();
-      console.log("Current user from localStorage:", user);
-      
-      if (!user) {
-        navigate("/login");
-        return;
-      }
-      
-      // Validate that the user is still valid
-      const isValid = await validateAuth();
-      if (!isValid) {
-        console.log("User validation failed, redirecting to login");
-        localStorage.clear();
-        navigate("/login");
-        return;
-      }
-
-      // Now fetch the duties data using API utilities
-      await Promise.all([fetchDuties(), fetchSchedule()]);
-    };
+    if (!currentUser) return;
 
     const fetchDuties = async () => {
       try {
-        // Use apiGet which automatically includes username in header/params
         const res = await apiGet("/api/duties/today");
         if (!res.ok) throw new Error(`Failed to fetch duties: ${res.statusText}`);
-        
+
         const data = await res.json() as ApiDuty[];
         console.log("Raw duties from API:", data);
-        
+
         const mapped: Duty[] = data.map((d) => ({
           id: d.id,
           name: d.name,
@@ -94,7 +66,7 @@ export default function DutiesPage() {
           isCurrentUser: d.is_current_user,
           teamName: d.team_name,
         }));
-        
+
         console.log("Mapped duties for UI:", mapped);
         setDuties(mapped);
       } catch (err) {
@@ -107,13 +79,12 @@ export default function DutiesPage() {
 
     const fetchSchedule = async () => {
       try {
-        // Use apiGet which automatically includes username in header/params
         const res = await apiGet("/api/duties/schedule");
         if (!res.ok) throw new Error(`Failed to fetch schedule: ${res.statusText}`);
-        
+
         const data: ScheduleData = await res.json();
         console.log("Raw schedule from API:", data);
-        
+
         setSchedule(data.schedule || []);
       } catch (err) {
         console.error("Error fetching schedule:", err);
@@ -123,8 +94,8 @@ export default function DutiesPage() {
       }
     };
 
-    initializePage();
-  }, [navigate]);
+    Promise.all([fetchDuties(), fetchSchedule()]);
+  }, [currentUser]);
 
   // Extract team number from team name (format: "Duty Team 1", "Duty Team 2", etc.)
   const getTeamNumber = (teamName?: string): string => {
@@ -160,7 +131,7 @@ export default function DutiesPage() {
     });
   };
 
-  if (loading && scheduleLoading) {
+  if (authLoading || (loading && scheduleLoading)) {
     return (
       <>
         <Navbar />
@@ -186,16 +157,16 @@ export default function DutiesPage() {
             <h1 className="duties-title">📋 Duties Dashboard</h1>
             <p className="duties-date">{getCurrentDate()}</p>
           </div>
-          
+
           {/* Tab Navigation */}
           <div className="tab-navigation">
-            <button 
+            <button
               className={`tab-button ${activeTab === 'today' ? 'active' : ''}`}
               onClick={() => setActiveTab('today')}
             >
               📅 Today's Duties
             </button>
-            <button 
+            <button
               className={`tab-button ${activeTab === 'schedule' ? 'active' : ''}`}
               onClick={() => setActiveTab('schedule')}
             >
@@ -222,7 +193,7 @@ export default function DutiesPage() {
                   <span className="section-icon">👤</span>
                   Your Duties
                 </h2>
-                
+
                 {myDuties.length > 0 ? (
                   <div className="duties-grid">
                     {myDuties.map((duty) => {
@@ -274,7 +245,7 @@ export default function DutiesPage() {
                   <span className="section-icon">👥</span>
                   Other Duties
                 </h2>
-                
+
                 {otherDuties.length > 0 ? (
                   <div className="duties-grid">
                     {otherDuties.map((duty) => {
@@ -328,7 +299,7 @@ export default function DutiesPage() {
                 <span className="section-icon">🗓️</span>
                 2-Week Duty Schedule (Starting July 5th, 2025)
               </h2>
-              
+
               {scheduleLoading ? (
                 <div className="loading-container">
                   <div className="loading-spinner"></div>
@@ -374,13 +345,13 @@ export default function DutiesPage() {
                             const dutyTeamMap: { [key: string]: string } = {};
                             if (day.duties && Array.isArray(day.duties)) {
                               day.duties.forEach(duty => {
-                                if (duty && duty.duty_name && duty.team_name && 
+                                if (duty && duty.duty_name && duty.team_name &&
                                     typeof duty.duty_name === 'string' && typeof duty.team_name === 'string') {
                                   dutyTeamMap[duty.duty_name] = duty.team_name;
                                 }
                               });
                             }
-                            
+
                             return (
                               <tr key={index} className="schedule-row">
                                 <td className="date-cell">

@@ -15,6 +15,7 @@ from backend.bcssm_backend.exceptions import (
     BaseError, DatabaseError, CacheError, ValidationError,
     AuthenticationError, NotFoundError,
 )
+from backend.bcssm_backend.utils import _fmt_ttl
 
 
 @pytest.fixture(scope="function")
@@ -29,19 +30,19 @@ def clean_env():
 @pytest.fixture
 def mock_db_cache():
     """Fixture to mock database and cache."""
-    with patch('backend.bcssm_backend.db') as mock_db, patch('backend.bcssm_backend.cache') as mock_cache:
+    fake_cache = MagicMock()
+    fake_cache.init_app = MagicMock()
+    fake_cache.set = MagicMock(return_value=True)
+    fake_cache.get = MagicMock()
+    fake_cache.delete = MagicMock(return_value=True)
+    fake_cache.clear = MagicMock(return_value=True)
+    fake_cache.cached = lambda *args, **kwargs: (lambda f: f)
+
+    with patch('backend.bcssm_backend.db') as mock_db, \
+         patch('backend.bcssm_backend.cache', fake_cache), \
+         patch('backend.bcssm_backend.utils.cache', fake_cache):
         mock_db.init_app = MagicMock()
-        mock_cache.init_app = MagicMock()
-
-        # Mock cache operations for the new admin endpoints
-        mock_cache.set = MagicMock(return_value=True)
-        mock_cache.get = MagicMock()  # Will be configured per test
-        mock_cache.delete = MagicMock(return_value=True)
-        mock_cache.clear = MagicMock(return_value=True)
-
-        # Make cache.cached a no-op decorator to avoid MagicMock __name__ errors
-        mock_cache.cached = lambda *args, **kwargs: (lambda f: f)
-        yield mock_db, mock_cache
+        yield mock_db, fake_cache
 
 
 def test_create_app_with_valid_env_vars(clean_env, mock_db_cache):
@@ -118,7 +119,7 @@ def test_create_app_config(clean_env, mock_db_cache, monkeypatch, env, expected_
     mock_cache.init_app.assert_called_once_with(app)
 
 # Test that /api/sections returns data (removed caching decorator since it's internal now)
-@patch('backend.bcssm_backend.get_all_sections')
+@patch('backend.bcssm_backend.routes.system.get_all_sections')
 def test_api_sections_returns_data(mock_get_all_sections, mock_db_cache, clean_env):
     """Test /api/sections endpoint returns data from get_all_sections"""
     mock_get_all_sections.return_value = [{"id": "123", "name": "Minors"}, {"id": "456", "name": "Majors"}]
@@ -212,7 +213,7 @@ def test_health_check_endpoint_exception(mock_db_cache, clean_env):
     assert "Health check failed" in data["error"]
 
 # NEW: Test cache management endpoints
-@patch('backend.bcssm_backend.clear_user_cache')
+@patch('backend.bcssm_backend.routes.admin.clear_user_cache')
 def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=users"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -237,7 +238,7 @@ def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
 
     mock_clear_user_cache.assert_called_once()
 
-@patch('backend.bcssm_backend.clear_duty_cache')
+@patch('backend.bcssm_backend.routes.admin.clear_duty_cache')
 def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=duties"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -261,7 +262,7 @@ def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
 
     mock_clear_duty_cache.assert_called_once()
 
-@patch('backend.bcssm_backend.clear_feedback_cache')
+@patch('backend.bcssm_backend.routes.admin.clear_feedback_cache')
 def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=feedback"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -284,7 +285,7 @@ def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_en
 
     mock_clear_feedback_cache.assert_called_once()
 
-@patch('backend.bcssm_backend.clear_all_cache')
+@patch('backend.bcssm_backend.routes.admin.clear_all_cache')
 def test_clear_cache_all(mock_clear_all_cache, mock_db_cache, clean_env):
     """Test POST /api/admin/cache/clear with type=all"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -340,7 +341,7 @@ def test_clear_cache_no_json(mock_db_cache, clean_env):
     app = create_app()
     client = app.test_client()
 
-    with patch('backend.bcssm_backend.clear_all_cache') as mock_clear_all:
+    with patch('backend.bcssm_backend.routes.admin.clear_all_cache') as mock_clear_all:
         response = client.post('/api/admin/cache/clear')
 
         assert response.status_code == 200
@@ -350,7 +351,7 @@ def test_clear_cache_no_json(mock_db_cache, clean_env):
 
         mock_clear_all.assert_called_once()
 
-@patch('backend.bcssm_backend.clear_user_cache')
+@patch('backend.bcssm_backend.routes.admin.clear_user_cache')
 def test_clear_cache_exception_handling(mock_clear_user_cache, mock_db_cache, clean_env):
     """Test cache clear endpoint handles exceptions properly"""
     os.environ['FLASK_ENV'] = 'testing'
@@ -399,12 +400,12 @@ def test_cache_status_endpoint(mock_db_cache, clean_env):
     assert data["cache_type"] == "RedisCache"
     assert data["default_timeout"] == 300
     assert "available_operations" in data
-    assert data["redis_url"] == "redis://localhost:6379"
+    assert data["redis_url"] == "localhost:6379"
 
     # Verify the cache was tested properly
-    mock_cache.set.assert_called_with('status_test', 'working', timeout=10)
-    mock_cache.get.assert_called_with('status_test')
-    mock_cache.delete.assert_called_with('status_test')
+    mock_cache.set.assert_called_with('status:test', 'working', timeout=10)
+    mock_cache.get.assert_called_with('status:test')
+    mock_cache.delete.assert_called_with('status:test')
 
 def test_cache_status_endpoint_exception(mock_db_cache, clean_env):
     """Test cache status endpoint when cache throws exception"""
@@ -474,7 +475,7 @@ def test_serve_react_for_prefix_routes(mock_load_dotenv, monkeypatch, mock_db_ca
         app.send_static_file.assert_called_with("index.html")
         assert response.get_data(as_text=True) == "served index.html via send_static_file"
 
-@patch('backend.bcssm_backend.send_from_directory')
+@patch('backend.bcssm_backend.routes.system.send_from_directory')
 @patch('backend.bcssm_backend.load_dotenv')
 def test_directory_traversal_fallback(mock_load_dotenv, mock_send, monkeypatch, mock_db_cache, clean_env):
     """Test that directory traversal attempts fallback to index.html via send_from_directory."""
@@ -496,7 +497,7 @@ def test_directory_traversal_fallback(mock_load_dotenv, mock_send, monkeypatch, 
     mock_send.assert_called_once_with(app.static_folder, "index.html")
     assert response.get_data(as_text=True) == "served index.html via send_from_directory"
 
-@patch('backend.bcssm_backend.send_from_directory')
+@patch('backend.bcssm_backend.routes.system.send_from_directory')
 @patch('backend.bcssm_backend.load_dotenv')
 def test_serve_existing_static_file_branch(mock_load_dotenv, mock_send, monkeypatch, mock_db_cache, clean_env):
     """Test that existing static files are served via send_from_directory."""
@@ -676,7 +677,7 @@ def test_global_handler_http_exception_passthrough(error_handler_app):
     assert resp.status_code == 403
 
 
-@patch('backend.bcssm_backend.get_all_sections')
+@patch('backend.bcssm_backend.routes.system.get_all_sections')
 def test_api_sections_error_dict_returns_500(mock_get_all_sections, mock_db_cache, clean_env):
     """Test /api/sections returns 500 when get_all_sections returns an error dict."""
     mock_get_all_sections.return_value = {"error": "DB unavailable"}
@@ -695,3 +696,24 @@ def test_api_sections_error_dict_returns_500(mock_get_all_sections, mock_db_cach
     assert response.status_code == 500
     data = response.get_json()
     assert data["error"] == "Failed to fetch sections"
+
+
+# ─── _fmt_ttl unit tests ───────────────────────────────────────────────────────
+
+def test_fmt_ttl_seconds():
+    assert _fmt_ttl(30) == "30 seconds"
+    assert _fmt_ttl(1) == "1 second"
+    assert _fmt_ttl(59) == "59 seconds"
+
+
+def test_fmt_ttl_minutes():
+    assert _fmt_ttl(60) == "1 minute"
+    assert _fmt_ttl(120) == "2 minutes"
+    assert _fmt_ttl(900) == "15 minutes"
+    assert _fmt_ttl(3599) == "59 minutes"
+
+
+def test_fmt_ttl_hours():
+    assert _fmt_ttl(3600) == "1 hour"
+    assert _fmt_ttl(7200) == "2 hours"
+    assert _fmt_ttl(7800) == "2 hours"

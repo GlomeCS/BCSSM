@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
-import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from "../api";
+import { apiGet } from "../api";
+import { useRequireAuth } from "./hooks/useRequireAuth";
 import "./Home.css";
 
 function Home() {
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const { currentUser, loading: authLoading } = useRequireAuth();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [dutyMessage, setDutyMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const navigate = useNavigate();
+  const [dataLoading, setDataLoading] = useState<boolean>(true);
 
   // Check if user has access to forms based on their role
   const hasFormsAccess = (role: string | null): boolean => {
@@ -19,67 +18,38 @@ function Home() {
   };
 
   useEffect(() => {
-    const initializeApp = async () => {
-      console.log("Home component initializing...");
-      
-      // Check if user is logged in
-      if (!isLoggedIn()) {
-        console.log("No user logged in, redirecting to login");
-        navigate("/login");
-        return;
-      }
-      
-      const user = getCurrentUser();
-      console.log("Current user from localStorage:", user);
-      
-      if (!user) {
-        navigate("/login");
-        return;
-      }
-      
-      // Validate that the user is still valid
-      const isValid = await validateAuth();
-      if (!isValid) {
-        console.log("User validation failed, redirecting to login");
-        localStorage.clear(); // Clear all auth data
-        navigate("/login");
-        return;
-      }
-      
-      setCurrentUser(user);
-      
-      // Get user role from localStorage (updated by validateAuth)
+    if (!currentUser) return;
+
+    const fetchDutyInfo = async () => {
       const role = localStorage.getItem("user_role");
       setUserRole(role);
-      
-      // Fetch duty info using the new API utility
+
       try {
         console.log("Fetching duty info...");
         const response = await apiGet("/duty-teams");
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log("Duty data received:", data);
-        
+
         if (data && data.user) {
           setDutyMessage(data.duty_message);
-          setUserRole(data.role || role); // Use API role or fallback to localStorage
+          setUserRole(data.role || role);
         }
       } catch (error) {
         console.error("Error fetching duty info:", error);
-        // Don't redirect on duty fetch error - user is still valid
       } finally {
-        setLoading(false);
+        setDataLoading(false);
       }
     };
 
-    initializeApp();
-  }, [navigate]);
+    fetchDutyInfo();
+  }, [currentUser]);
 
-  if (loading) {
+  if (authLoading || dataLoading) {
     return (
       <>
         <Navbar />
@@ -115,7 +85,7 @@ function Home() {
             <p>No duty assigned today.</p>
           )}
         </div>
-        
+
         {/* Forms access for Section Leaders, Team Leaders, and Admins */}
         {hasFormsAccess(userRole) && (
           <div className="forms-section">

@@ -1,4 +1,6 @@
 import logging
+import os
+import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import lru_cache
@@ -9,6 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 
 from backend.globals import db, cache
+from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
+from backend.bcssm_backend.exceptions import ValidationError, CacheError
 
 logger = logging.getLogger(__name__)
 
@@ -49,153 +53,95 @@ def execute_query(query, params=None):
         with db.session.begin():
             logger.info("Executing query: %s with params: %s", query, params)
             result = db.session.execute(text(query), params)
-
-        # Return rows only if the query expects a result
-        if result.returns_rows:
-            rows = result.fetchall()
-            logger.info("Raw rows fetched: %s", rows)
-            return rows
-        logger.info("Query executed successfully with no rows returned.")
-        return None
+            if result.returns_rows:
+                rows = result.fetchall()
+                logger.info("Raw rows fetched: %s", rows)
+                return rows
+            logger.info("Query executed successfully with no rows returned.")
+            return None
 
     except SQLAlchemyError as e:
         db.session.rollback()
         logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
         raise
 
+@cached_result('users:all:list', 900, on_error=[])
 def get_all_users():
-    """
-    Optimized query with Redis caching and better ordering.
-    Cache timeout: 15 minutes (users don't change frequently)
-    """
-    cache_key = 'users:all:list'
-    
-    # Try to get from cache first
-    cached_users = cache.get(cache_key)
-    if cached_users is not None:
-        logger.info("Retrieved users from cache")
-        return cached_users
-    
     query = """
-    SELECT 
-        u.name, 
-        COALESCE(s.name, 'Unassigned') AS section,  
-        u.role, 
-        COALESCE(dt.name, 'No Team') AS team 
+    SELECT
+        u.name,
+        COALESCE(s.name, 'Unassigned') AS section,
+        u.role,
+        COALESCE(dt.name, 'No Team') AS team
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    ORDER BY 
-        CASE 
-            WHEN POSITION(' ' IN u.name) > 0 
+    ORDER BY
+        CASE
+            WHEN POSITION(' ' IN u.name) > 0
             THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
-            ELSE u.name 
+            ELSE u.name
         END,
         u.name;
     """
-    try:
-        logger.info("Starting query execution for get_all_users...")
-        rows = execute_readonly_query(query)
-        logger.info("Query returned rows: %s", rows)
+    rows = execute_readonly_query(query)
+    return [row[0] for row in rows]
 
-        # Extract only the names for the dropdown
-        user_names = [row[0] for row in rows]
-        logger.info("Fetched user names: %s", user_names)
-        
-        # Cache the results
-        cache.set(cache_key, user_names, timeout=900)  # 15 minutes
-        logger.info("Cached users list")
-        
-        return user_names
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch users: %s", e)
-        return []
+def _user_duty_key(user_name):
+    day = (datetime.now().weekday() + 1) % 7
+    cycle = get_current_cycle_week()
+    return f'user:duty:{user_name}:day{day}:cycle{cycle}'
 
+
+@cached_result(_user_duty_key, 600)
 def get_user_duty(user_name):
-    """
-    Optimized with Redis caching and pre-calculated cycle week.
-    Cache timeout: 10 minutes (duty assignments change daily)
-    """
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
-    
-    # Create cache key that includes day and cycle for accurate caching
-    cache_key = f'user:duty:{user_name}:day{current_day}:cycle{current_cycle}'
-
-    # Try to get from cache first
-    cached_duty = cache.get(cache_key)
-    if cached_duty is not None:
-        logger.info("Retrieved user duty from cache for %s", user_name)
-        return cached_duty
-    
     query = """
-    SELECT 
-        u.name AS user_name, 
-        COALESCE(s.name, 'Unassigned') AS section, 
-        u.role, 
+    SELECT
+        u.name AS user_name,
+        COALESCE(s.name, 'Unassigned') AS section,
+        u.role,
         COALESCE(dt.name, 'No Team') AS team,
         COALESCE(d.name, 'No Duty') AS duty
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id 
-        AND ds.day = :day 
+    LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id
+        AND ds.day = :day
         AND ds.cycle_week = :cycle_week
     LEFT JOIN duties d ON ds.duty_id = d.id
     WHERE u.name = :user_name;
     """
-    try:
-        # Execute the query with the user's name, current day, and cycle week
-        result = execute_readonly_query(query, {
-            "user_name": user_name, 
-            "day": current_day,
-            "cycle_week": current_cycle
-        })
-        
-        if not result:
-            duty_data = {"error": "User not found or no duty assigned"}
-        else:
-            # Extract the user's duty information
-            row = result[0]
-            if len(row) < 5:
-                logger.error("Unexpected row format in get_user_duty for %s: %s", user_name, row)
-                duty_data = {"error": "Unexpected data format from database"}
-            else:
-                duty_data = {
-                    "user": row[0],  # user_name
-                    "section": row[1],  # section name
-                    "role": row[2],  # role
-                    "team": row[3],  # team name
-                    "duty": row[4],  # duty name
-                }
-        
-        # Cache the results (even errors, to avoid repeated failed queries)
-        cache.set(cache_key, duty_data, timeout=600)  # 10 minutes
-        logger.info("Cached user duty for %s", user_name)
-        
-        return duty_data
+    result = execute_readonly_query(query, {
+        "user_name": user_name,
+        "day": current_day,
+        "cycle_week": current_cycle
+    })
+    if not result:
+        return {"error": "User not found or no duty assigned"}
+    row = result[0]
+    if len(row) < 5:
+        logger.error("Unexpected row format in get_user_duty for %s: %s", user_name, row)
+        return {"error": "Unexpected data format from database"}
+    return {
+        "user": row[0],
+        "section": row[1],
+        "role": row[2],
+        "team": row[3],
+        "duty": row[4],
+    }
 
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch duty for user %s: %s", user_name, e)
-        raise
+def _todays_duties_key(user_name):
+    day = (datetime.now().weekday() + 1) % 7
+    cycle = get_current_cycle_week()
+    return f'duties:today:day{day}:cycle{cycle}:user{user_name}'
 
+
+@cached_result(_todays_duties_key, 1800, error_ttl=60, on_error=[])
 def get_todays_duties(user_name):
-    """
-    Cached today's duties with day-specific cache key.
-    Cache timeout: 30 minutes (duties are daily but don't change frequently)
-    """
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
-    
-    # Cache key includes day and cycle for accuracy
-    cache_key = f'duties:today:day{current_day}:cycle{current_cycle}:user{user_name}'
-    
-    # Try to get from cache first
-    cached_duties = cache.get(cache_key)
-    if cached_duties is not None:
-        logger.info("Retrieved today's duties from cache")
-        return cached_duties
-    
     query = '''
     SELECT
         d.id,
@@ -221,57 +167,33 @@ def get_todays_duties(user_name):
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
     LEFT JOIN users u ON u.duty_team_id = dt.id
-    WHERE ds.day = :day 
+    WHERE ds.day = :day
         AND ds.cycle_week = :cycle_week
     GROUP BY d.id, d.name, d.duty_description, dt.name
     ORDER BY d.name;
     '''
-    
-    try:
-        rows = execute_readonly_query(query, {
-            "day": current_day, 
-            "user_name": user_name,
-            "cycle_week": current_cycle
-        })
-        
-        duties = []
-        for row in rows:
-            duties.append({
-                "id": row[0],
-                "name": row[1],
-                "duty_description": row[2],
-                "team_name": row[3],
-                "members": row[4] or [],
-                "is_current_user": row[5],
-            })
-        
-        # Cache the results
-        cache.set(cache_key, duties, timeout=1800)  # 30 minutes
-        logger.info("Cached today's duties")
-        
-        return duties
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch today's duties for user %s: %s", user_name, e)
+    rows = execute_readonly_query(query, {
+        "day": current_day,
+        "user_name": user_name,
+        "cycle_week": current_cycle
+    })
+    return [
+        {
+            "id": row[0],
+            "name": row[1],
+            "duty_description": row[2],
+            "team_name": row[3],
+            "members": row[4] or [],
+            "is_current_user": row[5],
+        }
+        for row in rows
+    ]
+def _duty_schedule_key():
+    return f'duties:schedule:14day:{datetime.now().date()}'
 
-        # Cache empty result for short time to avoid repeated failures
-        cache.set(cache_key, [], timeout=60)  # 1 minute
 
-        return []
+@cached_result(_duty_schedule_key, 7200, error_ttl=60, on_error=[])
 def get_duty_schedule():
-    """
-    Cached duty schedule with date-based cache key.
-    Cache timeout: 2 hours (schedule doesn't change frequently)
-    """
-    # Create cache key based on current date to ensure freshness
-    today = datetime.now().date()
-    cache_key = f'duties:schedule:14day:{today}'
-    
-    # Try to get from cache first
-    cached_schedule = cache.get(cache_key)
-    if cached_schedule is not None:
-        logger.info("Retrieved duty schedule from cache")
-        return cached_schedule
-    
     start_date = datetime(2025, 7, 5)
     
     # Pre-calculate all day/cycle combinations we need
@@ -323,19 +245,9 @@ def get_duty_schedule():
     ORDER BY ds.day, d.name;
     '''
 
-    try:
-        # Extract unique days and cycles for the query
-        days = list(set(combo[0] for combo in day_cycle_combinations))
-        cycles = list(set(combo[1] for combo in day_cycle_combinations))
-        
-        rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch 2-week duty schedule: %s", e)
-
-        # Cache empty result for short time to avoid repeated failures
-        cache.set(cache_key, [], timeout=60)  # 1 minute
-
-        return []
+    days = list(set(combo[0] for combo in day_cycle_combinations))
+    cycles = list(set(combo[1] for combo in day_cycle_combinations))
+    rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
 
     # Group duties by (day, cycle_week) combination
     duty_lookup = defaultdict(list)
@@ -362,61 +274,23 @@ def get_duty_schedule():
             "duties": duties_for_date
         })
 
-    # Cache the results
-    cache.set(cache_key, schedule, timeout=7200)  # 2 hours
-    logger.info("Cached duty schedule")
-
     return schedule
 
+
+@cached_result('sections:all:list', 3600, error_ttl=60,
+               on_error=lambda e: {"error": f"Failed to fetch sections: {e}"})
 def get_all_sections():
-    """
-    Cached sections query with long timeout since sections rarely change.
-    Cache timeout: 1 hour
-    """
-    cache_key = 'sections:all:list'
-    
-    # Try to get from cache first
-    cached_sections = cache.get(cache_key)
-    if cached_sections is not None:
-        logger.info("Retrieved sections from cache")
-        return cached_sections
-    
     query = """
     SELECT name
     FROM sections
     ORDER BY display_order, name;
     """
-    try:
-        result = execute_readonly_query(query)
-        sections = [row[0] for row in result]
-        
-        # Cache the results
-        cache.set(cache_key, sections, timeout=3600)  # 1 hour
-        logger.info("Cached sections list")
-        
-        return sections
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch sections: %s", e)
-        error_data = {"error": f"Failed to fetch sections: {e}"}
+    result = execute_readonly_query(query)
+    return [row[0] for row in result]
 
-        # Cache error for short time
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
-
-        return error_data
-
+@cached_result(lambda section: f'users:section:{section}', 1800, error_ttl=60,
+               on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
 def get_users_by_section(section):
-    """
-    Cached users by section query.
-    Cache timeout: 30 minutes
-    """
-    cache_key = f'users:section:{section}'
-    
-    # Try to get from cache first
-    cached_users = cache.get(cache_key)
-    if cached_users is not None:
-        logger.info("Retrieved users by section from cache for %s", section)
-        return cached_users
-    
     query = """
     SELECT u.name, u.role
     FROM users u
@@ -424,59 +298,79 @@ def get_users_by_section(section):
     WHERE s.name = :section
     ORDER BY u.name;
     """
-    try:
-        result = execute_readonly_query(query, {"section": section})
-        users = [{"name": row[0], "role": row[1]} for row in result]
-        
-        # Cache the results
-        cache.set(cache_key, users, timeout=1800)  # 30 minutes
-        logger.info("Cached users by section for %s", section)
-        
-        return users
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch users by section %s: %s", section, e)
-        error_data = {"error": f"Failed to fetch users by section: {e}"}
+    result = execute_readonly_query(query, {"section": section})
+    return [{"name": row[0], "role": row[1]} for row in result]
 
-        # Cache error for short time
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
-
-        return error_data
-
+@cached_result('feedback:dates:all', 7200, error_ttl=60,
+               on_error=lambda e: {"error": f"Failed to fetch feedback dates: {e}"})
 def get_all_feedback_dates():
-    """
-    Cached feedback dates with long timeout since they don't change frequently.
-    Cache timeout: 2 hours
-    """
-    cache_key = 'feedback:dates:all'
-    
-    # Try to get from cache first
-    cached_dates = cache.get(cache_key)
-    if cached_dates is not None:
-        logger.info("Retrieved feedback dates from cache")
-        return cached_dates
-    
     query = """
     SELECT DISTINCT date
     FROM feedback_records
     ORDER BY date DESC;
     """
+    result = execute_readonly_query(query)
+    return [row[0] for row in result]
+
+def get_feedback_by_date(date_str):
+    query = """
+    SELECT s.name AS section_name, f.feedback
+    FROM sections s
+    LEFT JOIN feedback f ON s.id = f.section_id AND f.date = :date;
+    """
     try:
-        result = execute_readonly_query(query)
-        dates = [row[0] for row in result]
-        
-        # Cache the results
-        cache.set(cache_key, dates, timeout=7200)  # 2 hours
-        logger.info("Cached feedback dates")
-        
-        return dates
+        feedback_rows = execute_readonly_query(query, {"date": date_str})
+        daily_feedback = {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
+        return daily_feedback, None
     except SQLAlchemyError as e:
-        logger.error("Failed to fetch feedback dates: %s", e)
-        error_data = {"error": f"Failed to fetch feedback dates: {e}"}
+        logger.error("Error in get_feedback_by_date for date %s: %s", date_str, e)
+        return None, "An error occurred while fetching feedback"
 
-        # Cache error for short time
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
 
-        return error_data
+def get_user_info(user_name):
+    user_info_query = """
+    SELECT u.name, u.role, s.name AS section_name
+    FROM users u
+    LEFT JOIN sections s ON u.section_id = s.id
+    WHERE u.name = :user_name;
+    """
+    try:
+        user_rows = execute_readonly_query(user_info_query, {"user_name": user_name})
+        if user_rows:
+            return {
+                "name": user_rows[0][0],
+                "role": user_rows[0][1],
+                "section": user_rows[0][2],
+            }
+        return None
+    except SQLAlchemyError as e:
+        logger.error("Failed to fetch user info for %s: %s", user_name, e)
+        raise
+
+
+def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, editor_id: int) -> None:
+    # Single-query approach: INSERT...SELECT eliminates the TOCTOU gap between
+    # the section lookup and the upsert. RETURNING lets us detect a missing section.
+    query = """
+        INSERT INTO feedback (section_id, date, feedback, last_edited_by, last_edited_at)
+        SELECT s.id, :date_str, :new_feedback, :editor_id, CURRENT_TIMESTAMP
+        FROM sections s WHERE s.name = :section_name
+        ON CONFLICT (section_id, date) DO UPDATE
+          SET feedback = EXCLUDED.feedback,
+              last_edited_by = EXCLUDED.last_edited_by,
+              last_edited_at = EXCLUDED.last_edited_at
+        RETURNING section_id;
+    """
+    rows = execute_query(query, {
+        'section_name': section_name,
+        'date_str': date_str,
+        'new_feedback': new_feedback,
+        'editor_id': editor_id
+    })
+    if not rows:
+        raise ValidationError("Section not found")
+    clear_feedback_cache()
+
 
 def clear_duty_cache():
     """Clear duty-related caches after duty data changes"""
@@ -505,21 +399,9 @@ def clear_all_cache():
     except RedisError as e:
         logger.warning("Failed to clear all caches: %s", e)
 
-# Add these functions to your backend/bcssm_backend/utils.py file
-
+@cached_result('sections:with_users:all_v6', 1800, error_ttl=60,
+               on_error=lambda e: {"error": f"Failed to fetch sections with users: {e}"})
 def get_all_sections_with_users():
-    """
-    Get all sections with their users, optimized with caching.
-    Cache timeout: 30 minutes (user assignments don't change frequently)
-    """
-    cache_key = 'sections:with_users:all_v6'  # Updated cache key for new sorting
-    
-    # Try to get from cache first
-    cached_data = cache.get(cache_key)
-    if cached_data is not None:
-        logger.info("Retrieved sections with users from cache")
-        return cached_data
-    
     # Optimized query using proper JOINs and leveraging indexes
     query = """
     SELECT 
@@ -552,74 +434,36 @@ def get_all_sections_with_users():
         u.name;
     """
     
-    try:
-        logger.info("Executing optimized query to fetch all sections with users")
-        rows = execute_readonly_query(query)
-        
-        # Group users by section efficiently
-        sections_dict = {}
-        
-        for row in rows:
-            section_name = row[0]
-            user_name = row[2]
-            display_role = row[3]
-            week = row[4]
-            
-            # Create section if it doesn't exist
-            if section_name not in sections_dict:
-                sections_dict[section_name] = {
-                    "name": section_name,
-                    "display_order": row[1],
-                    "users": [],
-                    "user_count": 0
-                }
-            
-            # Add user to section (user_name should always exist due to RIGHT JOIN)
-            if user_name:
-                user_data = {
-                    "name": user_name,
-                    "role": display_role,  # This is now the display_role
-                    "week": week  # Add the week field
-                }
-                
-                sections_dict[section_name]["users"].append(user_data)
-                sections_dict[section_name]["user_count"] += 1
-        
-        # Convert to list and sort by display_order (already sorted by query, but ensure consistency)
-        sections_list = list(sections_dict.values())
-        sections_list.sort(key=lambda x: (x["display_order"], x["name"]))
-        
-        # Cache the results
-        cache.set(cache_key, sections_list, timeout=1800)  # 30 minutes
-        logger.info("Cached sections with users data")
-        
-        return sections_list
-        
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch sections with users: %s", e)
-        error_data = {"error": f"Failed to fetch sections with users: {e}"}
-
-        # Cache error for short time
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
-
-        return error_data
+    rows = execute_readonly_query(query)
+    sections_dict = {}
+    for row in rows:
+        section_name = row[0]
+        user_name = row[2]
+        display_role = row[3]
+        week = row[4]
+        if section_name not in sections_dict:
+            sections_dict[section_name] = {
+                "name": section_name,
+                "display_order": row[1],
+                "users": [],
+                "user_count": 0
+            }
+        if user_name:
+            sections_dict[section_name]["users"].append({
+                "name": user_name,
+                "role": display_role,
+                "week": week
+            })
+            sections_dict[section_name]["user_count"] += 1
+    sections_list = list(sections_dict.values())
+    sections_list.sort(key=lambda x: (x["display_order"], x["name"]))
+    return sections_list
     
+@cached_result('sections:statistics:summary', 3600, error_ttl=60,
+               on_error=lambda e: {"error": f"Failed to fetch section statistics: {e}"})
 def get_section_statistics():
-    """
-    Get statistics about users across sections.
-    Cache timeout: 1 hour (statistics don't change frequently)
-    """
-    cache_key = 'sections:statistics:summary'
-    
-    # Try to get from cache first
-    cached_stats = cache.get(cache_key)
-    if cached_stats is not None:
-        logger.info("Retrieved section statistics from cache")
-        return cached_stats
-    
-    # Single optimized query to get all statistics
     query = """
-    SELECT 
+    SELECT
         COALESCE(s.name, 'Unassigned') AS section_name,
         COALESCE(s.display_order, 999) AS display_order,
         COUNT(u.id) AS total_users,
@@ -631,51 +475,22 @@ def get_section_statistics():
     GROUP BY s.id, s.name, s.display_order
     ORDER BY COALESCE(s.display_order, 999), COALESCE(s.name, 'Unassigned');
     """
-    
-    try:
-        rows = execute_readonly_query(query)
-        
-        statistics = []
-        for row in rows:
-            stat = {
-                "section_name": row[0],
-                "display_order": row[1],
-                "total_users": row[2],
-                "section_leaders": row[3],  # Now includes both Admin and Section Leader
-                "team_leaders": row[4],
-                "other_roles": row[5]
-            }
-            statistics.append(stat)
-        
-        # Cache the results
-        cache.set(cache_key, statistics, timeout=3600)  # 1 hour
-        logger.info("Cached section statistics")
-        
-        return statistics
-        
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch section statistics: %s", e)
-        error_data = {"error": f"Failed to fetch section statistics: {e}"}
+    rows = execute_readonly_query(query)
+    return [
+        {
+            "section_name": row[0],
+            "display_order": row[1],
+            "total_users": row[2],
+            "section_leaders": row[3],
+            "team_leaders": row[4],
+            "other_roles": row[5]
+        }
+        for row in rows
+    ]
 
-        # Cache error for short time
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
-
-        return error_data
-
+@cached_result(lambda section_name: f'users:section:{section_name}:detailed', 1800, error_ttl=60,
+               on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
 def get_users_by_section_optimized(section_name):
-    """
-    Get users for a specific section with optimized caching.
-    Cache timeout: 30 minutes
-    """
-    cache_key = f'users:section:{section_name}:detailed'
-    
-    # Try to get from cache first
-    cached_users = cache.get(cache_key)
-    if cached_users is not None:
-        logger.info("Retrieved users by section from cache for %s", section_name)
-        return cached_users
-    
-    # Handle "Unassigned" section case
     if section_name == "Unassigned":
         query = """
         SELECT u.name, 
@@ -702,23 +517,9 @@ def get_users_by_section_optimized(section_name):
         """
         params = {"section_name": section_name}
     
-    try:
-        result = execute_readonly_query(query, params)
-        users = [{"name": row[0], "role": row[1]} for row in result]
-        
-        # Cache the results
-        cache.set(cache_key, users, timeout=1800)  # 30 minutes
-        logger.info("Cached users by section for %s", section_name)
-        
-        return users
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch users by section %s: %s", section_name, e)
-        error_data = {"error": f"Failed to fetch users by section: {e}"}
+    result = execute_readonly_query(query, params)
+    return [{"name": row[0], "role": row[1]} for row in result]
 
-        # Cache error for short time
-        cache.set(cache_key, error_data, timeout=60)  # 1 minute
-
-        return error_data
 
 # Update the clear_user_cache function to include new cache keys
 def clear_user_cache():
@@ -727,9 +528,10 @@ def clear_user_cache():
         cache.delete('users:all:list')
         cache.delete('sections:all:list')
         cache.delete('sections:with_users:all')
-        cache.delete('sections:with_users:all_v2')  # Old cache key
-        cache.delete('sections:with_users:all_v3')  # Old cache key with week data
-        cache.delete('sections:with_users:all_v4')  # New cache key with better week handling
+        cache.delete('sections:with_users:all_v2')
+        cache.delete('sections:with_users:all_v3')
+        cache.delete('sections:with_users:all_v4')
+        cache.delete('sections:with_users:all_v6')
         cache.delete('sections:statistics:summary')
         
         # Clear individual section caches using pattern matching if supported
@@ -746,3 +548,80 @@ def clear_user_cache():
         logger.info("Cleared user-related caches")
     except RedisError as e:
         logger.warning("Failed to clear user caches: %s", e)
+
+
+def _fmt_ttl(ttl: int) -> str:
+    if ttl >= 3600:
+        hours = ttl // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    if ttl >= 60:
+        minutes = ttl // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{ttl} second{'s' if ttl != 1 else ''}"
+
+
+def _redact_redis_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or 'localhost'
+    port = parsed.port or 6379
+    return f"{host}:{port}"
+
+
+def get_cache_status() -> dict:
+    test_key = 'status:test'
+    try:
+        cache.set(test_key, 'working', timeout=10)
+        test_result = cache.get(test_key)
+        cache.delete(test_key)
+    except Exception as e:
+        raise CacheError(f"Cache probe failed: {e}") from e
+    return {
+        "status": "healthy" if test_result == 'working' else "unhealthy",
+        "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
+        "default_timeout": 300,
+        "test_result": test_result,
+        "cache_type": "RedisCache",
+        "available_operations": {
+            "clear_users": "/api/admin/cache/clear (POST with type: users)",
+            "clear_duties": "/api/admin/cache/clear (POST with type: duties)",
+            "clear_feedback": "/api/admin/cache/clear (POST with type: feedback)",
+            "clear_all": "/api/admin/cache/clear (POST with type: all)"
+        }
+    }
+
+
+def get_cache_info() -> dict:
+    return {
+        "cache_config": {
+            "type": "RedisCache",
+            "url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
+            "default_timeout": 300
+        },
+        "cached_functions": {
+            name: _fmt_ttl(ttl) for name, ttl in get_ttl_registry().items()
+        },
+        "management_endpoints": {
+            "status": "GET /api/admin/cache/status",
+            "clear": "POST /api/admin/cache/clear",
+            "info": "GET /api/admin/cache/info"
+        }
+    }
+
+
+def get_health_status() -> dict:
+    try:
+        cache.set('health:test', 'ok', timeout=10)
+        cache_ok = cache.get('health:test') == 'ok'
+        cache.delete('health:test')
+    except Exception as e:
+        raise CacheError(f"Cache probe failed: {e}") from e
+    health = {
+        "status": "healthy",
+        "database": "connected",
+        "cache": "healthy" if cache_ok else "unhealthy",
+        "environment": os.getenv('FLASK_ENV', 'development'),
+        "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
+    }
+    if not cache_ok:
+        health["status"] = "degraded"
+    return health

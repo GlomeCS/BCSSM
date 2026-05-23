@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import Navbar from "./Navbar";
-import { apiGet, getCurrentUser, isLoggedIn, validateAuth } from '../api';
+import { apiGet } from '../api';
+import { useRequireAuth } from "./hooks/useRequireAuth";
 import "./Sections.css";
 
 type User = {
@@ -24,38 +24,16 @@ type SectionData = {
 };
 
 export default function UsersBySectionPage() {
+  const { currentUser, loading: authLoading } = useRequireAuth();
   const [sectionsData, setSectionsData] = useState<SectionData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterRole, setFilterRole] = useState<string>("all");
   const [filterWeek, setFilterWeek] = useState<string>("all");
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
-  const navigate = useNavigate();
-
   useEffect(() => {
-    const initializePage = async () => {
-      if (!isLoggedIn()) {
-        navigate("/login");
-        return;
-      }
-
-      const user = getCurrentUser();
-      if (!user) {
-        navigate("/login");
-        return;
-      }
-
-      const isValid = await validateAuth();
-      if (!isValid) {
-        localStorage.clear();
-        navigate("/login");
-        return;
-      }
-
-      await fetchUsersBySection();
-    };
-
+    if (!currentUser) return;
     const fetchUsersBySection = async () => {
       try {
         const timestamp = new Date().getTime();
@@ -69,12 +47,11 @@ export default function UsersBySectionPage() {
         console.error("Error fetching users by section:", err);
         setError((err as Error).message);
       } finally {
-        setLoading(false);
+        setDataLoading(false);
       }
     };
-
-    initializePage();
-  }, [navigate]);
+    fetchUsersBySection();
+  }, [currentUser]);
 
   const toggleSection = (sectionName: string) => {
     setCollapsedSections(prev => {
@@ -182,7 +159,7 @@ export default function UsersBySectionPage() {
     }
   };
 
-  if (loading) {
+  if (authLoading || dataLoading) {
     return (
       <>
         <Navbar />

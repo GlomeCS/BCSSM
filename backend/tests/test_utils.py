@@ -6,6 +6,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app, utils
+from backend.bcssm_backend.exceptions import ValidationError
 import unittest.mock
 
 # Save reference to the real function before autouse patching replaces it
@@ -32,16 +33,14 @@ def mock_readonly(mocker):
 def mock_cache(monkeypatch):
     """Mock the cache to avoid Redis connection during tests"""
     fake_cache = MagicMock()
-    # Configure cache.get to return None by default (cache miss)
     fake_cache.get.return_value = None
-    # Configure cache.set to return True (success)
     fake_cache.set.return_value = True
-    # Configure cache.delete to return True (success)
     fake_cache.delete.return_value = True
-    # Configure cache.clear to return True (success)
     fake_cache.clear.return_value = True
-    
+
     monkeypatch.setattr('backend.bcssm_backend.utils.cache', fake_cache)
+    # Also patch globals.cache so the cached_result decorator's lazy import gets the mock
+    monkeypatch.setattr('backend.globals.cache', fake_cache)
     return fake_cache
 
 # ─── 2) Fixture to mock db.session directly (for testing execute_query) ─────
@@ -80,19 +79,19 @@ def test_get_all_users_happy_path(mock_readonly, mock_cache):
     params = None
     assert params is None
     expected_sql = """
-    SELECT 
-        u.name, 
-        COALESCE(s.name, 'Unassigned') AS section,  
-        u.role, 
-        COALESCE(dt.name, 'No Team') AS team 
+    SELECT
+        u.name,
+        COALESCE(s.name, 'Unassigned') AS section,
+        u.role,
+        COALESCE(dt.name, 'No Team') AS team
     FROM users u
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
-    ORDER BY 
-        CASE 
-            WHEN POSITION(' ' IN u.name) > 0 
+    ORDER BY
+        CASE
+            WHEN POSITION(' ' IN u.name) > 0
             THEN SUBSTRING(u.name FROM POSITION(' ' IN u.name) + 1)
-            ELSE u.name 
+            ELSE u.name
         END,
         u.name;
     """
@@ -483,14 +482,10 @@ def test_clear_user_cache(mock_cache):
         utils.clear_user_cache()
         
         # Assert
-        # Should delete specific user-related cache keys (the function deletes more than just these 2)
-        expected_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list')
-        ]
-        mock_cache.delete.assert_has_calls(expected_calls, any_order=True)
-        # The function actually deletes more keys than just these 2
-        assert mock_cache.delete.call_count >= 2
+        deleted_keys = [c.args[0] for c in mock_cache.delete.call_args_list]
+        assert 'users:all:list' in deleted_keys
+        assert 'sections:all:list' in deleted_keys
+        assert 'sections:with_users:all_v6' in deleted_keys
 
 def test_clear_duty_cache(mock_cache):
     """Test clearing duty-related caches"""
@@ -1493,11 +1488,112 @@ def test_get_current_cycle_week_real_calculation():
 def test_get_current_cycle_week_specific_monday_july_14():
     """Test specifically for Monday July 14, 2025 which should be cycle week 1"""
     test_datetime = datetime(2025, 7, 14, 12, 0, 0)  # Monday July 14, 2025 at noon
-    
+
     with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
         utils.get_current_cycle_week.cache_clear()
         result = utils.get_current_cycle_week()
-        
+
         # July 14, 2025 is exactly 7 days after July 7, 2025
         # (7 // 7) % 2 = 1 % 2 = 1
         assert result == 1, f"July 14, 2025 should be cycle week 1, got {result}"
+
+
+# ─── Tests for get_feedback_by_date ─────────────────────────────────────────
+
+def test_get_feedback_by_date_success(monkeypatch):
+    mock_exec = MagicMock(return_value=[("Minis", "Great job"), ("Majors", None)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    result, error = utils.get_feedback_by_date("2025-06-07")
+    assert error is None
+    assert result == {"Minis": "Great job", "Majors": "No feedback available"}
+
+
+def test_get_feedback_by_date_exception(monkeypatch):
+    mock_exec = MagicMock(side_effect=SQLAlchemyError("DB fail"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    result, error = utils.get_feedback_by_date("2025-06-07")
+    assert result is None
+    assert error == "An error occurred while fetching feedback"
+
+
+# ─── Tests for get_user_info ─────────────────────────────────────────────────
+
+def test_get_user_info_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[("Alice", "Leader", "Minis")])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    info = utils.get_user_info("Alice")
+    assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
+
+
+def test_get_user_info_not_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    assert utils.get_user_info("Bob") is None
+
+
+def test_get_user_info_exception(monkeypatch):
+    mock_exec = MagicMock(side_effect=SQLAlchemyError("Oops"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    with pytest.raises(SQLAlchemyError):
+        utils.get_user_info("Alice")
+
+
+# ─── Tests for save_devos_feedback ───────────────────────────────────────────
+
+def test_save_devos_feedback_success(monkeypatch):
+    # Single INSERT...SELECT...RETURNING query: returns [(section_id,)] when section exists.
+    mock_exec = MagicMock(return_value=[(5,)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    utils.save_devos_feedback("Minis", "2025-06-07", "Great session", 1)
+    mock_exec.assert_called_once()
+    call_params = mock_exec.call_args[0][1]
+    assert call_params['section_name'] == 'Minis'
+    assert call_params['new_feedback'] == 'Great session'
+    assert call_params['date_str'] == '2025-06-07'
+    assert call_params['editor_id'] == 1
+
+
+def test_save_devos_feedback_section_not_found(monkeypatch):
+    # RETURNING returns [] when the SELECT subquery matches no section.
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    with pytest.raises(ValidationError, match="Section not found"):
+        utils.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
+
+
+def test_save_devos_feedback_db_error(monkeypatch):
+    mock_exec = MagicMock(side_effect=SQLAlchemyError("DB error"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    with pytest.raises(SQLAlchemyError):
+        utils.save_devos_feedback("Minis", "2025-06-07", "feedback", 1)
+
+
+def test_save_devos_feedback_uses_single_query(monkeypatch):
+    # Verifies the TOCTOU-safe single-query design: exactly one execute_query call.
+    mock_exec = MagicMock(return_value=[(7,)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    utils.save_devos_feedback("Seniors", "2025-06-07", "Good work", 2)
+    assert mock_exec.call_count == 1
+    query_text = mock_exec.call_args[0][0]
+    assert "INSERT INTO feedback" in query_text
+    assert "FROM sections" in query_text
+    assert "RETURNING" in query_text
+
+
+def test_save_devos_feedback_clears_feedback_cache_on_success(monkeypatch):
+    mock_exec = MagicMock(return_value=[(5,)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    mock_clear = MagicMock()
+    monkeypatch.setattr("backend.bcssm_backend.utils.clear_feedback_cache", mock_clear)
+    utils.save_devos_feedback("Minis", "2025-06-07", "Great session", 1)
+    mock_clear.assert_called_once()
+
+
+def test_save_devos_feedback_does_not_clear_cache_when_section_not_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
+    mock_clear = MagicMock()
+    monkeypatch.setattr("backend.bcssm_backend.utils.clear_feedback_cache", mock_clear)
+    with pytest.raises(ValidationError):
+        utils.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
+    mock_clear.assert_not_called()

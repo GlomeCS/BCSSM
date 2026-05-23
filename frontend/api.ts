@@ -75,29 +75,31 @@ export const getCurrentUser = (): string | null => {
     });
   };
   
-  // Auth validation function
+  // Auth validation function.
+  // Returns true if the server confirms the session is valid.
+  // Returns false if the server explicitly says the session is invalid.
+  // Throws on network/transport errors so callers can distinguish transient failures.
   export const validateAuth = async (): Promise<boolean> => {
     const currentUser = getCurrentUser();
-    
+
     if (!currentUser) {
       return false;
     }
-    
-    try {
-      const response = await apiGet('/api/auth/validate');
-      const data = await response.json();
-      
-      if (data.is_valid) {
-        // Update localStorage with fresh data
-        localStorage.setItem("is_logged_in", "true");
-        if (data.role) localStorage.setItem("user_role", data.role);
-        if (data.section) localStorage.setItem("user_section", data.section);
-        localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
-        return true;
-      }
-    } catch (error) {
-      console.error("Auth validation failed:", error);
+
+    const response = await apiGet('/api/auth/validate');
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) return false;
+      throw new Error(`Auth check failed with status ${response.status}`);
     }
-    
+    const data = await response.json();
+
+    if (data.is_valid) {
+      localStorage.setItem("is_logged_in", "true");
+      if (data.role) localStorage.setItem("user_role", data.role);
+      if (data.section) localStorage.setItem("user_section", data.section);
+      localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
+      return true;
+    }
+
     return false;
   };
