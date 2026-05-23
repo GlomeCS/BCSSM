@@ -1,4 +1,6 @@
 import logging
+import os
+import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import lru_cache
@@ -9,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 
 from backend.globals import db, cache
-from backend.bcssm_backend.cache_utils import cached_result
+from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
 from backend.bcssm_backend.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -546,3 +548,74 @@ def clear_user_cache():
         logger.info("Cleared user-related caches")
     except RedisError as e:
         logger.warning("Failed to clear user caches: %s", e)
+
+
+def _fmt_ttl(ttl: int) -> str:
+    if ttl >= 3600:
+        hours = ttl // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    if ttl >= 60:
+        minutes = ttl // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{ttl} second{'s' if ttl != 1 else ''}"
+
+
+def _redact_redis_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or 'localhost'
+    port = parsed.port or 6379
+    return f"{host}:{port}"
+
+
+def get_cache_status() -> dict:
+    test_key = 'status_test'
+    cache.set(test_key, 'working', timeout=10)
+    test_result = cache.get(test_key)
+    cache.delete(test_key)
+    return {
+        "status": "healthy" if test_result == 'working' else "unhealthy",
+        "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
+        "default_timeout": 300,
+        "test_result": test_result,
+        "cache_type": "RedisCache",
+        "available_operations": {
+            "clear_users": "/api/admin/cache/clear (POST with type: users)",
+            "clear_duties": "/api/admin/cache/clear (POST with type: duties)",
+            "clear_feedback": "/api/admin/cache/clear (POST with type: feedback)",
+            "clear_all": "/api/admin/cache/clear (POST with type: all)"
+        }
+    }
+
+
+def get_cache_info() -> dict:
+    return {
+        "cache_config": {
+            "type": "RedisCache",
+            "url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
+            "default_timeout": 300
+        },
+        "cached_functions": {
+            name: _fmt_ttl(ttl) for name, ttl in get_ttl_registry().items()
+        },
+        "management_endpoints": {
+            "status": "GET /api/admin/cache/status",
+            "clear": "POST /api/admin/cache/clear",
+            "info": "GET /api/admin/cache/info"
+        }
+    }
+
+
+def get_health_status() -> dict:
+    cache.set('health_test', 'ok', timeout=10)
+    cache_ok = cache.get('health_test') == 'ok'
+    cache.delete('health_test')
+    health = {
+        "status": "healthy",
+        "database": "connected",
+        "cache": "healthy" if cache_ok else "unhealthy",
+        "environment": os.getenv('FLASK_ENV', 'development'),
+        "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
+    }
+    if not cache_ok:
+        health["status"] = "degraded"
+    return health

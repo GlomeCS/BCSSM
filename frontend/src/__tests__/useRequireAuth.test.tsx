@@ -133,19 +133,23 @@ describe('useRequireAuth', () => {
     });
   });
 
-  // Finding 3: non-ok (e.g. 502) response — validateAuth returns false, user is redirected
-  it('redirects to /login when server returns a non-ok response', async () => {
+  // A 5xx response throws from validateAuth, which useRequireAuth treats as transient —
+  // the session is preserved rather than forcing the user to /login.
+  it('preserves session when server returns a 5xx response (transient outage)', async () => {
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response('<html>Bad Gateway</html>', { status: 502 })
     );
 
-    renderHook(() => useRequireAuth(), { wrapper });
+    const { result } = renderHook(() => useRequireAuth(), { wrapper });
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('/login');
+      expect(result.current.loading).toBe(false);
     });
+
+    expect(result.current.currentUser).toBe('Dave');
+    expect(mockNavigate).not.toHaveBeenCalledWith('/login');
   });
 
   // Finding 4 (stale metadata trade-off): during an outage the hook keeps users logged in,

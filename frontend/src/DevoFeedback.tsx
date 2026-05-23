@@ -99,7 +99,7 @@ const DevoFeedback: React.FC = () => {
       } catch (error) {
         console.error('Error fetching sections:', error);
         try {
-          const res = await fetch(`${base}/api/sections`);
+          const res = await apiGet('/api/sections');
           const data: string[] = await res.json();
           setSections(data);
         } catch (fallbackError) {

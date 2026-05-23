@@ -1,37 +1,18 @@
 import os
 import logging
-import urllib.parse
 
 from flask import request, jsonify
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
-from backend.globals import cache
-from backend.bcssm_backend.cache_utils import get_ttl_registry
 from backend.bcssm_backend.exceptions import BaseError
 from backend.bcssm_backend.utils import (
-    clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache
+    clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
+    get_cache_status, get_cache_info, _redact_redis_url,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _fmt_ttl(ttl: int) -> str:
-    if ttl >= 3600:
-        hours = ttl // 3600
-        return f"{hours} hour{'s' if hours != 1 else ''}"
-    if ttl >= 60:
-        minutes = ttl // 60
-        return f"{minutes} minute{'s' if minutes != 1 else ''}"
-    return f"{ttl} second{'s' if ttl != 1 else ''}"
-
-
-def _redact_redis_url(url: str) -> str:
-    parsed = urllib.parse.urlparse(url)
-    host = parsed.hostname or 'localhost'
-    port = parsed.port or 6379
-    return f"{host}:{port}"
 
 
 def init_admin_routes(app):
@@ -68,25 +49,7 @@ def init_admin_routes(app):
     @app.route("/api/admin/cache/status", methods=['GET'])
     def cache_status():
         try:
-            test_key = 'status_test'
-            cache.set(test_key, 'working', timeout=10)
-            test_result = cache.get(test_key)
-            cache.delete(test_key)
-
-            return jsonify({
-                "status": "healthy" if test_result == 'working' else "unhealthy",
-                "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
-                "default_timeout": 300,
-                "test_result": test_result,
-                "cache_type": "RedisCache",
-                "available_operations": {
-                    "clear_users": "/api/admin/cache/clear (POST with type: users)",
-                    "clear_duties": "/api/admin/cache/clear (POST with type: duties)",
-                    "clear_feedback": "/api/admin/cache/clear (POST with type: feedback)",
-                    "clear_all": "/api/admin/cache/clear (POST with type: all)"
-                }
-            })
-
+            return jsonify(get_cache_status())
         except RedisError as e:
             app.logger.error("Cache status check failed: %s", e)
             return jsonify({
@@ -97,21 +60,7 @@ def init_admin_routes(app):
 
     @app.route("/api/admin/cache/info", methods=['GET'])
     def cache_info():
-        return jsonify({
-            "cache_config": {
-                "type": "RedisCache",
-                "url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
-                "default_timeout": 300
-            },
-            "cached_functions": {
-                name: _fmt_ttl(ttl) for name, ttl in get_ttl_registry().items()
-            },
-            "management_endpoints": {
-                "status": "GET /api/admin/cache/status",
-                "clear": "POST /api/admin/cache/clear",
-                "info": "GET /api/admin/cache/info"
-            }
-        })
+        return jsonify(get_cache_info())
 
 
 def register_error_handlers(app):

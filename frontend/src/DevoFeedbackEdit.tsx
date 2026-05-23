@@ -31,10 +31,13 @@ const DevoFeedbackEdit: React.FC = () => {
       return;
     }
 
+    const controller = new AbortController();
+
     const loadFeedback = async () => {
       try {
         const res = await apiGet(
-          `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`
+          `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`,
+          { signal: controller.signal }
         );
         if (!res.ok) throw new Error(`Failed to load feedback: ${res.statusText}`);
 
@@ -45,14 +48,16 @@ const DevoFeedbackEdit: React.FC = () => {
         setFeedback(existingFeedback);
         setCharacterCount(existingFeedback.length);
       } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
         console.error('Error loading feedback:', err);
         setError((err as Error).message);
       } finally {
-        setDataLoading(false);
+        if (!controller.signal.aborted) setDataLoading(false);
       }
     };
 
     loadFeedback();
+    return () => controller.abort();
   }, [currentUser, dateStr, section]);
 
   const handleFeedbackChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {

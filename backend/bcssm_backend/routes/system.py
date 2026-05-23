@@ -1,18 +1,9 @@
 import os
-import urllib.parse
 
 from flask import jsonify, send_from_directory
 from redis.exceptions import RedisError
 
-from backend.globals import cache
-from backend.bcssm_backend.utils import get_all_sections
-
-
-def _redact_redis_url(url: str) -> str:
-    parsed = urllib.parse.urlparse(url)
-    host = parsed.hostname or 'localhost'
-    port = parsed.port or 6379
-    return f"{host}:{port}"
+from backend.bcssm_backend.utils import get_all_sections, get_health_status
 
 
 def init_system_routes(app):
@@ -27,21 +18,7 @@ def init_system_routes(app):
     @app.route("/api/health")
     def health_check():
         try:
-            cache.set('health_test', 'ok', timeout=10)
-            cache_status = cache.get('health_test') == 'ok'
-            cache.delete('health_test')
-
-            health_info = {
-                "status": "healthy",
-                "database": "connected",
-                "cache": "healthy" if cache_status else "unhealthy",
-                "environment": os.getenv('FLASK_ENV', 'development'),
-                "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
-            }
-            if not cache_status:
-                health_info["status"] = "degraded"
-            return jsonify(health_info)
-
+            return jsonify(get_health_status())
         except RedisError as e:
             app.logger.error("Health check failed: %s", e)
             return jsonify({

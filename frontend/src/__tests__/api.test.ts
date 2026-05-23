@@ -174,10 +174,18 @@ describe('validateAuth', () => {
     await expect(validateAuth()).rejects.toThrow('Network error');
   });
 
-  it('returns false when server responds with non-ok status (e.g. 502 HTML body)', async () => {
+  it('throws when server responds with a non-auth error status (e.g. 502)', async () => {
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response('<html>Bad Gateway</html>', { status: 502 })
+    );
+    await expect(validateAuth()).rejects.toThrow('Auth check failed with status 502');
+  });
+
+  it('returns false when server responds with 401', async () => {
+    localStorage.setItem('currentUser', 'Dave');
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'Unauthorized' }), { status: 401 })
     );
     const result = await validateAuth();
     expect(result).toBe(false);

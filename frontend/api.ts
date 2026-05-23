@@ -87,7 +87,10 @@ export const getCurrentUser = (): string | null => {
     }
 
     const response = await apiGet('/api/auth/validate');
-    if (!response.ok) return false;
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) return false;
+      throw new Error(`Auth check failed with status ${response.status}`);
+    }
     const data = await response.json();
 
     if (data.is_valid) {

@@ -2,8 +2,7 @@ import os
 import pytest
 from unittest.mock import MagicMock, patch
 
-from backend.bcssm_backend.routes.admin import _fmt_ttl, _redact_redis_url
-from backend.bcssm_backend.routes.system import _redact_redis_url as _sys_redact_redis_url
+from backend.bcssm_backend.utils import _fmt_ttl, _redact_redis_url
 from backend.bcssm_backend import create_app
 
 
@@ -33,8 +32,6 @@ def mock_cache(monkeypatch):
     fake.set.return_value = True
     fake.delete.return_value = True
     fake.clear.return_value = True
-    monkeypatch.setattr("backend.bcssm_backend.routes.admin.cache", fake)
-    monkeypatch.setattr("backend.bcssm_backend.routes.system.cache", fake)
     monkeypatch.setattr("backend.bcssm_backend.utils.cache", fake)
     return fake
 
@@ -70,7 +67,7 @@ def test_redact_redis_url_admin(url, expected):
 
 
 def test_redact_redis_url_system(url="redis://user:secret@host:6379"):
-    assert _sys_redact_redis_url(url) == "host:6379"
+    assert _redact_redis_url(url) == "host:6379"
 
 
 # ─── /api/admin/cache/status: URL is redacted ────────────────────────────────
