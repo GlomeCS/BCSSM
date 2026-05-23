@@ -1,5 +1,6 @@
 import os
 import logging
+import urllib.parse
 
 from flask import request, jsonify
 from redis.exceptions import RedisError
@@ -21,8 +22,16 @@ def _fmt_ttl(ttl: int) -> str:
         hours = ttl // 3600
         return f"{hours} hour{'s' if hours != 1 else ''}"
     if ttl >= 60:
-        return f"{ttl // 60} minutes"
-    return f"{ttl} seconds"
+        minutes = ttl // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    return f"{ttl} second{'s' if ttl != 1 else ''}"
+
+
+def _redact_redis_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or 'localhost'
+    port = parsed.port or 6379
+    return f"{host}:{port}"
 
 
 def init_admin_routes(app):
@@ -66,7 +75,7 @@ def init_admin_routes(app):
 
             return jsonify({
                 "status": "healthy" if test_result == 'working' else "unhealthy",
-                "redis_url": os.getenv('REDIS_URL', 'redis://localhost:6379'),
+                "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
                 "default_timeout": 300,
                 "test_result": test_result,
                 "cache_type": "RedisCache",
@@ -83,7 +92,7 @@ def init_admin_routes(app):
             return jsonify({
                 "status": "unhealthy",
                 "error": "Cache status check failed",
-                "redis_url": os.getenv('REDIS_URL', 'redis://localhost:6379')
+                "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
             }), 500
 
     @app.route("/api/admin/cache/info", methods=['GET'])
@@ -91,7 +100,7 @@ def init_admin_routes(app):
         return jsonify({
             "cache_config": {
                 "type": "RedisCache",
-                "url": os.getenv('REDIS_URL', 'redis://localhost:6379'),
+                "url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379')),
                 "default_timeout": 300
             },
             "cached_functions": {

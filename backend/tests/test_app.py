@@ -401,7 +401,7 @@ def test_cache_status_endpoint(mock_db_cache, clean_env):
     assert data["cache_type"] == "RedisCache"
     assert data["default_timeout"] == 300
     assert "available_operations" in data
-    assert data["redis_url"] == "redis://localhost:6379"
+    assert data["redis_url"] == "localhost:6379"
 
     # Verify the cache was tested properly
     mock_cache.set.assert_called_with('status_test', 'working', timeout=10)
@@ -703,12 +703,12 @@ def test_api_sections_error_dict_returns_500(mock_get_all_sections, mock_db_cach
 
 def test_fmt_ttl_seconds():
     assert _fmt_ttl(30) == "30 seconds"
-    assert _fmt_ttl(1) == "1 seconds"
+    assert _fmt_ttl(1) == "1 second"
     assert _fmt_ttl(59) == "59 seconds"
 
 
 def test_fmt_ttl_minutes():
-    assert _fmt_ttl(60) == "1 minutes"
+    assert _fmt_ttl(60) == "1 minute"
     assert _fmt_ttl(120) == "2 minutes"
     assert _fmt_ttl(900) == "15 minutes"
     assert _fmt_ttl(3599) == "59 minutes"

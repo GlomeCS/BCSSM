@@ -20,18 +20,26 @@ def client(app):
     return app.test_client()
 
 # ─── 2) Patch execute_query and execute_readonly_query ──────────────────────────
+@pytest.fixture
+def mock_write(monkeypatch):
+    m = MagicMock()
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", m)
+    monkeypatch.setattr("backend.bcssm_backend.auth.execute_query", m)
+    return m
+
+@pytest.fixture
+def mock_read(monkeypatch):
+    m = MagicMock()
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", m)
+    return m
+
 @pytest.fixture(autouse=True)
-def mock_execute_query(monkeypatch):
-    mock_exec = MagicMock()
-    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
-    monkeypatch.setattr("backend.bcssm_backend.auth.execute_query", mock_exec)
-    # get_feedback_by_date and get_user_info now use execute_readonly_query
-    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
-    return mock_exec
+def mock_execute_query(mock_write, mock_read):
+    return mock_write, mock_read
 
 # ─── 3) Unit tests for get_feedback_by_date ──────────────────────────────────────
-def test_get_feedback_by_date_success(mock_execute_query):
-    mock_execute_query.return_value = [("Minis", "Great job"), ("Majors", None)]
+def test_get_feedback_by_date_success(mock_read):
+    mock_read.return_value = [("Minis", "Great job"), ("Majors", None)]
     result, error = get_feedback_by_date("2025-06-07")
     assert error is None
     assert result == {
@@ -39,25 +47,25 @@ def test_get_feedback_by_date_success(mock_execute_query):
         "Majors": "No feedback available"
     }
 
-def test_get_feedback_by_date_exception(mock_execute_query):
-    mock_execute_query.side_effect = SQLAlchemyError("DB fail")
+def test_get_feedback_by_date_exception(mock_read):
+    mock_read.side_effect = SQLAlchemyError("DB fail")
     result, error = get_feedback_by_date("2025-06-07")
     assert result is None
     assert error == "An error occurred while fetching feedback"
 
 # ─── 4) Unit tests for get_user_info ────────────────────────────────────────────
-def test_get_user_info_found(mock_execute_query):
-    mock_execute_query.return_value = [("Alice", "Leader", "Minis")]
+def test_get_user_info_found(mock_read):
+    mock_read.return_value = [("Alice", "Leader", "Minis")]
     info = get_user_info("Alice")
     assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
 
-def test_get_user_info_not_found(mock_execute_query):
-    mock_execute_query.return_value = []
+def test_get_user_info_not_found(mock_read):
+    mock_read.return_value = []
     info = get_user_info("Bob")
     assert info is None
 
-def test_get_user_info_exception(mock_execute_query):
-    mock_execute_query.side_effect = SQLAlchemyError("Oops")
+def test_get_user_info_exception(mock_read):
+    mock_read.side_effect = SQLAlchemyError("Oops")
     with pytest.raises(SQLAlchemyError):
         get_user_info("Alice")
 
@@ -162,7 +170,7 @@ def test_edit_unauthenticated(client):
     data = resp.get_json()
     assert "Invalid user" in data["error"]
 
-def test_edit_authenticated_via_query_param(client, mock_execute_query):
+def test_edit_authenticated_via_query_param(client, mock_write):
     """Test edit with username via query parameter"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
@@ -172,14 +180,14 @@ def test_edit_authenticated_via_query_param(client, mock_execute_query):
             return [(5,)]
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 200
     assert resp.get_json() == {"success": True}
 
-def test_edit_authenticated_via_header(client, mock_execute_query):
+def test_edit_authenticated_via_header(client, mock_write):
     """Test edit with username via header"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
@@ -188,7 +196,7 @@ def test_edit_authenticated_via_header(client, mock_execute_query):
             return [(5,)]
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"},
@@ -196,7 +204,7 @@ def test_edit_authenticated_via_header(client, mock_execute_query):
     assert resp.status_code == 200
     assert resp.get_json() == {"success": True}
 
-def test_edit_authenticated_via_session(client, mock_execute_query):
+def test_edit_authenticated_via_session(client, mock_write):
     """Test edit with session user_id (no username in request, falls back to session)"""
     with client.session_transaction() as sess:
         sess["user_id"] = 1
@@ -208,7 +216,7 @@ def test_edit_authenticated_via_session(client, mock_execute_query):
             return [(5,)]
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
@@ -227,7 +235,7 @@ def test_edit_missing_params(client):
     assert resp.status_code == 400
     assert "Missing date, section, or feedback" in resp.get_json()["error"]
 
-def test_edit_section_not_found(client, mock_execute_query):
+def test_edit_section_not_found(client, mock_write):
     """Test edit when section doesn't exist — RETURNING returns [] from the combined query"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
@@ -236,14 +244,14 @@ def test_edit_section_not_found(client, mock_execute_query):
             return []  # Section not found: subquery matched 0 rows
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 400
     assert "Section not found" in resp.get_json()["error"]
 
-def test_edit_success(client, mock_execute_query):
+def test_edit_success(client, mock_write):
     """Test successful edit — single atomic INSERT...SELECT...RETURNING query"""
     calls = []
     def side_effect(query, params=None):
@@ -254,7 +262,7 @@ def test_edit_success(client, mock_execute_query):
             return [(5,)]
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "New"})
@@ -264,7 +272,7 @@ def test_edit_success(client, mock_execute_query):
     assert any("SELECT u.id FROM users u WHERE u.name" in call[0] for call in calls)
     assert any("INSERT INTO feedback" in call[0] for call in calls)
 
-def test_edit_upsert_error(client, mock_execute_query):
+def test_edit_upsert_error(client, mock_write):
     """Test edit when the combined INSERT...SELECT query fails"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
@@ -273,7 +281,7 @@ def test_edit_upsert_error(client, mock_execute_query):
             raise SQLAlchemyError("oops")
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})
@@ -281,14 +289,14 @@ def test_edit_upsert_error(client, mock_execute_query):
     assert "Internal server error" in resp.get_json()["error"]
 
 
-def test_edit_section_lookup_db_error(client, mock_execute_query):
+def test_edit_section_lookup_db_error(client, mock_write):
     """Test edit when the combined INSERT...SELECT query raises SQLAlchemyError"""
     def side_effect(query, params=None):
         if "INSERT INTO feedback" in query:
             raise SQLAlchemyError("section DB error")
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     with client.session_transaction() as sess:
         sess['user_id'] = 1
@@ -299,14 +307,14 @@ def test_edit_section_lookup_db_error(client, mock_execute_query):
     assert "Internal server error" in resp.get_json()["error"]
 
 
-def test_get_user_id_from_request_db_error(client, mock_execute_query):
+def test_get_user_id_from_request_db_error(client, mock_write):
     """Test SQLAlchemyError during user ID lookup is caught by the route and returns 500"""
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             raise SQLAlchemyError("lookup failed")
         return None  # pragma: no cover
 
-    mock_execute_query.side_effect = side_effect
+    mock_write.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "X"})

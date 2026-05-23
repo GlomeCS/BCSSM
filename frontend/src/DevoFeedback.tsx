@@ -26,10 +26,15 @@ const DevoFeedback: React.FC = () => {
   const [userSection, setUserSection] = useState<string | null>(null);
   const [isLeaderState, setIsLeaderState] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const [sectionsLoading, setSectionsLoading] = useState<boolean>(true);
   const base = import.meta.env.VITE_BASE_URL || '';
 
   useEffect(() => {
     if (!currentUser) return;
+    setDataLoading(true);
+    setFeedback({});
+    setUserSection(null);
+    setIsLeaderState(false);
 
     const fetchFeedbackData = async () => {
       try {
@@ -100,6 +105,8 @@ const DevoFeedback: React.FC = () => {
         } catch (fallbackError) {
           console.error('Fallback fetch also failed:', fallbackError);
         }
+      } finally {
+        setSectionsLoading(false);
       }
     };
 
@@ -112,7 +119,7 @@ const DevoFeedback: React.FC = () => {
     setSearchParams({ date: newDate });
   };
 
-  if (authLoading || dataLoading || !sections.length) {
+  if (authLoading || dataLoading || sectionsLoading) {
     return (
       <>
         <Navbar />

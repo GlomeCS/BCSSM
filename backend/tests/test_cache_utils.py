@@ -122,6 +122,47 @@ def test_on_error_list_returns_independent_copy_each_call():
     assert result2 == [], "Mutation of first fallback should not affect subsequent calls"
 
 
+# ─── cache backend failure resilience ────────────────────────────────────────
+
+def test_cache_read_failure_treated_as_miss():
+    fake_cache = _make_cache()
+    fake_cache.get.side_effect = Exception("Redis down")
+    calls = []
+
+    @cached_result('key:test', 300, cache=fake_cache)
+    def fn():
+        calls.append(1)
+        return 'result'
+
+    result = fn()
+    assert result == 'result'
+    assert calls == [1]
+
+
+def test_cache_write_failure_still_returns_result():
+    fake_cache = _make_cache()
+    fake_cache.set.side_effect = Exception("Redis write failed")
+
+    @cached_result('key:test', 300, cache=fake_cache)
+    def fn():
+        return 'result'
+
+    result = fn()
+    assert result == 'result'
+
+
+def test_cache_error_fallback_write_failure_still_returns_fallback():
+    fake_cache = _make_cache()
+    fake_cache.set.side_effect = Exception("Redis write failed")
+
+    @cached_result('key:err', 300, error_ttl=60, on_error='fallback', cache=fake_cache)
+    def fn():
+        raise SQLAlchemyError("db down")
+
+    result = fn()
+    assert result == 'fallback'
+
+
 # ─── TTL registry ─────────────────────────────────────────────────────────────
 
 def test_ttl_registry_records_decorated_functions():

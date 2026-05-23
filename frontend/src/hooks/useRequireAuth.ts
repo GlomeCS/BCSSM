@@ -24,9 +24,12 @@ export function useRequireAuth(): { currentUser: string | null; loading: boolean
         }
         setCurrentUser(getCurrentUser());
         setLoading(false);
-      } catch {
-        localStorage.clear();
-        navigate("/login");
+      } catch (error) {
+        // Network/transport error: don't clear the session — the server may be
+        // temporarily unavailable. Keep the user logged in so they aren't forced
+        // out during a transient outage.
+        console.error("Auth check failed (transient):", error);
+        setCurrentUser(getCurrentUser());
         setLoading(false);
       }
     };

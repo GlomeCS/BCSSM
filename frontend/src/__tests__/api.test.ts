@@ -168,10 +168,9 @@ describe('validateAuth', () => {
     expect(result).toBe(false);
   });
 
-  it('returns false on fetch error', async () => {
+  it('throws on network/transport error', async () => {
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
-    const result = await validateAuth();
-    expect(result).toBe(false);
+    await expect(validateAuth()).rejects.toThrow('Network error');
   });
 });

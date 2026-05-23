@@ -367,6 +367,7 @@ def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, edi
     })
     if not rows:
         raise ValidationError("Section not found")
+    clear_feedback_cache()
 
 
 def clear_duty_cache():

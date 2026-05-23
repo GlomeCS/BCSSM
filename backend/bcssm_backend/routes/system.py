@@ -1,10 +1,18 @@
 import os
+import urllib.parse
 
 from flask import jsonify, send_from_directory
 from redis.exceptions import RedisError
 
 from backend.globals import cache
 from backend.bcssm_backend.utils import get_all_sections
+
+
+def _redact_redis_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or 'localhost'
+    port = parsed.port or 6379
+    return f"{host}:{port}"
 
 
 def init_system_routes(app):
@@ -28,7 +36,7 @@ def init_system_routes(app):
                 "database": "connected",
                 "cache": "healthy" if cache_status else "unhealthy",
                 "environment": os.getenv('FLASK_ENV', 'development'),
-                "redis_url": os.getenv('REDIS_URL', 'redis://localhost:6379')
+                "redis_url": _redact_redis_url(os.getenv('REDIS_URL', 'redis://localhost:6379'))
             }
             if not cache_status:
                 health_info["status"] = "degraded"
@@ -52,9 +60,9 @@ def init_system_routes(app):
             return app.send_static_file('index.html')
 
         safe_path = os.path.normpath(path).lstrip("/\\")
-        requested_path = os.path.join(app.static_folder, safe_path)
-        requested_path = os.path.realpath(requested_path)
-        if not requested_path.startswith(os.path.realpath(app.static_folder)):
+        static_root = os.path.realpath(app.static_folder)
+        requested_path = os.path.realpath(os.path.join(static_root, safe_path))
+        if os.path.commonpath([requested_path, static_root]) != static_root:
             app.logger.warning("Attempted directory traversal detected: %s", path)
             return send_from_directory(app.static_folder, "index.html")
         if os.path.isfile(requested_path):

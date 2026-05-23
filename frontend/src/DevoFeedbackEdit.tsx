@@ -20,6 +20,10 @@ const DevoFeedbackEdit: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser) return;
+    setDataLoading(true);
+    setError(null);
+    setFeedback('');
+    setCharacterCount(0);
 
     if (!dateStr || !section) {
       setError('Missing date or section parameters');
