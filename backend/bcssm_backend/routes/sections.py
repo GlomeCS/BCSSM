@@ -1,7 +1,8 @@
 import logging
-from flask import jsonify, session
+from flask import jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
+from backend.bcssm_backend.auth import get_username_from_request
 from backend.bcssm_backend.utils import get_all_sections_with_users, get_users_by_section_optimized
 
 logger = logging.getLogger(__name__)
@@ -14,12 +15,12 @@ def init_users_sections_routes(app):
         Returns: JSON with sections and their users
         """
         
-        user_name = session.get('user_name')
+        user_name = get_username_from_request()
         if not user_name:
             return jsonify({'error': 'User not authenticated'}), 401
-            
+
         try:
-            logger.info("Fetching users grouped by section")
+            logger.info("Fetching users grouped by section for user: %s", user_name)
             
             # Get all sections with their users
             sections_data = get_all_sections_with_users()
@@ -49,10 +50,10 @@ def init_users_sections_routes(app):
         """
         Get users for a specific section
         """
-        user_name = session.get('user_name')
+        user_name = get_username_from_request()
         if not user_name:
             return jsonify({'error': 'User not authenticated'}), 401
-            
+
         try:
             logger.info("Fetching users for section: %s", section_name)
             
