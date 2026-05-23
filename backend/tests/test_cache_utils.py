@@ -122,6 +122,19 @@ def test_on_error_list_returns_independent_copy_each_call():
     assert result2 == [], "Mutation of first fallback should not affect subsequent calls"
 
 
+def test_on_error_nested_mutable_returns_independent_copy_each_call():
+    fake_cache = _make_cache()
+
+    @cached_result('key:nestedmut', 300, on_error={"data": []}, cache=fake_cache)
+    def fn():
+        raise SQLAlchemyError("oops")
+
+    result1 = fn()
+    result1["data"].append('mutation')
+    result2 = fn()
+    assert result2["data"] == [], "Mutation of nested list should not affect subsequent calls"
+
+
 # ─── cache backend failure resilience ────────────────────────────────────────
 
 def test_cache_read_failure_treated_as_miss():

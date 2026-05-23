@@ -92,4 +92,64 @@ describe('useRequireAuth', () => {
     expect(mockNavigate).not.toHaveBeenCalled();
     expect(localStorage.getItem('currentUser')).toBe('Charlie');
   });
+
+  // Finding 1: cross-tab localStorage race — server says valid but storage was cleared mid-flight
+  it('redirects to /login when localStorage is cleared while validateAuth is in flight', async () => {
+    localStorage.setItem('is_logged_in', 'true');
+    localStorage.setItem('currentUser', 'Alice');
+
+    vi.mocked(fetch).mockImplementationOnce(async () => {
+      // Simulate another tab calling localStorage.clear() mid-flight
+      localStorage.clear();
+      return new Response(
+        JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', is_leader: false }),
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+    });
+
+    const { result } = renderHook(() => useRequireAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
+    });
+
+    expect(result.current.currentUser).toBeNull();
+  });
+
+  // Finding 1 (catch path): same race during a transient network error
+  it('redirects to /login when localStorage is cleared during a transient error', async () => {
+    localStorage.setItem('is_logged_in', 'true');
+    localStorage.setItem('currentUser', 'Alice');
+
+    vi.mocked(fetch).mockImplementationOnce(async () => {
+      localStorage.clear();
+      throw new TypeError('Network error');
+    });
+
+    renderHook(() => useRequireAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
+    });
+  });
+
+  // Finding 3: non-ok (e.g. 502) response — validateAuth returns false, user is redirected
+  it('redirects to /login when server returns a non-ok response', async () => {
+    localStorage.setItem('is_logged_in', 'true');
+    localStorage.setItem('currentUser', 'Dave');
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response('<html>Bad Gateway</html>', { status: 502 })
+    );
+
+    renderHook(() => useRequireAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/login');
+    });
+  });
+
+  // Finding 4 (stale metadata trade-off): during an outage the hook keeps users logged in,
+  // which means stale localStorage values like user_role/is_leader may persist.
+  // This is a deliberate trade-off to avoid logging users out during transient outages.
+  // Tracked in GitHub issue #135.
 });

@@ -87,6 +87,7 @@ export const getCurrentUser = (): string | null => {
     }
 
     const response = await apiGet('/api/auth/validate');
+    if (!response.ok) return false;
     const data = await response.json();
 
     if (data.is_valid) {

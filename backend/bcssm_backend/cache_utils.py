@@ -55,7 +55,7 @@ def cached_result(key_fn, ttl, error_ttl=None, on_error=_RAISE, cache=None):
                 logger.error("Query failed, cache key %s: %s", key, e)
                 if on_error is _RAISE:
                     raise
-                fallback = on_error(e) if callable(on_error) else copy.copy(on_error)
+                fallback = on_error(e) if callable(on_error) else copy.deepcopy(on_error)
                 if error_ttl is not None:
                     try:
                         _cache.set(key, fallback, timeout=error_ttl)

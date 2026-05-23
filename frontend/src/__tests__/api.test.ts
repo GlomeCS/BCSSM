@@ -173,4 +173,13 @@ describe('validateAuth', () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
     await expect(validateAuth()).rejects.toThrow('Network error');
   });
+
+  it('returns false when server responds with non-ok status (e.g. 502 HTML body)', async () => {
+    localStorage.setItem('currentUser', 'Dave');
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response('<html>Bad Gateway</html>', { status: 502 })
+    );
+    const result = await validateAuth();
+    expect(result).toBe(false);
+  });
 });
