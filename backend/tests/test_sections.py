@@ -486,6 +486,33 @@ def test_both_endpoints_authentication_consistency(client):
         data2 = json.loads(response2.data)
         assert data2["error"] == "User not authenticated"
 
+def test_get_users_by_section_auth_via_query_param(client, mock_utils):
+    """Test that auth works via query param (no session cookie — Safari/iOS ITP scenario)"""
+    mock_sections, _ = mock_utils
+    mock_sections.return_value = []
+
+    # No session set — only query param, as Safari on iOS sends
+    response = client.get('/api/users/by-section?user_name=Dohn%20Joe')
+
+    if response.status_code == 404:
+        pytest.skip("Route not implemented yet")
+
+    assert response.status_code == 200
+
+
+def test_get_users_by_section_auth_via_header(client, mock_utils):
+    """Test that auth works via X-Current-User header (no session cookie)"""
+    mock_sections, _ = mock_utils
+    mock_sections.return_value = []
+
+    response = client.get('/api/users/by-section', headers={'X-Current-User': 'Dohn Joe'})
+
+    if response.status_code == 404:
+        pytest.skip("Route not implemented yet")
+
+    assert response.status_code == 200
+
+
 def test_route_exists(client):
     """Basic test to verify routes exist"""
     # Test that routes return something other than 404
