@@ -10,6 +10,7 @@ from redis.exceptions import RedisError
 
 from backend.globals import db, cache
 from backend.bcssm_backend.cache_utils import cached_result
+from backend.bcssm_backend.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +366,7 @@ def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, edi
         'editor_id': editor_id
     })
     if not rows:
-        raise ValueError(f"Section '{section_name}' not found")
+        raise ValidationError("Section not found")
 
 
 def clear_duty_cache():

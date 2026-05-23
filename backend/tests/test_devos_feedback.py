@@ -170,7 +170,7 @@ def test_edit_authenticated_via_query_param(client, mock_execute_query):
         # Combined INSERT...SELECT...RETURNING query from save_devos_feedback
         if "INSERT INTO feedback" in query:
             return [(5,)]
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
@@ -186,7 +186,7 @@ def test_edit_authenticated_via_header(client, mock_execute_query):
             return [(1,)]
         if "INSERT INTO feedback" in query:
             return [(5,)]
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
@@ -206,7 +206,7 @@ def test_edit_authenticated_via_session(client, mock_execute_query):
         calls.append((query, params))
         if "INSERT INTO feedback" in query:
             return [(5,)]
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
@@ -234,14 +234,14 @@ def test_edit_section_not_found(client, mock_execute_query):
             return [(1,)]
         if "INSERT INTO feedback" in query:
             return []  # Section not found: subquery matched 0 rows
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis&user_name=TestUser",
                        json={"feedback": "Test"})
     assert resp.status_code == 400
-    assert "Section 'Minis' not found" in resp.get_json()["error"]
+    assert "Section not found" in resp.get_json()["error"]
 
 def test_edit_success(client, mock_execute_query):
     """Test successful edit — single atomic INSERT...SELECT...RETURNING query"""
@@ -252,7 +252,7 @@ def test_edit_success(client, mock_execute_query):
             return [(1,)]
         if "INSERT INTO feedback" in query:
             return [(5,)]
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
@@ -271,7 +271,7 @@ def test_edit_upsert_error(client, mock_execute_query):
             return [(1,)]
         if "INSERT INTO feedback" in query:
             raise SQLAlchemyError("oops")
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
@@ -286,7 +286,7 @@ def test_edit_section_lookup_db_error(client, mock_execute_query):
     def side_effect(query, params=None):
         if "INSERT INTO feedback" in query:
             raise SQLAlchemyError("section DB error")
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 
@@ -304,7 +304,7 @@ def test_get_user_id_from_request_db_error(client, mock_execute_query):
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             raise SQLAlchemyError("lookup failed")
-        return None
+        return None  # pragma: no cover
 
     mock_execute_query.side_effect = side_effect
 

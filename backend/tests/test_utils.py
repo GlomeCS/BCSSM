@@ -6,6 +6,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app, utils
+from backend.bcssm_backend.exceptions import ValidationError
 import unittest.mock
 
 # Save reference to the real function before autouse patching replaces it
@@ -1556,7 +1557,7 @@ def test_save_devos_feedback_section_not_found(monkeypatch):
     # RETURNING returns [] when the SELECT subquery matches no section.
     mock_exec = MagicMock(return_value=[])
     monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", mock_exec)
-    with pytest.raises(ValueError, match="Section 'Unknown' not found"):
+    with pytest.raises(ValidationError, match="Section not found"):
         utils.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
 
 

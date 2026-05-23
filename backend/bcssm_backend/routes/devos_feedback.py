@@ -3,6 +3,7 @@ from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info, save_devos_feedback
 from backend.bcssm_backend.auth import get_username_from_request, get_user_id_from_request
+from backend.bcssm_backend.exceptions import ValidationError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -71,8 +72,8 @@ def init_feedback_routes(app):
         try:
             save_devos_feedback(section_name, date_str, new_feedback, editor_id)
             return jsonify({'success': True}), 200
-        except ValueError as e:
-            return jsonify({'error': str(e)}), 400
+        except ValidationError as e:
+            return jsonify({'error': e.message}), e.status_code
         except SQLAlchemyError as e:
             logger.exception("Error editing feedback for date %s, section %s: %s", date_str, section_name, e)
             return jsonify({'error': 'Internal server error'}), 500

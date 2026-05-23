@@ -32,7 +32,7 @@ def test_cache_hit_returns_cached_value_without_calling_function():
     calls = []
 
     @cached_result('key:test', 300, cache=fake_cache)
-    def fn():
+    def fn():  # pragma: no cover
         calls.append(1)
         return 'fresh'
 
@@ -128,7 +128,7 @@ def test_ttl_registry_records_decorated_functions():
     fake_cache = _make_cache()
 
     @cached_result('key:reg', 999, cache=fake_cache)
-    def my_registered_fn():
+    def my_registered_fn():  # pragma: no cover
         return None
 
     registry = get_ttl_registry()
