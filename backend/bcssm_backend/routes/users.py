@@ -166,6 +166,40 @@ def init_users_routes(app):
             'is_leader': user['is_leader'],
         }), 200
 
+    # Temporary compatibility route for the pre-rebuild static bundle
+    # (index-CP0_RDcF.js) which POSTs to /select-user instead of /api/auth/login.
+    # Remove once the rebuilt frontend bundle is deployed.
+    @app.route('/select-user', methods=['POST'])
+    def select_user_compat():
+        data = request.json or {}
+        user_name = (data.get('user_name') or '').strip()
+        if not user_name:
+            return jsonify({'error': 'user_name required'}), 400
+        try:
+            user = authenticate_user(user_name)
+        except AuthenticationError:
+            return jsonify({'error': 'Invalid user'}), 401
+        except SQLAlchemyError as e:
+            app.logger.error("Login DB error for %s: %s", user_name, e)
+            return jsonify({'error': 'An internal error has occurred.'}), 500
+        session.update({
+            'user_name': user['name'],
+            'user_id': user['id'],
+            'user_section': user['section_name'],
+            'is_leader': user['is_leader'],
+        })
+        cache_user_login(user)
+        return jsonify({
+            'ok': True,
+            'user_name': user['name'],
+            'role': user['role'],
+            'section': user['section_name'],
+            'is_leader': user['is_leader'],
+            'is_logged_in': True,
+            'user_section': user['section_name'],
+            'message': 'Login successful!',
+        }), 200
+
     @app.route('/api/auth/logout', methods=['POST'])
     def api_logout():
         """Clear the server-side session and evict user cache."""
