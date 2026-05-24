@@ -16,7 +16,6 @@ def init_feedback_routes(app):
             # Get date from query param or use today
             date_str = request.args.get('date') or datetime.now().strftime('%Y-%m-%d')
 
-            # Get current user from multiple sources (query param, header, or session)
             user_name = get_username_from_request()
             
             if not user_name:

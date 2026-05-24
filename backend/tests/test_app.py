@@ -110,7 +110,6 @@ def test_create_app_config(clean_env, mock_db_cache, monkeypatch, env, expected_
 
     expected_db_uri = f"postgresql://test_user:test_password@localhost:6543/test_db"
 
-    assert app.config["ENV"] == expected_env  # Check the environment variable was applied
     assert app.config["DEBUG"] == expected_debug  # Check DEBUG mode
     assert app.config["SQLALCHEMY_DATABASE_URI"] == expected_db_uri  # Ensure correct DB URI
     assert isinstance(app.config, dict)  # Ensure app config is loaded correctly

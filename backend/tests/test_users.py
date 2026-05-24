@@ -111,48 +111,64 @@ def test_users_by_section_exception(client, patch_helpers):
 
 # ─── 4) GET /user-duty ────────────────────────────────────────────────────────────
 def test_user_duty_success(client, patch_helpers):
-    """Test user duty - now uses utils function with built-in caching"""
+    """Test user duty requires session-based auth."""
     ph = patch_helpers
-    # Mock utils function returns data directly (already cached internally)
     ph["duty"].return_value = {"user": "Alice", "duty": "Cleaning"}
 
-    resp = client.get("/user-duty?user=Alice")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    resp = client.get("/user-duty")
     assert resp.status_code == 200
     assert resp.get_json() == {"user": "Alice", "duty": "Cleaning"}
-    
-    # Verify utils function was called (caching happens inside utils)
     ph["duty"].assert_called_once_with("Alice")
-    # Route-level cache operations no longer happen
     assert not ph["cache"].get.called
     assert not ph["cache"].set.called
 
-def test_user_duty_error_response(client, patch_helpers):
-    """Test user duty when utils returns error dict"""
+
+def test_user_duty_query_param_rejected(client, patch_helpers):
+    """Query param user is no longer trusted — must return 400."""
     ph = patch_helpers
-    # Mock utils function returns error (as per utils.py implementation)
-    ph["duty"].return_value = {"error": "User not found or no duty assigned"}
+    ph["duty"].return_value = {"user": "Alice", "duty": "Cleaning"}
 
     resp = client.get("/user-duty?user=Alice")
-    assert resp.status_code == 200  # Route returns the error data, doesn't fail
+    assert resp.status_code == 400
+    ph["duty"].assert_not_called()
+
+
+def test_user_duty_error_response(client, patch_helpers):
+    """Test user duty when utils returns error dict."""
+    ph = patch_helpers
+    ph["duty"].return_value = {"error": "User not found or no duty assigned"}
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    resp = client.get("/user-duty")
+    assert resp.status_code == 200
     data = resp.get_json()
     assert "error" in data
     assert "User not found or no duty assigned" in data["error"]
-    
+
+
 def test_user_duty_missing_param(client, patch_helpers):
-    """Test /user-duty without username parameter - updated for new route behavior"""
-    resp = client.get("/user-duty")  # Missing user parameter
+    """No session → 400."""
+    resp = client.get("/user-duty")
     assert resp.status_code == 400
     data = resp.get_json()
     assert "error" in data
-    # Updated assertion - the route now uses get_username_from_request() which returns "Username required"
     assert "Username required" in data["error"]
 
+
 def test_user_duty_exception(client, patch_helpers):
-    """Test exception handling in route"""
+    """Test exception handling in route."""
     ph = patch_helpers
     ph["duty"].side_effect = SQLAlchemyError("Oops")
 
-    resp = client.get("/user-duty?user=Alice")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    resp = client.get("/user-duty")
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
@@ -380,40 +396,9 @@ def test_cache_stats_unhealthy(client, patch_helpers):
     assert data["cache_status"] == "unhealthy"
 
 # ─── 11) GET /api/auth/validate ─────────────────────────────────────────────────
-def test_validate_user_success_with_query_param(client, patch_helpers):
-    """Test /api/auth/validate with valid user via query parameter"""
-    ph = patch_helpers
-    # Mock successful user lookup
-    ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
-
-    resp = client.get("/api/auth/validate?user_name=Alice")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["is_valid"] is True
-    assert data["user_name"] == "Alice"
-    assert data["role"] == "Section Leader"
-    assert data["section"] == "Minors"
-    assert data["is_leader"] is True
-
-def test_validate_user_success_with_header(client, patch_helpers):
-    """Test /api/auth/validate with valid user via header"""
-    ph = patch_helpers
-    # Mock successful user lookup
-    ph["execute"].return_value = [(43, "Bob", "Team Member", "Majors")]
-
-    resp = client.get("/api/auth/validate", headers={"X-Current-User": "Bob"})
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["is_valid"] is True
-    assert data["user_name"] == "Bob"
-    assert data["role"] == "Team Member"
-    assert data["section"] == "Majors"
-    assert data["is_leader"] is False
-
 def test_validate_user_success_with_session(client, patch_helpers):
-    """Test /api/auth/validate with valid user via session"""
+    """Test /api/auth/validate succeeds with a valid session."""
     ph = patch_helpers
-    # Mock successful user lookup
     ph["execute"].return_value = [(44, "Charlie", "Admin", "Unassigned")]
 
     with client.session_transaction() as sess:
@@ -426,62 +411,97 @@ def test_validate_user_success_with_session(client, patch_helpers):
     assert data["user_name"] == "Charlie"
     assert data["role"] == "Admin"
     assert data["section"] == "Unassigned"
-    assert data["is_leader"] is True  # Admin counts as leader
+    assert data["is_leader"] is True
+
+
+def test_validate_user_query_param_rejected(client, patch_helpers):
+    """Query param user_name is not trusted — must return 400."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
+
+    resp = client.get("/api/auth/validate?user_name=Alice")
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["is_valid"] is False
+
+
+def test_validate_user_header_rejected(client, patch_helpers):
+    """X-Current-User header is not trusted — must return 400."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(43, "Bob", "Team Member", "Majors")]
+
+    resp = client.get("/api/auth/validate", headers={"X-Current-User": "Bob"})
+    assert resp.status_code == 400
+    data = resp.get_json()
+    assert data["is_valid"] is False
+
 
 def test_validate_user_team_leader_role(client, patch_helpers):
-    """Test /api/auth/validate correctly identifies team leader as leader"""
+    """Team Leader role is identified as a leader."""
     ph = patch_helpers
-    # Mock team leader user
     ph["execute"].return_value = [(45, "David", "Team Leader", "Micros")]
 
-    resp = client.get("/api/auth/validate?user_name=David")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "David"
+
+    resp = client.get("/api/auth/validate")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["is_valid"] is True
     assert data["user_name"] == "David"
     assert data["role"] == "Team Leader"
     assert data["section"] == "Micros"
-    assert data["is_leader"] is True  # Team Leader counts as leader
+    assert data["is_leader"] is True
+
 
 def test_validate_user_no_username_provided(client, patch_helpers):
-    """Test /api/auth/validate without any username"""
+    """No session → 400."""
     resp = client.get("/api/auth/validate")
     assert resp.status_code == 400
     data = resp.get_json()
     assert data["is_valid"] is False
     assert "No username provided" in data["error"]
 
+
 def test_validate_user_invalid_user(client, patch_helpers):
-    """Test /api/auth/validate with user not found in database"""
+    """User not in DB → 400."""
     ph = patch_helpers
-    # Mock user not found
     ph["execute"].return_value = []
 
-    resp = client.get("/api/auth/validate?user_name=NonExistentUser")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "NonExistentUser"
+
+    resp = client.get("/api/auth/validate")
     assert resp.status_code == 400
     data = resp.get_json()
     assert data["is_valid"] is False
     assert "Invalid user" in data["error"]
 
+
 def test_validate_user_database_error(client, patch_helpers):
-    """Test /api/auth/validate with database error"""
+    """DB error → 500."""
     ph = patch_helpers
-    # Mock database error
     ph["execute"].side_effect = SQLAlchemyError("Database connection failed")
 
-    resp = client.get("/api/auth/validate?user_name=Alice")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    resp = client.get("/api/auth/validate")
     assert resp.status_code == 500
     data = resp.get_json()
     assert data["is_valid"] is False
     assert "Validation failed" in data["error"]
 
+
 def test_validate_user_user_without_section(client, patch_helpers):
-    """Test /api/auth/validate with user that has no section"""
+    """User with no section returns is_valid=True and section=None."""
     ph = patch_helpers
-    # Mock user without section (section_name is None)
     ph["execute"].return_value = [(46, "Eve", "Team Member", None)]
 
-    resp = client.get("/api/auth/validate?user_name=Eve")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Eve"
+
+    resp = client.get("/api/auth/validate")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["is_valid"] is True
@@ -490,44 +510,41 @@ def test_validate_user_user_without_section(client, patch_helpers):
     assert data["section"] is None
     assert data["is_leader"] is False
 
-def test_validate_user_multiple_auth_sources_priority(client, patch_helpers):
-    """Test /api/auth/validate prioritizes query param over other sources"""
-    ph = patch_helpers
-    # Mock successful user lookup
-    ph["execute"].return_value = [(47, "QueryUser", "Section Leader", "Minis")]
 
-    # Set up multiple potential username sources
+def test_validate_user_session_takes_priority(client, patch_helpers):
+    """Session username is used even when query param and header are also present."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(47, "SessionUser", "Section Leader", "Minis")]
+
     with client.session_transaction() as sess:
         sess["user_name"] = "SessionUser"
 
-    # Query param should take priority
-    resp = client.get("/api/auth/validate?user_name=QueryUser", 
-                     headers={"X-Current-User": "HeaderUser"})
+    resp = client.get("/api/auth/validate?user_name=QueryUser",
+                      headers={"X-Current-User": "HeaderUser"})
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["user_name"] == "QueryUser"  # Should use query param, not header or session
+    assert data["user_name"] == "SessionUser"
+
 
 def test_validate_user_execute_query_called_correctly(client, patch_helpers):
-    """Test that execute_query is called with correct parameters"""
+    """execute_query receives correct SQL and params."""
     ph = patch_helpers
-    # Mock successful user lookup
     ph["execute"].return_value = [(48, "TestUser", "Team Member", "TestSection")]
 
-    resp = client.get("/api/auth/validate?user_name=TestUser")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+
+    resp = client.get("/api/auth/validate")
     assert resp.status_code == 200
 
-    # Verify execute_query was called with correct SQL and parameters
     ph["execute"].assert_called_once()
     call_args = ph["execute"].call_args
     sql, params = call_args[0]
-    
-    # Check SQL structure
+
     assert "SELECT u.id, u.name, u.role, s.name AS section_name" in sql
     assert "FROM users u" in sql
     assert "LEFT JOIN sections s ON u.section_id = s.id" in sql
     assert "WHERE u.name = :user_name" in sql
-    
-    # Check parameters
     assert params == {"user_name": "TestUser"}
 
 # ─── 12) NEW: Admin endpoints ────────────────────────────────────────────────────
@@ -586,11 +603,13 @@ def test_update_user_db_error(client, patch_helpers):
 
 
 def test_inject_user_state_redis_error(app, patch_helpers):
-    """Test context processor falls back to session when cache.get raises RedisError"""
+    """Context processor falls back to session when cache.get raises RedisError."""
     ph = patch_helpers
     ph["cache"].get.side_effect = RedisError("Redis down")
 
-    with app.test_request_context('/?user_name=TestUser'):
+    with app.test_request_context('/'):
+        from flask import session
+        session['user_name'] = 'TestUser'
         processors = app.template_context_processors.get(None, [])
         inject_func = next(
             (p for p in processors if p.__name__ == 'inject_user_state'), None
@@ -598,5 +617,148 @@ def test_inject_user_state_redis_error(app, patch_helpers):
         assert inject_func is not None, "inject_user_state context processor not found"
         result = inject_func()
         assert result['is_logged_in'] is True
-        # After RedisError, falls back to session (which has no data)
+        # After RedisError, falls back to session (which has no extra data)
         assert result['user_section'] is None
+
+
+# ─── 13) POST /api/auth/login ─────────────────────────────────────────────────
+def test_api_login_success(client, patch_helpers):
+    """Valid user_name returns session cookie and user data."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(1, "Alice", "Section Leader", "Minis")]
+
+    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert data["user_name"] == "Alice"
+    assert data["role"] == "Section Leader"
+    assert data["section"] == "Minis"
+    assert data["is_leader"] is True
+
+    with client.session_transaction() as sess:
+        assert sess["user_name"] == "Alice"
+        assert sess["user_id"] == 1
+
+
+def test_api_login_sets_cache(client, patch_helpers):
+    """Successful login writes user data to Redis cache."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(2, "Bob", "Team Member", "Seniors")]
+
+    client.post("/api/auth/login", json={"user_name": "Bob"})
+
+    ph["cache"].set.assert_called_once()
+    call_kwargs = ph["cache"].set.call_args
+    key = call_kwargs[0][0]
+    assert key == "user:data:Bob"
+
+
+def test_api_login_cache_error_does_not_fail(client, patch_helpers):
+    """RedisError during cache write is swallowed — response still 200."""
+    from redis.exceptions import RedisError
+    ph = patch_helpers
+    ph["execute"].return_value = [(3, "Carol", "Team Member", "Juniors")]
+    ph["cache"].set.side_effect = RedisError("Redis down")
+
+    resp = client.post("/api/auth/login", json={"user_name": "Carol"})
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_api_login_name_with_apostrophe(client, patch_helpers):
+    """Names containing apostrophes must not be HTML-escaped before the DB query."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(10, "O'Reilly", "Team Member", "Minis")]
+
+    resp = client.post("/api/auth/login", json={"user_name": "O'Reilly"})
+    assert resp.status_code == 200
+
+    call_args = ph["execute"].call_args
+    params = call_args[0][1]
+    assert params["user_name"] == "O'Reilly"
+
+
+def test_api_login_missing_user_name(client, patch_helpers):
+    """POST body without user_name → 400."""
+    resp = client.post("/api/auth/login", json={})
+    assert resp.status_code == 400
+    assert "user_name required" in resp.get_json()["error"]
+
+
+def test_api_login_invalid_user(client, patch_helpers):
+    """user_name not found in DB → 401."""
+    ph = patch_helpers
+    ph["execute"].return_value = []
+
+    resp = client.post("/api/auth/login", json={"user_name": "Ghost"})
+    assert resp.status_code == 401
+    assert "Invalid user" in resp.get_json()["error"]
+
+
+def test_api_login_db_error(client, patch_helpers):
+    """DB error during login → 500."""
+    ph = patch_helpers
+    ph["execute"].side_effect = SQLAlchemyError("db down")
+
+    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    assert resp.status_code == 500
+    assert "internal error" in resp.get_json()["error"].lower()
+
+
+def test_api_login_non_leader_role(client, patch_helpers):
+    """Team Member role results in is_leader=False."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(4, "Dave", "Team Member", "Minis")]
+
+    resp = client.post("/api/auth/login", json={"user_name": "Dave"})
+    assert resp.status_code == 200
+    assert resp.get_json()["is_leader"] is False
+
+
+# ─── 14) POST /api/auth/logout ────────────────────────────────────────────────
+def test_api_logout_clears_session(client, patch_helpers):
+    """Logout clears the server-side session."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+        sess["user_id"] = 1
+
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+    with client.session_transaction() as sess:
+        assert "user_name" not in sess
+
+
+def test_api_logout_evicts_cache(client, patch_helpers):
+    """Logout deletes the user's cache entry."""
+    ph = patch_helpers
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    client.post("/api/auth/logout")
+    ph["cache"].delete.assert_called_once_with("user:data:Alice")
+
+
+def test_api_logout_cache_error_does_not_fail(client, patch_helpers):
+    """RedisError during cache delete is swallowed — response still 200."""
+    from redis.exceptions import RedisError
+    ph = patch_helpers
+    ph["cache"].delete.side_effect = RedisError("Redis down")
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_api_logout_without_session(client, patch_helpers):
+    """Logout with no active session → still 200, cache.delete not called."""
+    ph = patch_helpers
+
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    ph["cache"].delete.assert_not_called()
