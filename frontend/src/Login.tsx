@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPost, getCurrentUser, isLoggedIn } from "../api";
+import { apiGet, getCurrentUser, isLoggedIn } from "../api";
 import "./Login.css";
 
 function Login() {

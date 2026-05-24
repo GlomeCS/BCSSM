@@ -619,3 +619,131 @@ def test_inject_user_state_redis_error(app, patch_helpers):
         assert result['is_logged_in'] is True
         # After RedisError, falls back to session (which has no extra data)
         assert result['user_section'] is None
+
+
+# ─── 13) POST /api/auth/login ─────────────────────────────────────────────────
+def test_api_login_success(client, patch_helpers):
+    """Valid user_name returns session cookie and user data."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(1, "Alice", "Section Leader", "Minis")]
+
+    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert data["user_name"] == "Alice"
+    assert data["role"] == "Section Leader"
+    assert data["section"] == "Minis"
+    assert data["is_leader"] is True
+
+    with client.session_transaction() as sess:
+        assert sess["user_name"] == "Alice"
+        assert sess["user_id"] == 1
+
+
+def test_api_login_sets_cache(client, patch_helpers):
+    """Successful login writes user data to Redis cache."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(2, "Bob", "Team Member", "Seniors")]
+
+    client.post("/api/auth/login", json={"user_name": "Bob"})
+
+    ph["cache"].set.assert_called_once()
+    call_kwargs = ph["cache"].set.call_args
+    key = call_kwargs[0][0]
+    assert key == "user:data:Bob"
+
+
+def test_api_login_cache_error_does_not_fail(client, patch_helpers):
+    """Cache failure during login is swallowed — response still 200."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(3, "Carol", "Team Member", "Juniors")]
+    ph["cache"].set.side_effect = Exception("Redis down")
+
+    resp = client.post("/api/auth/login", json={"user_name": "Carol"})
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_api_login_missing_user_name(client, patch_helpers):
+    """POST body without user_name → 400."""
+    resp = client.post("/api/auth/login", json={})
+    assert resp.status_code == 400
+    assert "user_name required" in resp.get_json()["error"]
+
+
+def test_api_login_invalid_user(client, patch_helpers):
+    """user_name not found in DB → 401."""
+    ph = patch_helpers
+    ph["execute"].return_value = []
+
+    resp = client.post("/api/auth/login", json={"user_name": "Ghost"})
+    assert resp.status_code == 401
+    assert "Invalid user" in resp.get_json()["error"]
+
+
+def test_api_login_db_error(client, patch_helpers):
+    """DB error during login → 500."""
+    ph = patch_helpers
+    ph["execute"].side_effect = SQLAlchemyError("db down")
+
+    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    assert resp.status_code == 500
+    assert "internal error" in resp.get_json()["error"].lower()
+
+
+def test_api_login_non_leader_role(client, patch_helpers):
+    """Team Member role results in is_leader=False."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(4, "Dave", "Team Member", "Minis")]
+
+    resp = client.post("/api/auth/login", json={"user_name": "Dave"})
+    assert resp.status_code == 200
+    assert resp.get_json()["is_leader"] is False
+
+
+# ─── 14) POST /api/auth/logout ────────────────────────────────────────────────
+def test_api_logout_clears_session(client, patch_helpers):
+    """Logout clears the server-side session."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+        sess["user_id"] = 1
+
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+    with client.session_transaction() as sess:
+        assert "user_name" not in sess
+
+
+def test_api_logout_evicts_cache(client, patch_helpers):
+    """Logout deletes the user's cache entry."""
+    ph = patch_helpers
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    client.post("/api/auth/logout")
+    ph["cache"].delete.assert_called_once_with("user:data:Alice")
+
+
+def test_api_logout_cache_error_does_not_fail(client, patch_helpers):
+    """Cache deletion failure during logout is swallowed — response still 200."""
+    ph = patch_helpers
+    ph["cache"].delete.side_effect = Exception("Redis down")
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Alice"
+
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    assert resp.get_json()["ok"] is True
+
+
+def test_api_logout_without_session(client, patch_helpers):
+    """Logout with no active session → still 200, cache.delete not called."""
+    ph = patch_helpers
+
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    ph["cache"].delete.assert_not_called()
