@@ -4,6 +4,7 @@ import {
   isLoggedIn,
   apiGet,
   apiPost,
+  logout,
   validateAuth,
 } from '../../api';
 
@@ -198,5 +199,36 @@ describe('validateAuth', () => {
     );
     const result = await validateAuth();
     expect(result).toBe(false);
+  });
+});
+
+describe('logout', () => {
+  beforeEach(() => {
+    localStorage.setItem('currentUser', 'Alice');
+    localStorage.setItem('is_logged_in', 'true');
+    localStorage.setItem('user_role', 'Team Member');
+    localStorage.setItem('user_section', 'Seniors');
+    localStorage.setItem('is_leader', 'false');
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('clears localStorage after a successful logout API call', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+    await logout();
+    expect(localStorage.getItem('currentUser')).toBeNull();
+    expect(localStorage.getItem('is_logged_in')).toBeNull();
+  });
+
+  it('clears localStorage even when the logout API call throws', async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
+    await expect(logout()).rejects.toThrow('Network error');
+    expect(localStorage.getItem('currentUser')).toBeNull();
+    expect(localStorage.getItem('is_logged_in')).toBeNull();
   });
 });

@@ -655,14 +655,28 @@ def test_api_login_sets_cache(client, patch_helpers):
 
 
 def test_api_login_cache_error_does_not_fail(client, patch_helpers):
-    """Cache failure during login is swallowed — response still 200."""
+    """RedisError during cache write is swallowed — response still 200."""
+    from redis.exceptions import RedisError
     ph = patch_helpers
     ph["execute"].return_value = [(3, "Carol", "Team Member", "Juniors")]
-    ph["cache"].set.side_effect = Exception("Redis down")
+    ph["cache"].set.side_effect = RedisError("Redis down")
 
     resp = client.post("/api/auth/login", json={"user_name": "Carol"})
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
+
+
+def test_api_login_name_with_apostrophe(client, patch_helpers):
+    """Names containing apostrophes must not be HTML-escaped before the DB query."""
+    ph = patch_helpers
+    ph["execute"].return_value = [(10, "O'Reilly", "Team Member", "Minis")]
+
+    resp = client.post("/api/auth/login", json={"user_name": "O'Reilly"})
+    assert resp.status_code == 200
+
+    call_args = ph["execute"].call_args
+    params = call_args[0][1]
+    assert params["user_name"] == "O'Reilly"
 
 
 def test_api_login_missing_user_name(client, patch_helpers):
@@ -728,9 +742,10 @@ def test_api_logout_evicts_cache(client, patch_helpers):
 
 
 def test_api_logout_cache_error_does_not_fail(client, patch_helpers):
-    """Cache deletion failure during logout is swallowed — response still 200."""
+    """RedisError during cache delete is swallowed — response still 200."""
+    from redis.exceptions import RedisError
     ph = patch_helpers
-    ph["cache"].delete.side_effect = Exception("Redis down")
+    ph["cache"].delete.side_effect = RedisError("Redis down")
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"

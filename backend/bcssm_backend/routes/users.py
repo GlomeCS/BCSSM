@@ -208,7 +208,7 @@ def init_users_routes(app):
         if not user_name:
             return jsonify({'error': 'user_name required'}), 400
 
-        user_name = escape(user_name)
+        user_name = user_name.strip()
 
         try:
             user_rows = execute_query(
@@ -244,7 +244,7 @@ def init_users_routes(app):
                 'section_name': section_name,
                 'is_leader': is_leader,
             }, timeout=1800)
-        except Exception as cache_error:
+        except RedisError as cache_error:
             app.logger.warning("Failed to cache user data for %s: %s", name, cache_error)
 
         return jsonify({
@@ -262,7 +262,7 @@ def init_users_routes(app):
         if user_name:
             try:
                 cache.delete(f'user:data:{user_name}')
-            except Exception as e:
+            except RedisError as e:
                 app.logger.warning("Failed to clear cache on logout for %s: %s", user_name, e)
         session.clear()
         return jsonify({'ok': True}), 200

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, getCurrentUser, isLoggedIn } from "../api";
+import { apiGet, login, getCurrentUser, isLoggedIn } from "../api";
 import "./Login.css";
 
 function Login() {
@@ -48,13 +48,7 @@ function Login() {
     setError("");
 
     try {
-      // Use raw fetch so the pre-existing currentUser in localStorage
-      // does not get injected into the body by apiPost and overwrite selectedUser.
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_name: selectedUser }),
-      });
+      const response = await login(selectedUser);
 
       if (!response.ok) {
         throw new Error(`Server error: ${response.status}`);

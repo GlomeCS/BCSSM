@@ -75,13 +75,24 @@ export const getCurrentUser = (): string | null => {
     });
   };
   
+  export const login = (userName: string): Promise<Response> => {
+    return fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_name: userName }),
+    });
+  };
+
   export const logout = async (): Promise<void> => {
-    await apiPost('/api/auth/logout', {});
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('is_logged_in');
-    localStorage.removeItem('user_role');
-    localStorage.removeItem('user_section');
-    localStorage.removeItem('is_leader');
+    try {
+      await apiPost('/api/auth/logout', {});
+    } finally {
+      localStorage.removeItem('currentUser');
+      localStorage.removeItem('is_logged_in');
+      localStorage.removeItem('user_role');
+      localStorage.removeItem('user_section');
+      localStorage.removeItem('is_leader');
+    }
   };
 
   // Auth validation function.
