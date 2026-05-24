@@ -1618,6 +1618,23 @@ def test_authenticate_user_not_found_raises(mock_readonly):
         utils.authenticate_user("Ghost")
 
 
+def test_authenticate_user_null_section_coalesced(mock_readonly):
+    mock_readonly.return_value = [(1, "Alice", "Team Member", "Unassigned")]
+    result = utils.authenticate_user("Alice")
+    assert result["section_name"] == "Unassigned"
+
+
+def test_authenticate_user_uses_silent_query(mock_readonly, caplog):
+    """Auth lookup must not emit user_name or row data at INFO level."""
+    import logging
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
+    with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.utils"):
+        utils.authenticate_user("Alice")
+    info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+    assert not any("Alice" in m for m in info_messages)
+    assert not any("user_name" in m for m in info_messages)
+
+
 def test_authenticate_user_db_error_propagates(mock_readonly):
     mock_readonly.side_effect = SQLAlchemyError("db down")
     with pytest.raises(SQLAlchemyError):

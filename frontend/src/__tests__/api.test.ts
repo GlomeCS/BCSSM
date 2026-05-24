@@ -4,6 +4,7 @@ import {
   isLoggedIn,
   apiGet,
   apiPost,
+  login,
   logout,
   validateAuth,
 } from '../../api';
@@ -110,6 +111,31 @@ describe('apiPost', () => {
     const body = JSON.parse(options?.body as string);
     expect(body.user_name).toBeUndefined();
     expect(body.data).toBe(1);
+  });
+});
+
+describe('login', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('POSTs to /api/auth/login with the supplied username', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
+    await login('Alice');
+    const [url, options] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe('/api/auth/login');
+    expect(options?.method).toBe('POST');
+    const body = JSON.parse(options?.body as string);
+    expect(body.user_name).toBe('Alice');
+  });
+
+  it('sends credentials: include so the session cookie is accepted', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
+    await login('Alice');
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options?.credentials).toBe('include');
   });
 });
 

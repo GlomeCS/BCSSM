@@ -38,11 +38,7 @@ export const getCurrentUser = (): string | null => {
   };
   
   export const login = (userName: string): Promise<Response> => {
-    return fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_name: userName }),
-    });
+    return apiPost('/api/auth/login', { user_name: userName });
   };
 
   export const logout = async (): Promise<void> => {

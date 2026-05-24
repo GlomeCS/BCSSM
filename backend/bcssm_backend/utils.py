@@ -28,21 +28,24 @@ def generate_cache_key(*args, **kwargs):
     key_data = str(args) + str(sorted(kwargs.items()))
     return hashlib.md5(key_data.encode()).hexdigest()
 
-def execute_readonly_query(query, params=None):
+def execute_readonly_query(query, params=None, silent=False):
     """
     Execute a read-only SQL query using a dedicated engine connection, avoiding session overhead.
+    Pass silent=True for auth/sensitive queries to suppress param and row logging.
     Returns: list of result rows
     """
     try:
         with db.engine.connect() as conn:
-            logger.info("Executing read-only query: %s with params: %s", query, params)
+            if not silent:
+                logger.info("Executing read-only query: %s with params: %s", query, params)
             result = conn.execute(text(query), params)
             rows = result.fetchall()
-            logger.info("Rows fetched: %s", rows)
+            if not silent:
+                logger.info("Rows fetched: %s", rows)
             return rows
     except SQLAlchemyError as e:
         logger.error(
-            "Read-only query failed. Query: %s, Params: %s, Error: %s", query, params, e
+            "Read-only query failed. Query: %s, Error: %s", query, e
         )
         raise
 
@@ -630,11 +633,12 @@ def get_health_status() -> dict:
 def authenticate_user(user_name: str) -> dict:
     """Validate user_name against DB and return user dict. Raises AuthenticationError if not found."""
     rows = execute_readonly_query(
-        "SELECT u.id, u.name, u.role, s.name AS section_name "
+        "SELECT u.id, u.name, u.role, COALESCE(s.name, 'Unassigned') AS section_name "
         "FROM users u "
         "LEFT JOIN sections s ON u.section_id = s.id "
         "WHERE u.name = :user_name",
         {"user_name": user_name},
+        silent=True,
     )
     if not rows:
         raise AuthenticationError("Invalid user")
