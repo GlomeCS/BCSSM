@@ -4,6 +4,7 @@ import {
   isLoggedIn,
   apiGet,
   apiPost,
+  login,
   logout,
   validateAuth,
 } from '../../api';
@@ -61,36 +62,28 @@ describe('apiGet', () => {
     );
   });
 
-  it('appends user_name query param when logged in', async () => {
+  it('does not inject user_name into GET URL', async () => {
     localStorage.setItem('currentUser', 'Bob');
-    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
-    await apiGet('/api/test');
-    const [url] = vi.mocked(fetch).mock.calls[0];
-    expect(url).toContain('user_name=Bob');
-  });
-
-  it('does not append user_name when no user', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
     await apiGet('/api/test');
     const [url] = vi.mocked(fetch).mock.calls[0];
     expect(url).not.toContain('user_name');
   });
 
-  it('sets X-Current-User header when logged in', async () => {
+  it('does not set X-Current-User header', async () => {
     localStorage.setItem('currentUser', 'Bob');
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
     await apiGet('/api/test');
     const [, options] = vi.mocked(fetch).mock.calls[0];
     const headers = options?.headers as Headers;
-    expect(headers.get('X-Current-User')).toBe('Bob');
+    expect(headers.get('X-Current-User')).toBeNull();
   });
 
-  it('does not duplicate user_name if already in URL', async () => {
-    localStorage.setItem('currentUser', 'Bob');
+  it('sets credentials: include', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
-    await apiGet('/api/test?user_name=Bob');
-    const [url] = vi.mocked(fetch).mock.calls[0];
-    expect((url as string).split('user_name').length - 1).toBe(1);
+    await apiGet('/api/test');
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options?.credentials).toBe('include');
   });
 });
 
@@ -110,23 +103,39 @@ describe('apiPost', () => {
     expect(headers.get('Content-Type')).toBe('application/json');
   });
 
-  it('merges user_name into the request body', async () => {
+  it('sends caller-supplied data without injecting user_name', async () => {
     localStorage.setItem('currentUser', 'Carol');
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
     await apiPost('/api/test', { data: 1 });
     const [, options] = vi.mocked(fetch).mock.calls[0];
     const body = JSON.parse(options?.body as string);
-    expect(body.user_name).toBe('Carol');
+    expect(body.user_name).toBeUndefined();
     expect(body.data).toBe(1);
   });
+});
 
-  it('works without a currentUser', async () => {
+describe('login', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.stubGlobal('fetch', vi.fn());
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('POSTs to /api/auth/login with the supplied username', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
-    await apiPost('/api/test', { data: 2 });
-    const [, options] = vi.mocked(fetch).mock.calls[0];
+    await login('Alice');
+    const [url, options] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe('/api/auth/login');
+    expect(options?.method).toBe('POST');
     const body = JSON.parse(options?.body as string);
-    expect(body.user_name).toBeUndefined();
-    expect(body.data).toBe(2);
+    expect(body.user_name).toBe('Alice');
+  });
+
+  it('sends credentials: include so the session cookie is accepted', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
+    await login('Alice');
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options?.credentials).toBe('include');
   });
 });
 

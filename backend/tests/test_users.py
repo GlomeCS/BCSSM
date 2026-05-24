@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app
+from backend.bcssm_backend.exceptions import AuthenticationError
 from unittest.mock import MagicMock, patch
 
 # ─── 0) Fixture: create app with testing config and register routes ────────────
@@ -42,7 +43,6 @@ def patch_helpers(monkeypatch):
         "backend.bcssm_backend.routes.users.execute_query",
         fake_exec
     )
-    # Keep cache mock for session-related caching only
     fake_cache = MagicMock()
     monkeypatch.setattr(
         "backend.bcssm_backend.routes.users.cache",
@@ -53,13 +53,31 @@ def patch_helpers(monkeypatch):
         "backend.bcssm_backend.routes.users.clear_user_cache",
         fake_clear_cache
     )
+    fake_authenticate_user = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.authenticate_user",
+        fake_authenticate_user
+    )
+    fake_cache_user_login = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.cache_user_login",
+        fake_cache_user_login
+    )
+    fake_evict_user_login_cache = MagicMock()
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.users.evict_user_login_cache",
+        fake_evict_user_login_cache
+    )
     return {
         "by_section": fake_get_by_section,
         "duty": fake_get_duty,
         "all_users": fake_get_all,
         "execute": fake_exec,
         "cache": fake_cache,
-        "clear_cache": fake_clear_cache
+        "clear_cache": fake_clear_cache,
+        "authenticate_user": fake_authenticate_user,
+        "cache_user_login": fake_cache_user_login,
+        "evict_user_login_cache": fake_evict_user_login_cache,
     }
 
 # ─── 3) GET /users-by-section ────────────────────────────────────────────────────
@@ -172,77 +190,6 @@ def test_user_duty_exception(client, patch_helpers):
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
-
-# ─── 5) POST /select-user ───────────────────────────────────────────────────────
-def test_select_user_success(client, patch_helpers):
-    ph = patch_helpers
-    # Mock successful user lookup
-    ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
-
-    resp = client.post("/select-user", json={"user_name": "Alice"})
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["message"] == "User Alice successfully selected."
-    assert data["is_logged_in"] is True
-    assert data["is_leader"] is True
-    assert data["user_section"] == "Minors"
-
-    # Verify session data
-    with client.session_transaction() as sess:
-        assert sess["user_name"] == "Alice"
-        assert sess["user_id"] == 42
-        assert sess["user_section"] == "Minors"
-        assert sess["is_leader"] is True
-
-    # Verify cache operations for user data (this still happens in routes)
-    ph["cache"].set.assert_called()
-    cache_call_args = ph["cache"].set.call_args_list
-    # Should cache user data
-    user_cache_call = next((call for call in cache_call_args 
-                           if call[0][0] == "user:data:Alice"), None)
-    assert user_cache_call is not None
-
-def test_select_user_invalid(client, patch_helpers):
-    ph = patch_helpers
-    # Mock user not found in database
-    ph["execute"].return_value = []
-
-    resp = client.post("/select-user", json={"user_name": "Charlie"})
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert data["error"] == "Invalid user selected"
-
-    # Verify session is not set
-    with client.session_transaction() as sess:
-        assert sess.get("user_name") is None
-
-def test_select_user_missing_name(client, patch_helpers):
-    resp = client.post("/select-user", json={})
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert data["error"] == "User name required."
-
-def test_select_user_error(client, patch_helpers):
-    ph = patch_helpers
-    ph["execute"].side_effect = SQLAlchemyError("DB connection failed")
-
-    resp = client.post("/select-user", json={"user_name": "Alice"})
-    assert resp.status_code == 500
-    data = resp.get_json()
-    assert "error" in data
-
-def test_select_user_cache_error_handling(client, patch_helpers):
-    """Test that cache errors don't break user selection"""
-    ph = patch_helpers
-    ph["execute"].return_value = [(42, "Alice", "Section Leader", "Minors")]
-    # Make cache.set fail
-    ph["cache"].set.side_effect = RedisError("Cache failed")
-
-    resp = client.post("/select-user", json={"user_name": "Alice"})
-    # Should still succeed even if caching fails
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["message"] == "User Alice successfully selected."
 
 # ─── 6) GET /get-selected-user ───────────────────────────────────────────────────
 def test_get_selected_user_with_cache(client, patch_helpers):
@@ -625,7 +572,10 @@ def test_inject_user_state_redis_error(app, patch_helpers):
 def test_api_login_success(client, patch_helpers):
     """Valid user_name returns session cookie and user data."""
     ph = patch_helpers
-    ph["execute"].return_value = [(1, "Alice", "Section Leader", "Minis")]
+    ph["authenticate_user"].return_value = {
+        "id": 1, "name": "Alice", "role": "Section Leader",
+        "section_name": "Minis", "is_leader": True,
+    }
 
     resp = client.post("/api/auth/login", json={"user_name": "Alice"})
     assert resp.status_code == 200
@@ -641,42 +591,31 @@ def test_api_login_success(client, patch_helpers):
         assert sess["user_id"] == 1
 
 
-def test_api_login_sets_cache(client, patch_helpers):
-    """Successful login writes user data to Redis cache."""
+def test_api_login_calls_cache_user_login(client, patch_helpers):
+    """Successful login calls cache_user_login with the user dict."""
     ph = patch_helpers
-    ph["execute"].return_value = [(2, "Bob", "Team Member", "Seniors")]
+    user = {"id": 2, "name": "Bob", "role": "Team Member",
+            "section_name": "Seniors", "is_leader": False}
+    ph["authenticate_user"].return_value = user
 
     client.post("/api/auth/login", json={"user_name": "Bob"})
 
-    ph["cache"].set.assert_called_once()
-    call_kwargs = ph["cache"].set.call_args
-    key = call_kwargs[0][0]
-    assert key == "user:data:Bob"
-
-
-def test_api_login_cache_error_does_not_fail(client, patch_helpers):
-    """RedisError during cache write is swallowed — response still 200."""
-    from redis.exceptions import RedisError
-    ph = patch_helpers
-    ph["execute"].return_value = [(3, "Carol", "Team Member", "Juniors")]
-    ph["cache"].set.side_effect = RedisError("Redis down")
-
-    resp = client.post("/api/auth/login", json={"user_name": "Carol"})
-    assert resp.status_code == 200
-    assert resp.get_json()["ok"] is True
+    ph["cache_user_login"].assert_called_once_with(user)
 
 
 def test_api_login_name_with_apostrophe(client, patch_helpers):
-    """Names containing apostrophes must not be HTML-escaped before the DB query."""
+    """Names containing apostrophes are passed verbatim to authenticate_user."""
     ph = patch_helpers
-    ph["execute"].return_value = [(10, "O'Reilly", "Team Member", "Minis")]
+    ph["authenticate_user"].return_value = {
+        "id": 10, "name": "O'Reilly", "role": "Team Member",
+        "section_name": "Minis", "is_leader": False,
+    }
 
     resp = client.post("/api/auth/login", json={"user_name": "O'Reilly"})
     assert resp.status_code == 200
 
-    call_args = ph["execute"].call_args
-    params = call_args[0][1]
-    assert params["user_name"] == "O'Reilly"
+    called_with = ph["authenticate_user"].call_args[0][0]
+    assert called_with == "O'Reilly"
 
 
 def test_api_login_missing_user_name(client, patch_helpers):
@@ -687,9 +626,9 @@ def test_api_login_missing_user_name(client, patch_helpers):
 
 
 def test_api_login_invalid_user(client, patch_helpers):
-    """user_name not found in DB → 401."""
+    """authenticate_user raises AuthenticationError → 401."""
     ph = patch_helpers
-    ph["execute"].return_value = []
+    ph["authenticate_user"].side_effect = AuthenticationError("Invalid user")
 
     resp = client.post("/api/auth/login", json={"user_name": "Ghost"})
     assert resp.status_code == 401
@@ -697,9 +636,9 @@ def test_api_login_invalid_user(client, patch_helpers):
 
 
 def test_api_login_db_error(client, patch_helpers):
-    """DB error during login → 500."""
+    """authenticate_user raises SQLAlchemyError → 500."""
     ph = patch_helpers
-    ph["execute"].side_effect = SQLAlchemyError("db down")
+    ph["authenticate_user"].side_effect = SQLAlchemyError("db down")
 
     resp = client.post("/api/auth/login", json={"user_name": "Alice"})
     assert resp.status_code == 500
@@ -709,7 +648,10 @@ def test_api_login_db_error(client, patch_helpers):
 def test_api_login_non_leader_role(client, patch_helpers):
     """Team Member role results in is_leader=False."""
     ph = patch_helpers
-    ph["execute"].return_value = [(4, "Dave", "Team Member", "Minis")]
+    ph["authenticate_user"].return_value = {
+        "id": 4, "name": "Dave", "role": "Team Member",
+        "section_name": "Minis", "is_leader": False,
+    }
 
     resp = client.post("/api/auth/login", json={"user_name": "Dave"})
     assert resp.status_code == 200
@@ -732,20 +674,19 @@ def test_api_logout_clears_session(client, patch_helpers):
 
 
 def test_api_logout_evicts_cache(client, patch_helpers):
-    """Logout deletes the user's cache entry."""
+    """Logout calls evict_user_login_cache with the session username."""
     ph = patch_helpers
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
 
     client.post("/api/auth/logout")
-    ph["cache"].delete.assert_called_once_with("user:data:Alice")
+    ph["evict_user_login_cache"].assert_called_once_with("Alice")
 
 
 def test_api_logout_cache_error_does_not_fail(client, patch_helpers):
-    """RedisError during cache delete is swallowed — response still 200."""
-    from redis.exceptions import RedisError
+    """evict_user_login_cache swallows RedisError internally — response still 200."""
     ph = patch_helpers
-    ph["cache"].delete.side_effect = RedisError("Redis down")
+    ph["evict_user_login_cache"].return_value = None  # simulates silent failure
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
@@ -756,9 +697,9 @@ def test_api_logout_cache_error_does_not_fail(client, patch_helpers):
 
 
 def test_api_logout_without_session(client, patch_helpers):
-    """Logout with no active session → still 200, cache.delete not called."""
+    """Logout with no active session → still 200, evict_user_login_cache not called."""
     ph = patch_helpers
 
     resp = client.post("/api/auth/logout")
     assert resp.status_code == 200
-    ph["cache"].delete.assert_not_called()
+    ph["evict_user_login_cache"].assert_not_called()

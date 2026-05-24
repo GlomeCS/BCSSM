@@ -6,7 +6,7 @@ import logging
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app, utils
-from backend.bcssm_backend.exceptions import ValidationError
+from backend.bcssm_backend.exceptions import ValidationError, AuthenticationError
 import unittest.mock
 
 # Save reference to the real function before autouse patching replaces it
@@ -1597,3 +1597,81 @@ def test_save_devos_feedback_does_not_clear_cache_when_section_not_found(monkeyp
     with pytest.raises(ValidationError):
         utils.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
     mock_clear.assert_not_called()
+
+
+# ─── authenticate_user ────────────────────────────────────────────────────────
+def test_authenticate_user_success(mock_readonly):
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
+    result = utils.authenticate_user("Alice")
+    assert result == {
+        "id": 1,
+        "name": "Alice",
+        "role": "Section Leader",
+        "section_name": "Minis",
+        "is_leader": True,
+    }
+
+
+def test_authenticate_user_not_found_raises(mock_readonly):
+    mock_readonly.return_value = []
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Ghost")
+
+
+def test_authenticate_user_null_section_coalesced(mock_readonly):
+    mock_readonly.return_value = [(1, "Alice", "Team Member", "Unassigned")]
+    result = utils.authenticate_user("Alice")
+    assert result["section_name"] == "Unassigned"
+
+
+def test_authenticate_user_uses_silent_query(mock_readonly, caplog):
+    """Auth lookup must not emit user_name or row data at INFO level."""
+    import logging
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
+    with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.utils"):
+        utils.authenticate_user("Alice")
+    info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
+    assert not any("Alice" in m for m in info_messages)
+    assert not any("user_name" in m for m in info_messages)
+
+
+def test_authenticate_user_db_error_propagates(mock_readonly):
+    mock_readonly.side_effect = SQLAlchemyError("db down")
+    with pytest.raises(SQLAlchemyError):
+        utils.authenticate_user("Alice")
+
+
+@pytest.mark.parametrize("role,expected", [
+    ("Section Leader", True),
+    ("Team Leader", True),
+    ("Admin", True),
+    ("Team Member", False),
+])
+def test_authenticate_user_is_leader_roles(mock_readonly, role, expected):
+    mock_readonly.return_value = [(1, "Alice", role, "Minis")]
+    result = utils.authenticate_user("Alice")
+    assert result["is_leader"] is expected
+
+
+# ─── cache_user_login ─────────────────────────────────────────────────────────
+def test_cache_user_login_writes_correct_key_and_ttl(mock_cache):
+    user_data = {"id": 1, "name": "Alice", "role": "Section Leader",
+                 "section_name": "Minis", "is_leader": True}
+    utils.cache_user_login(user_data)
+    mock_cache.set.assert_called_once_with("user:data:Alice", user_data, timeout=1800)
+
+
+def test_cache_user_login_swallows_redis_error(mock_cache):
+    mock_cache.set.side_effect = RedisError("Redis down")
+    utils.cache_user_login({"name": "Alice"})  # must not raise
+
+
+# ─── evict_user_login_cache ───────────────────────────────────────────────────
+def test_evict_user_login_cache_deletes_correct_key(mock_cache):
+    utils.evict_user_login_cache("Alice")
+    mock_cache.delete.assert_called_once_with("user:data:Alice")
+
+
+def test_evict_user_login_cache_swallows_redis_error(mock_cache):
+    mock_cache.delete.side_effect = RedisError("Redis down")
+    utils.evict_user_login_cache("Alice")  # must not raise

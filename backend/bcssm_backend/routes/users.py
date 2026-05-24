@@ -1,5 +1,4 @@
 from flask import jsonify, request, session
-from markupsafe import escape
 from functools import wraps
 
 from sqlalchemy.exc import SQLAlchemyError
@@ -7,9 +6,10 @@ from redis.exceptions import RedisError
 from backend.globals import cache
 from backend.bcssm_backend.utils import (
     get_all_users, get_user_duty, get_users_by_section, execute_query,
-    clear_user_cache  # Import cache management function
+    clear_user_cache, authenticate_user, cache_user_login, evict_user_login_cache,
 )
 from backend.bcssm_backend.auth import get_username_from_request
+from backend.bcssm_backend.exceptions import AuthenticationError
 
 
 def validate_params(*required_params):
@@ -74,69 +74,6 @@ def init_users_routes(app):
             return jsonify(duty_data), 200
         except SQLAlchemyError as e:
             app.logger.error("Failed to fetch duty for user: %s", e)
-            return jsonify({"error": "An internal error has occurred."}), 500
-
-    @app.route('/select-user', methods=['POST'])
-    def select_user():
-        """Select user and return user data - modified for persistent auth"""
-        try:
-            user_name = request.json.get('user_name')
-            if not user_name:
-                return jsonify({"error": "User name required."}), 400
-
-            user_name = escape(user_name)
-
-            # Single query to validate and fetch user data
-            user_rows = execute_query(
-                "SELECT u.id, u.name, u.role, s.name AS section_name "
-                "FROM users u "
-                "LEFT JOIN sections s ON u.section_id = s.id "
-                "WHERE u.name = :user_name",
-                {'user_name': user_name}
-            )
-
-            if not user_rows:
-                app.logger.warning(f"Invalid user selection attempt: {user_name}")
-                return jsonify({'error': 'Invalid user selected'}), 400
-
-            user_id, name, role, section_name = user_rows[0]
-            is_leader = role in {"Section Leader", "Team Leader", "Admin"}
-
-            # Still update session for backward compatibility with other parts of the app
-            session.update({
-                'user_name': user_name,
-                'user_id': user_id,
-                'user_section': section_name,
-                'is_leader': is_leader
-            })
-
-            # Cache user data for quick access with error handling
-            try:
-                user_cache_key = f'user:data:{user_name}'
-                user_data = {
-                    'id': user_id,
-                    'name': name,
-                    'role': role,
-                    'section_name': section_name,
-                    'is_leader': is_leader
-                }
-                cache.set(user_cache_key, user_data, timeout=1800)  # 30 minutes
-            except RedisError as cache_error:
-                # Log cache error but don't fail the request
-                app.logger.warning("Failed to cache user data for %s: %s", user_name, cache_error)
-
-            # Return comprehensive user data for frontend
-            return jsonify({
-                "message": f"User {escape(user_name)} successfully selected.",
-                "is_logged_in": True,
-                "user_name": user_name,  # Add this for frontend
-                "user_section": section_name,
-                "role": role,  # Add this for frontend
-                "is_leader": is_leader
-            }), 200
-
-        except SQLAlchemyError as e:
-            app.logger.error("Failed to select user: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/get-selected-user')
@@ -204,55 +141,63 @@ def init_users_routes(app):
     def api_login():
         """Establish a server-side session for the React login flow."""
         data = request.json or {}
-        user_name = data.get('user_name')
+        user_name = (data.get('user_name') or '').strip()
         if not user_name:
             return jsonify({'error': 'user_name required'}), 400
-
-        user_name = user_name.strip()
-
         try:
-            user_rows = execute_query(
-                "SELECT u.id, u.name, u.role, s.name AS section_name "
-                "FROM users u "
-                "LEFT JOIN sections s ON u.section_id = s.id "
-                "WHERE u.name = :user_name",
-                {'user_name': user_name}
-            )
+            user = authenticate_user(user_name)
+        except AuthenticationError:
+            return jsonify({'error': 'Invalid user'}), 401
         except SQLAlchemyError as e:
             app.logger.error("Login DB error for %s: %s", user_name, e)
             return jsonify({'error': 'An internal error has occurred.'}), 500
-
-        if not user_rows:
-            return jsonify({'error': 'Invalid user'}), 401
-
-        user_id, name, role, section_name = user_rows[0]
-        is_leader = role in {"Section Leader", "Team Leader", "Admin"}
-
         session.update({
-            'user_name': name,
-            'user_id': user_id,
-            'user_section': section_name,
-            'is_leader': is_leader,
+            'user_name': user['name'],
+            'user_id': user['id'],
+            'user_section': user['section_name'],
+            'is_leader': user['is_leader'],
         })
-
-        try:
-            user_cache_key = f'user:data:{name}'
-            cache.set(user_cache_key, {
-                'id': user_id,
-                'name': name,
-                'role': role,
-                'section_name': section_name,
-                'is_leader': is_leader,
-            }, timeout=1800)
-        except RedisError as cache_error:
-            app.logger.warning("Failed to cache user data for %s: %s", name, cache_error)
-
+        cache_user_login(user)
         return jsonify({
             'ok': True,
-            'user_name': name,
-            'role': role,
-            'section': section_name,
-            'is_leader': is_leader,
+            'user_name': user['name'],
+            'role': user['role'],
+            'section': user['section_name'],
+            'is_leader': user['is_leader'],
+        }), 200
+
+    # Temporary compatibility route for the pre-rebuild static bundle
+    # (index-CP0_RDcF.js) which POSTs to /select-user instead of /api/auth/login.
+    # Remove once the rebuilt frontend bundle is deployed.
+    @app.route('/select-user', methods=['POST'])
+    def select_user_compat():
+        data = request.json or {}
+        user_name = (data.get('user_name') or '').strip()
+        if not user_name:
+            return jsonify({'error': 'user_name required'}), 400
+        try:
+            user = authenticate_user(user_name)
+        except AuthenticationError:
+            return jsonify({'error': 'Invalid user'}), 401
+        except SQLAlchemyError as e:
+            app.logger.error("Login DB error for %s: %s", user_name, e)
+            return jsonify({'error': 'An internal error has occurred.'}), 500
+        session.update({
+            'user_name': user['name'],
+            'user_id': user['id'],
+            'user_section': user['section_name'],
+            'is_leader': user['is_leader'],
+        })
+        cache_user_login(user)
+        return jsonify({
+            'ok': True,
+            'user_name': user['name'],
+            'role': user['role'],
+            'section': user['section_name'],
+            'is_leader': user['is_leader'],
+            'is_logged_in': True,
+            'user_section': user['section_name'],
+            'message': 'Login successful!',
         }), 200
 
     @app.route('/api/auth/logout', methods=['POST'])
@@ -260,10 +205,7 @@ def init_users_routes(app):
         """Clear the server-side session and evict user cache."""
         user_name = session.get('user_name')
         if user_name:
-            try:
-                cache.delete(f'user:data:{user_name}')
-            except RedisError as e:
-                app.logger.warning("Failed to clear cache on logout for %s: %s", user_name, e)
+            evict_user_login_cache(user_name)
         session.clear()
         return jsonify({'ok': True}), 200
 
