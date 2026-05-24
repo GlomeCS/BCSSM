@@ -48,7 +48,13 @@ function Login() {
     setError("");
 
     try {
-      const response = await apiPost("/select-user", { user_name: selectedUser });
+      // Use raw fetch so the pre-existing currentUser in localStorage
+      // does not get injected into the body by apiPost and overwrite selectedUser.
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_name: selectedUser }),
+      });
 
       if (!response.ok) {
         throw new Error(`Server error: ${response.status}`);
@@ -56,23 +62,23 @@ function Login() {
 
       const data = await response.json();
       console.log("Login response:", data);
-      
+
       // Store user state in localStorage for persistent auth
-      localStorage.setItem("is_logged_in", data.is_logged_in ? "true" : "false");
-      localStorage.setItem("currentUser", selectedUser);
-      
-      if (data.user_section) {
-        localStorage.setItem("user_section", data.user_section);
+      localStorage.setItem("is_logged_in", "true");
+      localStorage.setItem("currentUser", data.user_name ?? selectedUser);
+
+      if (data.section) {
+        localStorage.setItem("user_section", data.section);
       } else {
         localStorage.removeItem("user_section");
       }
-      
+
       if (data.role) {
         localStorage.setItem("user_role", data.role);
       } else {
         localStorage.removeItem("user_role");
       }
-      
+
       localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
 
       // Navigate to home page

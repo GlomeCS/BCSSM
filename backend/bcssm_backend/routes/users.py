@@ -200,6 +200,73 @@ def init_users_routes(app):
             app.logger.error("Failed to fetch users: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
+    @app.route('/api/auth/login', methods=['POST'])
+    def api_login():
+        """Establish a server-side session for the React login flow."""
+        data = request.json or {}
+        user_name = data.get('user_name')
+        if not user_name:
+            return jsonify({'error': 'user_name required'}), 400
+
+        user_name = escape(user_name)
+
+        try:
+            user_rows = execute_query(
+                "SELECT u.id, u.name, u.role, s.name AS section_name "
+                "FROM users u "
+                "LEFT JOIN sections s ON u.section_id = s.id "
+                "WHERE u.name = :user_name",
+                {'user_name': user_name}
+            )
+        except SQLAlchemyError as e:
+            app.logger.error("Login DB error for %s: %s", user_name, e)
+            return jsonify({'error': 'An internal error has occurred.'}), 500
+
+        if not user_rows:
+            return jsonify({'error': 'Invalid user'}), 401
+
+        user_id, name, role, section_name = user_rows[0]
+        is_leader = role in {"Section Leader", "Team Leader", "Admin"}
+
+        session.update({
+            'user_name': name,
+            'user_id': user_id,
+            'user_section': section_name,
+            'is_leader': is_leader,
+        })
+
+        try:
+            user_cache_key = f'user:data:{name}'
+            cache.set(user_cache_key, {
+                'id': user_id,
+                'name': name,
+                'role': role,
+                'section_name': section_name,
+                'is_leader': is_leader,
+            }, timeout=1800)
+        except Exception as cache_error:
+            app.logger.warning("Failed to cache user data for %s: %s", name, cache_error)
+
+        return jsonify({
+            'ok': True,
+            'user_name': name,
+            'role': role,
+            'section': section_name,
+            'is_leader': is_leader,
+        }), 200
+
+    @app.route('/api/auth/logout', methods=['POST'])
+    def api_logout():
+        """Clear the server-side session and evict user cache."""
+        user_name = session.get('user_name')
+        if user_name:
+            try:
+                cache.delete(f'user:data:{user_name}')
+            except Exception as e:
+                app.logger.warning("Failed to clear cache on logout for %s: %s", user_name, e)
+        session.clear()
+        return jsonify({'ok': True}), 200
+
     # Add username validation endpoint for persistent auth
     @app.route('/api/auth/validate')
     def validate_user():

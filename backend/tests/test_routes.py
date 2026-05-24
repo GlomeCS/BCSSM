@@ -201,12 +201,14 @@ def test_duty_team_redirects_if_not_logged_in(client):
 def test_duty_team_shows_no_duty_message(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
     fake_duty.return_value = None  # No duty assigned
-    
+
     # Setup database to return valid user "A"
     setup_db_response(env_and_deny_db, user_data=[(1, 'A', 'Leader')])
 
-    # Test with query parameter
-    resp = client.get("/duty-teams?user_name=A")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "A"
+
+    resp = client.get("/duty-teams")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["user"] == "A"
@@ -217,12 +219,14 @@ def test_duty_team_shows_no_duty_message(client, patch_utils_helpers, env_and_de
 def test_duty_team_shows_duty_when_assigned(client, patch_utils_helpers, env_and_deny_db):
     _, _, fake_duty = patch_utils_helpers
     fake_duty.return_value = {"duty": "Clean kitchen", "role": "Worker"}
-    
+
     # Setup database to return valid user "A"
     setup_db_response(env_and_deny_db, user_data=[(1, 'A', 'Leader')])
 
-    # Test with query parameter
-    resp = client.get("/duty-teams?user_name=A")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "A"
+
+    resp = client.get("/duty-teams")
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["user"] == "A"
@@ -231,13 +235,16 @@ def test_duty_team_shows_duty_when_assigned(client, patch_utils_helpers, env_and
 
 
 def test_duty_team_invalid_user_returns_400(client, patch_utils_helpers, env_and_deny_db):
-    """Test /duty-teams with invalid user returns 400"""
+    """Test /duty-teams with invalid user (in session but not in DB) returns 400."""
     fake_users, fake_assign, fake_duty = patch_utils_helpers
-    
+
     # Setup database to return no users (empty result)
     setup_db_response(env_and_deny_db, user_data=[])
-    
-    resp = client.get("/duty-teams?user_name=InvalidUser")
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "InvalidUser"
+
+    resp = client.get("/duty-teams")
     assert resp.status_code == 400
     data = resp.get_json()
     assert "error" in data
@@ -264,21 +271,17 @@ def test_duty_team_with_session(client, patch_utils_helpers, env_and_deny_db):
     assert data["role"] == "Helper"
 
 
-def test_duty_team_with_header(client, patch_utils_helpers, env_and_deny_db):
-    """Test with X-Current-User header"""
+def test_duty_team_header_rejected(client, patch_utils_helpers, env_and_deny_db):
+    """X-Current-User header is no longer trusted — must return 400."""
     _, _, fake_duty = patch_utils_helpers
     fake_duty.return_value = {"duty": "Header duty", "role": "Leader"}
-    
-    # Setup database to return valid user
+
     setup_db_response(env_and_deny_db, user_data=[(1, 'HeaderUser', 'Leader')])
 
-    # Call with header
     resp = client.get("/duty-teams", headers={"X-Current-User": "HeaderUser"})
-    assert resp.status_code == 200
+    assert resp.status_code == 400
     data = resp.get_json()
-    assert data["user"] == "HeaderUser"
-    assert data["duty_message"] == "Header duty"
-    assert data["role"] == "Leader"
+    assert "Username required" in data["error"]
 
 
 @pytest.mark.parametrize("duty_response", [
@@ -289,20 +292,21 @@ def test_duty_team_with_header(client, patch_utils_helpers, env_and_deny_db):
 def test_duty_team_helper_called_with_session_user(client, patch_utils_helpers, env_and_deny_db, duty_response):
     _, _, fake_duty = patch_utils_helpers
     fake_duty.return_value = duty_response
-    
+
     # Setup database to return valid user
     setup_db_response(env_and_deny_db, user_data=[(1, 'UserX', 'Leader')])
 
-    resp = client.get("/duty-teams?user_name=UserX")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "UserX"
+
+    resp = client.get("/duty-teams")
     assert resp.status_code == 200
     data = resp.get_json()
-    
-    # Check basic structure
+
     assert "duty_message" in data
     assert "user" in data
     assert data["user"] == "UserX"
-    
-    # Check specific responses
+
     if duty_response is None or duty_response.get("error"):
         assert data["duty_message"] == "No duty assigned"
         assert data["role"] == "Leader"  # From database when no duty
@@ -315,11 +319,12 @@ def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpe
     _, _, fake_duty = patch_utils_helpers
     fake_duty.side_effect = SQLAlchemyError("oops")
 
-    # Setup database to return valid user
     setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
 
-    resp = client.get("/duty-teams?user_name=User1")
-    # Should handle exception and return 500
+    with client.session_transaction() as sess:
+        sess["user_name"] = "User1"
+
+    resp = client.get("/duty-teams")
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
@@ -333,7 +338,10 @@ def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_
 
     setup_db_response(env_and_deny_db, user_data=[(1, 'User1', 'Leader')])
 
-    resp = client.get("/duty-teams?user_name=User1")
+    with client.session_transaction() as sess:
+        sess["user_name"] = "User1"
+
+    resp = client.get("/duty-teams")
     assert resp.status_code == 500
     data = resp.get_json()
     assert "Failed to get duty information" in data["error"]

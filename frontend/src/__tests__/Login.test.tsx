@@ -32,9 +32,10 @@ function mockLoginSuccess(user: string) {
   vi.mocked(fetch).mockResolvedValueOnce(
     new Response(
       JSON.stringify({
-        is_logged_in: true,
+        ok: true,
+        user_name: user,
         role: 'Team Member',
-        user_section: 'Seniors',
+        section: 'Seniors',
         is_leader: false,
       }),
       { headers: { 'Content-Type': 'application/json' } }

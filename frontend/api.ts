@@ -75,6 +75,15 @@ export const getCurrentUser = (): string | null => {
     });
   };
   
+  export const logout = async (): Promise<void> => {
+    await apiPost('/api/auth/logout', {});
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('is_logged_in');
+    localStorage.removeItem('user_role');
+    localStorage.removeItem('user_section');
+    localStorage.removeItem('is_leader');
+  };
+
   // Auth validation function.
   // Returns true if the server confirms the session is valid.
   // Returns false if the server explicitly says the session is invalid.
@@ -88,7 +97,9 @@ export const getCurrentUser = (): string | null => {
 
     const response = await apiGet('/api/auth/validate');
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) return false;
+      // 400 = no session / not authenticated; 401/403 = explicitly rejected.
+      // All three mean "not logged in" — return false rather than throwing.
+      if (response.status === 400 || response.status === 401 || response.status === 403) return false;
       throw new Error(`Auth check failed with status ${response.status}`);
     }
     const data = await response.json();

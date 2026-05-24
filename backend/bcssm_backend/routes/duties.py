@@ -21,9 +21,7 @@ def init_duties_routes(app):
           - members (list of user names)
           - is_current_user (bool)
         """
-        # Get username from multiple sources (query param, header, or session)
         user_name = get_username_from_request()
-        
         if not user_name:
             logger.warning("No username found in request for /api/duties/today")
             return jsonify({'error': 'Username required'}), 400
@@ -62,9 +60,7 @@ def init_duties_routes(app):
           ]
         }
         """
-        # Get username from multiple sources (query param, header, or session)
         user_name = get_username_from_request()
-        
         if not user_name:
             logger.warning("No username found in request for /api/duties/schedule")
             return jsonify({'error': 'Username required'}), 400

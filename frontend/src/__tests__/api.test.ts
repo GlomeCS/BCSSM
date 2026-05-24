@@ -190,4 +190,13 @@ describe('validateAuth', () => {
     const result = await validateAuth();
     expect(result).toBe(false);
   });
+
+  it('returns false when server responds with 400 (no session)', async () => {
+    localStorage.setItem('currentUser', 'Dave');
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ is_valid: false, error: 'No username provided' }), { status: 400 })
+    );
+    const result = await validateAuth();
+    expect(result).toBe(false);
+  });
 });
