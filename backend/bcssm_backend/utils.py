@@ -12,7 +12,7 @@ from redis.exceptions import RedisError
 
 from backend.globals import db, cache
 from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
-from backend.bcssm_backend.exceptions import ValidationError, CacheError
+from backend.bcssm_backend.exceptions import ValidationError, CacheError, AuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -625,3 +625,40 @@ def get_health_status() -> dict:
     if not cache_ok:
         health["status"] = "degraded"
     return health
+
+
+def authenticate_user(user_name: str) -> dict:
+    """Validate user_name against DB and return user dict. Raises AuthenticationError if not found."""
+    rows = execute_readonly_query(
+        "SELECT u.id, u.name, u.role, s.name AS section_name "
+        "FROM users u "
+        "LEFT JOIN sections s ON u.section_id = s.id "
+        "WHERE u.name = :user_name",
+        {"user_name": user_name},
+    )
+    if not rows:
+        raise AuthenticationError("Invalid user")
+    user_id, name, role, section_name = rows[0]
+    return {
+        "id": user_id,
+        "name": name,
+        "role": role,
+        "section_name": section_name,
+        "is_leader": role in {"Section Leader", "Team Leader", "Admin"},
+    }
+
+
+def cache_user_login(user_data: dict) -> None:
+    """Write user data to Redis. Swallows RedisError."""
+    try:
+        cache.set(f"user:data:{user_data['name']}", user_data, timeout=1800)
+    except RedisError as e:
+        logger.warning("Failed to cache user data for %s: %s", user_data.get("name"), e)
+
+
+def evict_user_login_cache(user_name: str) -> None:
+    """Delete user data from Redis. Swallows RedisError."""
+    try:
+        cache.delete(f"user:data:{user_name}")
+    except RedisError as e:
+        logger.warning("Failed to evict cache for %s: %s", user_name, e)
