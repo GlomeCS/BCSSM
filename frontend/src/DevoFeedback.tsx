@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import { apiGet } from '../api';
@@ -27,10 +27,16 @@ const DevoFeedback: React.FC = () => {
   const [isLeaderState, setIsLeaderState] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [sectionsLoading, setSectionsLoading] = useState<boolean>(true);
+  const [splitPickerOpen, setSplitPickerOpen] = useState(false);
+  const splitPickerRef = useRef<HTMLDivElement>(null);
   const base = import.meta.env.VITE_BASE_URL || '';
 
-  const focusedSection = searchParams.get('section');
-  const focusedIndex = focusedSection ? sections.indexOf(focusedSection) : -1;
+  const sectionParam = searchParams.get('section') ?? '';
+  const focusedSections = sectionParam
+    ? Array.from(new Set(sectionParam.split(',').map(s => s.trim()).filter(Boolean)))
+    : [];
+  const windowSize = focusedSections.length;
+  const anchorIndex = windowSize > 0 ? sections.indexOf(focusedSections[0]) : -1;
 
   const enterFocus = (section: string) => {
     setSearchParams({ date, section });
@@ -41,25 +47,60 @@ const DevoFeedback: React.FC = () => {
   };
 
   const navigatePrev = () => {
-    if (sections.length === 0) return;
-    const idx = focusedIndex <= 0 ? sections.length - 1 : focusedIndex - 1;
-    setSearchParams({ date, section: sections[idx] });
+    if (sections.length === 0 || windowSize === 0) return;
+    setSplitPickerOpen(false);
+    const newAnchor = anchorIndex <= 0 ? sections.length - 1 : anchorIndex - 1;
+    const newSections = Array.from({ length: windowSize }, (_, i) =>
+      sections[(newAnchor + i) % sections.length]
+    );
+    setSearchParams({ date, section: newSections.join(',') });
   };
 
   const navigateNext = () => {
-    if (sections.length === 0) return;
-    const idx = focusedIndex < 0 || focusedIndex >= sections.length - 1 ? 0 : focusedIndex + 1;
-    setSearchParams({ date, section: sections[idx] });
+    if (sections.length === 0 || windowSize === 0) return;
+    setSplitPickerOpen(false);
+    const newAnchor = anchorIndex < 0 || anchorIndex >= sections.length - 1 ? 0 : anchorIndex + 1;
+    const newSections = Array.from({ length: windowSize }, (_, i) =>
+      sections[(newAnchor + i) % sections.length]
+    );
+    setSearchParams({ date, section: newSections.join(',') });
   };
 
+  const availableSections = sections.filter(s => !focusedSections.includes(s));
+
+  const addSplit = (section: string) => {
+    setSearchParams({ date, section: [...focusedSections, section].join(',') });
+    setSplitPickerOpen(false);
+  };
+
+  const canEdit = (section: string) =>
+    currentUser !== null && (isLeaderState || userSection === section);
+
   useEffect(() => {
-    if (!focusedSection) return;
+    if (windowSize === 0) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSearchParams({ date });
+      if (e.key === 'Escape') {
+        if (splitPickerOpen) {
+          setSplitPickerOpen(false);
+        } else {
+          setSearchParams({ date });
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [focusedSection, date, setSearchParams]);
+  }, [windowSize, date, setSearchParams, splitPickerOpen]);
+
+  useEffect(() => {
+    if (!splitPickerOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (splitPickerRef.current && !splitPickerRef.current.contains(e.target as Node)) {
+        setSplitPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [splitPickerOpen]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -173,58 +214,127 @@ const DevoFeedback: React.FC = () => {
     );
   }
 
-  const focusedFeedbackText = focusedSection ? (feedback[focusedSection] ?? null) : null;
-  const focusedHasContent = Boolean(focusedFeedbackText?.trim());
-  const canEditFocused = currentUser !== null && focusedSection !== null &&
-    (isLeaderState || userSection === focusedSection);
+  const closeBtn = (
+    <button className="focus-close-btn" onClick={exitFocus} aria-label="Close focus view">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <path d="M2 2L16 16M16 2L2 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+      </svg>
+    </button>
+  );
+
+  const navBar = (
+    <div className="focus-nav">
+      <button className="focus-nav-btn" onClick={navigatePrev} aria-label="Previous section">‹</button>
+      <span className="focus-nav-indicator">
+        {anchorIndex >= 0 ? anchorIndex + 1 : '?'} / {sections.length}
+      </span>
+      <button className="focus-nav-btn" onClick={navigateNext} aria-label="Next section">›</button>
+      {availableSections.length > 0 && windowSize < 3 && (
+        <div className="focus-split-picker-wrapper" ref={splitPickerRef}>
+          <button
+            className={`focus-split-btn${splitPickerOpen ? ' focus-split-btn--open' : ''}`}
+            onClick={() => setSplitPickerOpen(p => !p)}
+            aria-label="Split view"
+            aria-expanded={splitPickerOpen}
+            aria-haspopup="listbox"
+          >
+            + Split
+          </button>
+          {splitPickerOpen && (
+            <div className="focus-split-picker" role="listbox" aria-label="Add section to split view">
+              {availableSections.map(section => (
+                <button
+                  key={section}
+                  className="focus-split-picker-item"
+                  role="option"
+                  onClick={() => addSplit(section)}
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderColumnContent = (section: string) => {
+    const text = feedback[section] ?? null;
+    const hasContent = Boolean(text?.trim());
+    return hasContent ? (
+      <p className="focus-text">{text}</p>
+    ) : (
+      <div className="focus-empty">
+        <div className="focus-empty-icon">💭</div>
+        <p className="focus-empty-text">No feedback submitted yet.</p>
+      </div>
+    );
+  };
 
   return (
     <>
       <Navbar />
 
-      {focusedSection && (
-        <div className="focus-overlay" role="dialog" aria-modal="true" aria-label={`${focusedSection} feedback`}>
+      {windowSize === 1 && (
+        <div className="focus-overlay" role="dialog" aria-modal="true" aria-label={`${focusedSections[0]} feedback`}>
           <div className="focus-header">
             <div className="focus-header-left">
-              <h2 className="focus-section-title">{focusedSection}</h2>
-              {canEditFocused && (
+              <h2 className="focus-section-title">{focusedSections[0]}</h2>
+              {canEdit(focusedSections[0]) && (
                 <Link
-                  to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(focusedSection)}`}
-                  className={`action-btn ${focusedHasContent ? 'edit-btn' : 'add-btn'}`}
+                  to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(focusedSections[0])}`}
+                  className={`action-btn ${feedback[focusedSections[0]]?.trim() ? 'edit-btn' : 'add-btn'}`}
                 >
-                  {focusedHasContent ? '✏️ Edit' : '➕ Add'}
+                  {feedback[focusedSections[0]]?.trim() ? '✏️ Edit' : '➕ Add'}
                 </Link>
               )}
             </div>
-            <button className="focus-close-btn" onClick={exitFocus} aria-label="Close focus view">
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
-                <path d="M2 2L16 16M16 2L2 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-              </svg>
-            </button>
+            {closeBtn}
           </div>
 
           <div className="focus-body">
-            {focusedHasContent ? (
-              <p className="focus-text">{focusedFeedbackText}</p>
-            ) : (
-              <div className="focus-empty">
-                <div className="focus-empty-icon">💭</div>
-                <p className="focus-empty-text">No feedback submitted yet.</p>
-              </div>
-            )}
+            {renderColumnContent(focusedSections[0])}
           </div>
 
-          <div className="focus-nav">
-            <button className="focus-nav-btn" onClick={navigatePrev} aria-label="Previous section">
-              ‹
-            </button>
-            <span className="focus-nav-indicator">
-              {focusedIndex >= 0 ? focusedIndex + 1 : '?'} / {sections.length}
-            </span>
-            <button className="focus-nav-btn" onClick={navigateNext} aria-label="Next section">
-              ›
-            </button>
+          {navBar}
+        </div>
+      )}
+
+      {windowSize > 1 && (
+        <div
+          className="focus-overlay focus-overlay--split"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Comparing ${focusedSections.join(', ')}`}
+        >
+          <div className="focus-split-topbar">
+            <span className="focus-split-breadcrumb">{focusedSections.join(' · ')}</span>
+            {closeBtn}
           </div>
+
+          <div className="focus-columns">
+            {focusedSections.map((section, i) => (
+              <div className={`focus-column${i < focusedSections.length - 1 ? ' focus-column--divider' : ''}`} key={section}>
+                <div className="focus-column-header">
+                  <h2 className="focus-section-title">{section}</h2>
+                  {canEdit(section) && (
+                    <Link
+                      to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`}
+                      className={`action-btn ${feedback[section]?.trim() ? 'edit-btn' : 'add-btn'}`}
+                    >
+                      {feedback[section]?.trim() ? '✏️ Edit' : '➕ Add'}
+                    </Link>
+                  )}
+                </div>
+                <div className="focus-column-body">
+                  {renderColumnContent(section)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {navBar}
         </div>
       )}
 
