@@ -603,7 +603,235 @@
 
 .focus-close-btn:focus,
 .focus-nav-btn:focus,
+.focus-split-btn:focus,
 .feedback-card-body:focus {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* ── Split section picker ───────────────────────────────────────────────── */
+
+.focus-split-picker-wrapper {
+  position: relative;
+  margin-left: var(--space-4);
+}
+
+.focus-split-btn--open {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.focus-split-picker {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  min-width: 160px;
+  overflow: hidden;
+  z-index: 10;
+}
+
+.focus-split-picker-item {
+  display: block;
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.focus-split-picker-item:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.focus-split-picker-item + .focus-split-picker-item {
+  border-top: 1px solid rgba(37, 99, 235, 0.1);
+}
+
+@media (prefers-contrast: high) {
+  .focus-split-picker {
+    border: 2px solid black;
+  }
+
+  .focus-split-picker-item:hover {
+    background: black;
+    color: white;
+  }
+}
+
+/* ── Split (multi-section) overlay ─────────────────────────────────────── */
+
+.focus-overlay--split {
+  /* overrides: body area becomes a row of columns */
+}
+
+.focus-split-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.25);
+  flex-shrink: 0;
+  gap: var(--space-4);
+}
+
+.focus-split-breadcrumb {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-columns {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.focus-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.focus-column--divider {
+  border-right: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.focus-column-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid rgba(37, 99, 235, 0.15);
+  flex-shrink: 0;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.04), rgba(234, 179, 8, 0.03));
+}
+
+.focus-column-header .focus-section-title {
+  font-size: var(--font-size-xl);
+  flex: 1;
+  min-width: 0;
+}
+
+.focus-column-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+}
+
+.focus-column-body .focus-text {
+  font-size: clamp(1.2rem, 4.5cqi, 1.5rem);
+  line-height: 1.8;
+  max-width: none;
+}
+
+/* ── Split button in nav ────────────────────────────────────────────────── */
+
+.focus-split-btn {
+  padding: 0 var(--space-4);
+  height: 40px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.07);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.focus-split-btn:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.focus-split-btn:active {
+  transform: scale(0.95);
+}
+
+/* ── Split overlay responsive ───────────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  /* 3 columns → 2 visible; 3rd column is hidden */
+  .focus-overlay--split .focus-column:nth-child(3) {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  /* All columns stack vertically; each body is capped to avoid endless scroll */
+  .focus-split-topbar {
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .focus-columns {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .focus-column {
+    flex: none;
+  }
+
+  .focus-column--divider {
+    border-right: none;
+    border-bottom: 1px solid rgba(37, 99, 235, 0.2);
+  }
+
+  .focus-column-body {
+    max-height: 40vh;
+  }
+
+  .focus-column-header {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .focus-overlay--split .focus-column:nth-child(3) {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .focus-split-btn {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .focus-split-topbar {
+    border-color: black;
+  }
+
+  .focus-column--divider {
+    border-color: black;
+  }
+
+  .focus-split-btn {
+    border: 2px solid black;
+    background: white;
+    color: black;
+  }
 }

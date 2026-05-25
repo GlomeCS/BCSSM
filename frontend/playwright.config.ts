@@ -1,12 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const baseURL = process.env.BASE_URL || 'http://localhost:5173';
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
   retries: 0,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL,
     trace: 'retain-on-failure',
   },
   projects: [
@@ -23,8 +25,8 @@ export default defineConfig({
   snapshotDir: './tests/e2e/snapshots',
   webServer: {
     command: 'VITE_E2E=true npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
+    url: baseURL,
+    reuseExistingServer: true,
     timeout: 30000,
   },
 });

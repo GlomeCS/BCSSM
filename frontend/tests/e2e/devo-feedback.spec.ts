@@ -13,7 +13,7 @@ const FEEDBACK_RESPONSE = {
   is_leader: true,
 };
 
-async function setupDevoFeedbackPage(page: Page, isLeader = true) {
+async function setupDevoFeedbackPage(page: Page, isLeader = true, path = '/react/devos-feedback') {
   await page.addInitScript(({ leader }: { leader: boolean }) => {
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Alice');
@@ -41,7 +41,7 @@ async function setupDevoFeedbackPage(page: Page, isLeader = true) {
       body: JSON.stringify({ ...FEEDBACK_RESPONSE, is_leader: isLeader }),
     })
   );
-  await page.goto('/react/devos-feedback');
+  await page.goto(path);
 }
 
 test('unauthenticated visit to /react/devos-feedback redirects to /login', async ({ page }) => {
@@ -193,4 +193,188 @@ test('focus mode visual snapshot', async ({ page }) => {
   await seniorsCard.locator('.feedback-card-body').click();
   await expect(page.locator('.focus-overlay')).toBeVisible();
   await expect(page).toHaveScreenshot('devo-feedback-focus.png', { fullPage: true });
+});
+
+// ── Split view ─────────────────────────────────────────────────────────────
+
+test('+ Split button appears in single-section focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-overlay')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Split view' })).toBeVisible();
+});
+
+test('clicking + Split opens a section picker', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).toBeVisible();
+});
+
+test('picker lists only sections not already in the view', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  const picker = page.getByRole('listbox', { name: /add section to split view/i });
+  await expect(picker.getByRole('option', { name: 'Juniors' })).toBeVisible();
+  await expect(picker.getByRole('option', { name: 'Minis' })).toBeVisible();
+  await expect(picker.getByRole('option', { name: 'Seniors' })).not.toBeVisible();
+});
+
+test('selecting a section from the picker enters 2-column split view', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await page.getByRole('option', { name: 'Juniors' }).click();
+  await expect(page.getByRole('dialog')).toHaveAttribute('aria-label', 'Comparing Seniors, Juniors');
+});
+
+test('2-column split view shows both sections content', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.focus-column-body').filter({ hasText: /great session today/i })).toBeVisible();
+  await expect(page.locator('.focus-column-body').filter({ hasText: /no feedback submitted yet/i })).toBeVisible();
+});
+
+test('2-column split view shows breadcrumb with section names', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.focus-split-breadcrumb')).toHaveText('Seniors · Juniors');
+});
+
+test('nav slides the window in 2-column split view', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await expect(page.getByRole('dialog')).toHaveAttribute('aria-label', 'Comparing Seniors, Juniors');
+  await page.getByRole('button', { name: 'Next section' }).click();
+  await expect(page.getByRole('dialog')).toHaveAttribute('aria-label', 'Comparing Juniors, Minis');
+});
+
+test('close button exits split view', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Close focus view' }).click();
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+});
+
+test('direct URL with comma-separated sections opens split view', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  await page.goto('/react/devos-feedback?section=Seniors,Minis');
+  await expect(page.getByRole('dialog')).toHaveAttribute('aria-label', 'Comparing Seniors, Minis');
+  await expect(page.locator('.focus-column')).toHaveCount(2);
+});
+
+test('picker in 2-column view only shows the remaining section', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  const picker = page.getByRole('listbox', { name: /add section to split view/i });
+  await expect(picker.getByRole('option', { name: 'Minis' })).toBeVisible();
+  await expect(picker.getByRole('option', { name: 'Seniors' })).not.toBeVisible();
+  await expect(picker.getByRole('option', { name: 'Juniors' })).not.toBeVisible();
+});
+
+test('selecting from picker in 2-column view enters 3-column view', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await page.getByRole('option', { name: 'Minis' }).click();
+  await expect(page.getByRole('dialog')).toHaveAttribute('aria-label', 'Comparing Seniors, Juniors, Minis');
+  await expect(page.locator('.focus-column')).toHaveCount(3);
+});
+
+test('+ Split button is hidden when 3 columns are shown', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors,Minis');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Split view' })).not.toBeVisible();
+});
+
+test('clicking + Split again toggles the picker closed', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).toBeVisible();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).not.toBeVisible();
+});
+
+test('Escape closes picker first, then overlay on second press', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).not.toBeVisible();
+  await expect(page.getByRole('dialog')).toBeVisible();
+
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).not.toBeVisible();
+});
+
+test('nav button closes picker when open', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Next section' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).not.toBeVisible();
+});
+
+test('clicking outside picker closes it without exiting the overlay', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await page.getByRole('button', { name: 'Split view' }).click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).toBeVisible();
+
+  await page.locator('.focus-body').click();
+  await expect(page.getByRole('listbox', { name: /add section to split view/i })).not.toBeVisible();
+  await expect(page.getByRole('dialog')).toBeVisible();
+});
+
+test('column text is larger than card grid text in 2-column split view', async ({ page, isMobile }) => {
+  // On mobile the columns stack vertically (full-width), testing side-by-side sizing only makes
+  // sense on desktop where the container-query scaling is in effect.
+  test.skip(isMobile, 'Desktop-only — columns stack on mobile');
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors');
+  await expect(page.locator('.focus-column-body .focus-text').first()).toBeVisible();
+  const splitFontSize = await page.locator('.focus-column-body .focus-text').first().evaluate(
+    el => parseFloat(getComputedStyle(el).fontSize)
+  );
+  // card grid uses --font-size-base = 1rem = 16px; 2-column split hits 1.5rem max = 24px on 1280px viewport
+  expect(splitFontSize).toBeGreaterThan(20);
+});
+
+test('column text is larger than card grid text in 3-column split view', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Desktop-only — columns stack on mobile');
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors,Minis');
+  await expect(page.locator('.focus-column-body .focus-text').first()).toBeVisible();
+  const splitFontSize = await page.locator('.focus-column-body .focus-text').first().evaluate(
+    el => parseFloat(getComputedStyle(el).fontSize)
+  );
+  // 3-column containers are narrower; floor is 1.2rem = 19.2px, well above card grid's 16px
+  expect(splitFontSize).toBeGreaterThan(17);
+});
+
+test('split view visual snapshot - 2 columns', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Desktop-only snapshot');
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Minis');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.focus-nav-indicator')).toBeVisible();
+  await expect(page).toHaveScreenshot('devo-feedback-split-2col.png', { fullPage: true });
+});
+
+test('split view visual snapshot - 3 columns', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'Desktop-only snapshot');
+  await setupDevoFeedbackPage(page, true, '/react/devos-feedback?section=Seniors,Juniors,Minis');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('.focus-nav-indicator')).toBeVisible();
+  await expect(page).toHaveScreenshot('devo-feedback-split-3col.png', { fullPage: true });
 });
