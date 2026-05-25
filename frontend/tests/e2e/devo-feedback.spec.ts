@@ -134,3 +134,63 @@ test('devo feedback visual snapshot - mobile', async ({ page, isMobile }) => {
   await expect(page.getByText("Devo's Feedback")).toBeVisible();
   await expect(page).toHaveScreenshot('devo-feedback-mobile.png', { fullPage: true });
 });
+
+// ── Focus mode ────────────────────────────────────────────────────────────
+
+test('clicking a card body enters focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-overlay')).toBeVisible();
+  await expect(page.locator('.focus-section-title')).toHaveText('Seniors');
+});
+
+test('close button exits focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-overlay')).toBeVisible();
+  await page.locator('.focus-close-btn').click();
+  await expect(page.locator('.focus-overlay')).not.toBeVisible();
+});
+
+test('next button navigates to next section in focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-section-title')).toHaveText('Seniors');
+  await page.locator('button[aria-label="Next section"]').click();
+  await expect(page.locator('.focus-section-title')).toHaveText('Juniors');
+});
+
+test('prev button navigates to prev section in focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const juniorsCard = page.locator('.feedback-card').filter({ hasText: 'Juniors' });
+  await juniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-section-title')).toHaveText('Juniors');
+  await page.locator('button[aria-label="Previous section"]').click();
+  await expect(page.locator('.focus-section-title')).toHaveText('Seniors');
+});
+
+test('direct URL with section param opens focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  await page.goto('/react/devos-feedback?section=Minis');
+  await expect(page.locator('.focus-overlay')).toBeVisible();
+  await expect(page.locator('.focus-section-title')).toHaveText('Minis');
+});
+
+test('empty section card is expandable in focus mode', async ({ page }) => {
+  await setupDevoFeedbackPage(page);
+  const juniorsCard = page.locator('.feedback-card').filter({ hasText: 'Juniors' });
+  await juniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-overlay')).toBeVisible();
+  await expect(page.locator('.focus-overlay')).toContainText('No feedback submitted yet.');
+});
+
+test('focus mode visual snapshot', async ({ page }) => {
+  await setupDevoFeedbackPage(page, true);
+  const seniorsCard = page.locator('.feedback-card').filter({ hasText: 'Seniors' });
+  await seniorsCard.locator('.feedback-card-body').click();
+  await expect(page.locator('.focus-overlay')).toBeVisible();
+  await expect(page).toHaveScreenshot('devo-feedback-focus.png', { fullPage: true });
+});

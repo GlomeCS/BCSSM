@@ -29,6 +29,38 @@ const DevoFeedback: React.FC = () => {
   const [sectionsLoading, setSectionsLoading] = useState<boolean>(true);
   const base = import.meta.env.VITE_BASE_URL || '';
 
+  const focusedSection = searchParams.get('section');
+  const focusedIndex = focusedSection ? sections.indexOf(focusedSection) : -1;
+
+  const enterFocus = (section: string) => {
+    setSearchParams({ date, section });
+  };
+
+  const exitFocus = () => {
+    setSearchParams({ date });
+  };
+
+  const navigatePrev = () => {
+    if (sections.length === 0) return;
+    const idx = focusedIndex <= 0 ? sections.length - 1 : focusedIndex - 1;
+    setSearchParams({ date, section: sections[idx] });
+  };
+
+  const navigateNext = () => {
+    if (sections.length === 0) return;
+    const idx = focusedIndex < 0 || focusedIndex >= sections.length - 1 ? 0 : focusedIndex + 1;
+    setSearchParams({ date, section: sections[idx] });
+  };
+
+  useEffect(() => {
+    if (!focusedSection) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSearchParams({ date });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [focusedSection, date, setSearchParams]);
+
   useEffect(() => {
     if (!currentUser) return;
     setDataLoading(true);
@@ -141,9 +173,61 @@ const DevoFeedback: React.FC = () => {
     );
   }
 
+  const focusedFeedbackText = focusedSection ? (feedback[focusedSection] ?? null) : null;
+  const focusedHasContent = Boolean(focusedFeedbackText?.trim());
+  const canEditFocused = currentUser !== null && focusedSection !== null &&
+    (isLeaderState || userSection === focusedSection);
+
   return (
     <>
       <Navbar />
+
+      {focusedSection && (
+        <div className="focus-overlay" role="dialog" aria-modal="true" aria-label={`${focusedSection} feedback`}>
+          <div className="focus-header">
+            <div className="focus-header-left">
+              <h2 className="focus-section-title">{focusedSection}</h2>
+              {canEditFocused && (
+                <Link
+                  to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(focusedSection)}`}
+                  className={`action-btn ${focusedHasContent ? 'edit-btn' : 'add-btn'}`}
+                >
+                  {focusedHasContent ? '✏️ Edit' : '➕ Add'}
+                </Link>
+              )}
+            </div>
+            <button className="focus-close-btn" onClick={exitFocus} aria-label="Close focus view">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                <path d="M2 2L16 16M16 2L2 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+            </button>
+          </div>
+
+          <div className="focus-body">
+            {focusedHasContent ? (
+              <p className="focus-text">{focusedFeedbackText}</p>
+            ) : (
+              <div className="focus-empty">
+                <div className="focus-empty-icon">💭</div>
+                <p className="focus-empty-text">No feedback submitted yet.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="focus-nav">
+            <button className="focus-nav-btn" onClick={navigatePrev} aria-label="Previous section">
+              ‹
+            </button>
+            <span className="focus-nav-indicator">
+              {focusedIndex >= 0 ? focusedIndex + 1 : '?'} / {sections.length}
+            </span>
+            <button className="focus-nav-btn" onClick={navigateNext} aria-label="Next section">
+              ›
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="devo-feedback-page">
         <header className="page-header">
           <div className="page-header-content">
@@ -174,9 +258,13 @@ const DevoFeedback: React.FC = () => {
               const hasContent = Boolean(feedbackText?.trim());
 
               return (
-                <div className="feedback-card" key={section}>
+                <div
+                  className={`feedback-card${!hasContent ? ' feedback-card--empty' : ''}`}
+                  key={section}
+                >
                   <div className="feedback-card-header">
                     <h3 className="section-title">{section}</h3>
+                    <span className="expand-icon" aria-hidden="true">⤢</span>
                     {currentUser !== null && (isLeaderState || userSection === section) && (
                       <div className="action-buttons">
                         {hasContent ? (
@@ -197,7 +285,14 @@ const DevoFeedback: React.FC = () => {
                       </div>
                     )}
                   </div>
-                  <div className="feedback-card-body">
+                  <div
+                    className="feedback-card-body"
+                    onClick={() => enterFocus(section)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') enterFocus(section); }}
+                    aria-label={`View ${section} feedback in focus mode`}
+                  >
                     {hasContent ? (
                       <div className="feedback-content">
                         <p className="feedback-text">{feedbackText}</p>
