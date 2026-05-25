@@ -32,7 +32,9 @@ const DevoFeedback: React.FC = () => {
   const base = import.meta.env.VITE_BASE_URL || '';
 
   const sectionParam = searchParams.get('section') ?? '';
-  const focusedSections = sectionParam ? sectionParam.split(',').filter(Boolean) : [];
+  const focusedSections = sectionParam
+    ? Array.from(new Set(sectionParam.split(',').map(s => s.trim()).filter(Boolean)))
+    : [];
   const windowSize = focusedSections.length;
   const anchorIndex = windowSize > 0 ? sections.indexOf(focusedSections[0]) : -1;
 
