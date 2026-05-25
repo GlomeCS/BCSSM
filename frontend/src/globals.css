@@ -308,7 +308,8 @@ body {
 [data-theme="dark"] .hero-content h1,
 [data-theme="dark"] .page-title,
 [data-theme="dark"] .duties-title,
-[data-theme="dark"] .edit-title {
+[data-theme="dark"] .edit-title,
+[data-theme="dark"] .focus-section-title {
   background: linear-gradient(135deg, #93c5fd, #fbbf24);
   -webkit-background-clip: text;
   background-clip: text;

@@ -50,9 +50,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
       - name: Run Playwright functional tests
-        # Skip visual snapshot tests in CI — baselines are OS-specific (darwin vs linux).
-        # Visual regression is verified locally before committing.
         run: npx playwright test --grep-invert "visual snapshot"
+      - name: Run Playwright visual snapshot tests
+        run: npx playwright test --grep "visual snapshot"
+      - name: Upload snapshot diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-diffs
+          path: frontend/test-results/
+          retention-days: 7
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@v4
