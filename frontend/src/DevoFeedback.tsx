@@ -290,7 +290,7 @@ const DevoFeedback: React.FC = () => {
                     onClick={() => enterFocus(section)}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') enterFocus(section); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); enterFocus(section); } }}
                     aria-label={`View ${section} feedback in focus mode`}
                   >
                     {hasContent ? (
