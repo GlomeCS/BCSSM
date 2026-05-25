@@ -282,9 +282,9 @@ const DevoFeedback: React.FC = () => {
               {canEdit(focusedSections[0]) && (
                 <Link
                   to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(focusedSections[0])}`}
-                  className={`action-btn ${Boolean(feedback[focusedSections[0]]?.trim()) ? 'edit-btn' : 'add-btn'}`}
+                  className={`action-btn ${feedback[focusedSections[0]]?.trim() ? 'edit-btn' : 'add-btn'}`}
                 >
-                  {Boolean(feedback[focusedSections[0]]?.trim()) ? '✏️ Edit' : '➕ Add'}
+                  {feedback[focusedSections[0]]?.trim() ? '✏️ Edit' : '➕ Add'}
                 </Link>
               )}
             </div>
@@ -319,9 +319,9 @@ const DevoFeedback: React.FC = () => {
                   {canEdit(section) && (
                     <Link
                       to={`${base}/react/devos-feedback/edit?date=${date}&section=${encodeURIComponent(section)}`}
-                      className={`action-btn ${Boolean(feedback[section]?.trim()) ? 'edit-btn' : 'add-btn'}`}
+                      className={`action-btn ${feedback[section]?.trim() ? 'edit-btn' : 'add-btn'}`}
                     >
-                      {Boolean(feedback[section]?.trim()) ? '✏️ Edit' : '➕ Add'}
+                      {feedback[section]?.trim() ? '✏️ Edit' : '➕ Add'}
                     </Link>
                   )}
                 </div>
