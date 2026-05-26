@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Get PR details
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const pr = await github.rest.pulls.get({
@@ -38,7 +38,7 @@ jobs:
 
       - name: Refuse fork PR
         if: steps.pr.outputs.is_fork == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             await github.rest.issues.createComment({
@@ -50,14 +50,14 @@ jobs:
 
       - name: Checkout PR branch
         if: steps.pr.outputs.is_fork == 'false'
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: ${{ steps.pr.outputs.head_sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         if: steps.pr.outputs.is_fork == 'false'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: "npm"
@@ -79,6 +79,8 @@ jobs:
         if: steps.pr.outputs.is_fork == 'false'
         id: commit
         working-directory: .
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -89,13 +91,13 @@ jobs:
             echo "no_changes=true" >> $GITHUB_OUTPUT
           else
             git commit -m "chore: update Playwright visual snapshots [skip ci]"
-            git push origin HEAD:${{ steps.pr.outputs.head_ref }}
+            git push origin "HEAD:${HEAD_REF}"
             echo "no_changes=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Post result comment
         if: steps.pr.outputs.is_fork == 'false'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
             const noChanges = '${{ steps.commit.outputs.no_changes }}' === 'true';
