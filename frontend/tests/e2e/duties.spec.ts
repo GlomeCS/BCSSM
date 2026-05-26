@@ -146,6 +146,7 @@ test('switching to Schedule tab shows the schedule table', async ({ page }) => {
 test('duties page visual snapshot - today tab', async ({ page }) => {
   await setupDutiesPage(page);
   await expect(page.getByRole('heading', { name: /your duties/i })).toBeVisible();
+  await page.locator('.duties-date').evaluate(el => ((el as HTMLElement).style.visibility = 'hidden'));
   await expect(page).toHaveScreenshot('duties-today.png', { fullPage: true });
 });
 
@@ -153,6 +154,7 @@ test('duties page visual snapshot - schedule tab', async ({ page }) => {
   await setupDutiesPage(page);
   await page.getByRole('button', { name: /2-week schedule/i }).click();
   await expect(page.getByRole('table')).toBeVisible();
+  await page.locator('.duties-date').evaluate(el => ((el as HTMLElement).style.visibility = 'hidden'));
   await expect(page).toHaveScreenshot('duties-schedule.png', { fullPage: true });
 });
 
@@ -160,5 +162,6 @@ test('duties page visual snapshot - mobile today tab', async ({ page, isMobile }
   test.skip(!isMobile, 'Mobile-only test');
   await setupDutiesPage(page);
   await expect(page.getByRole('heading', { name: /your duties/i })).toBeVisible();
+  await page.locator('.duties-date').evaluate(el => ((el as HTMLElement).style.visibility = 'hidden'));
   await expect(page).toHaveScreenshot('duties-today-mobile.png', { fullPage: true });
 });
