@@ -297,7 +297,7 @@ export default function DutiesPage() {
             <section className="duties-section schedule-section">
               <h2 className="section-title">
                 <span className="section-icon">🗓️</span>
-                2-Week Duty Schedule (Starting July 5th, 2025)
+                2-Week Duty Schedule{schedule.length > 0 ? ` (Starting ${new Date(schedule[0].date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })})` : ''}
               </h2>
 
               {scheduleLoading ? (
@@ -334,7 +334,7 @@ export default function DutiesPage() {
                         <tbody>
                           {schedule.map((day, index) => {
                             const dateOnly = new Date(day.date).toISOString().split("T")[0];
-                            if (dateOnly === "2025-07-12") {
+                            if (dateOnly === "2026-07-11") {
                               return (
                                 <tr key={index}>
                                   <td colSpan={sortedDuties.length + 1}></td>
@@ -360,9 +360,9 @@ export default function DutiesPage() {
                                     {(() => {
                                       const d = new Date(day.date);
                                       const dateOnly = d.toISOString().split("T")[0];
-                                      if (dateOnly === "2025-07-05" || dateOnly === "2025-07-06") {
+                                      if (dateOnly === "2026-07-04" || dateOnly === "2026-07-05") {
                                         return <span className="week-badge-small prep-week">Prep Week</span>;
-                                      } else if (dateOnly === "2025-07-12") {
+                                      } else if (dateOnly === "2026-07-11") {
                                         return <span className="week-badge-small prep-week">FREEDOM</span>;;
                                       } else if (day.week === "Week A" || day.week === "Week B") {
                                         return (

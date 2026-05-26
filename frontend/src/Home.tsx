@@ -69,7 +69,7 @@ function Home() {
       <div className="home-page">
       <header className="hero">
         <div className="hero-content">
-          <h1>Welcome to Ballyholme CSSM 2025</h1>
+          <h1>Welcome to Ballyholme CSSM 2026</h1>
         </div>
       </header>
       <section className="info-section">

@@ -445,30 +445,14 @@ def test_get_duty_schedule_uses_parameterized_query(mock_readonly, mock_cache):
     assert isinstance(params['cycles'], list)
 
 def test_get_current_cycle_week_calculation():
-    """Test the cycle week calculation helper"""
-    from datetime import datetime
-    
-    # Test the calculation logic directly without cache interference
-    with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
-        # Test Week 0 (July 7, 2025)
-        mock_dt.now.return_value.date.return_value = datetime(2025, 7, 7).date()
-        days_since_start = (datetime(2025, 7, 7).date() - datetime(2025, 7, 7).date()).days
-        expected_week_0 = (days_since_start // 7) % 2
-        assert expected_week_0 == 0
-        
-        # Test Week 1 (July 14, 2025) 
-        mock_dt.now.return_value.date.return_value = datetime(2025, 7, 14).date()
-        days_since_start = (datetime(2025, 7, 14).date() - datetime(2025, 7, 7).date()).days
-        expected_week_1 = (days_since_start // 7) % 2
-        assert expected_week_1 == 1
-        
-        # Test Week 0 again (July 21, 2025)
-        mock_dt.now.return_value.date.return_value = datetime(2025, 7, 21).date()
-        days_since_start = (datetime(2025, 7, 21).date() - datetime(2025, 7, 7).date()).days
-        expected_week_0_again = (days_since_start // 7) % 2
-        assert expected_week_0_again == 0
+    """Verify the cycle week calculation matches the camp schedule"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
 
-    # Add these tests to your existing test_utils.py file
+    assert utils._cycle_week_for_date(anchor) == 0
+    assert utils._cycle_week_for_date(anchor + timedelta(weeks=1)) == 1
+    assert utils._cycle_week_for_date(anchor + timedelta(weeks=2)) == 0
 
 # ─── Tests for cache clearing methods ────────────────────────────────────────
 
@@ -1258,244 +1242,172 @@ def test_error_handling_consistency_across_methods(mock_readonly, mock_cache):
         assert expected_error_prefix in result["error"]
         assert error_message in result["error"]
 
-# ─── Tests for get_current_cycle_week() ──────────────────────────────────────
+# ─── Tests for _cycle_week_for_date() and get_current_cycle_week() ───────────
 
-class MockDateTime:
-    """A proper mock for datetime that returns real datetime objects"""
-    def __init__(self, test_datetime):
-        self.test_datetime = test_datetime
-    
-    def now(self):
-        return self.test_datetime
-    
-    def __call__(self, *args, **kwargs):
-        # Handle calls like datetime(2025, 7, 7)
-        return datetime(*args, **kwargs)
+def test_cycle_week_for_date_week_a_start():
+    """CYCLE_ANCHOR is the first day of Week A (cycle_week=0)"""
+    utils._cycle_week_for_date.cache_clear()
+    assert utils._cycle_week_for_date(utils.CYCLE_ANCHOR.date()) == 0
 
-def test_get_current_cycle_week_basic_calculation():
-    """Test the basic cycle week calculation logic"""
+def test_cycle_week_for_date_week_b_start():
+    """7 days after CYCLE_ANCHOR is the first day of Week B (cycle_week=1)"""
     from datetime import timedelta
-    
-    # Test Week 0 (July 7, 2025 - start date)
-    test_date = datetime(2025, 7, 7)
-    with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_date)):
-        utils.get_current_cycle_week.cache_clear()
-        result = utils.get_current_cycle_week()
-        assert result == 0
-        
-    # Test Week 1 (July 14, 2025 - 7 days later) 
-    test_date = datetime(2025, 7, 14)
-    with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_date)):
-        utils.get_current_cycle_week.cache_clear()
-        result = utils.get_current_cycle_week()
-        assert result == 1
-        
-    # Test Week 0 again (July 21, 2025 - 14 days later)
-    test_date = datetime(2025, 7, 21)
-    with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_date)):
-        utils.get_current_cycle_week.cache_clear()
-        result = utils.get_current_cycle_week()
-        assert result == 0
+    utils._cycle_week_for_date.cache_clear()
+    assert utils._cycle_week_for_date((utils.CYCLE_ANCHOR + timedelta(weeks=1)).date()) == 1
 
-def test_get_current_cycle_week_timezone_consistency():
-    """Test that the function works consistently across different times of day"""
-    test_date = datetime(2025, 7, 14).date()  # Should be Week 1
-    
-    # Test different times of day - all should give same result since we use .date()
-    times_to_test = [
-        datetime.combine(test_date, datetime.min.time()),  # 00:00:00
-        datetime.combine(test_date, datetime.max.time().replace(microsecond=0)),  # 23:59:59
-        datetime(2025, 7, 14, 12, 30, 45),  # Middle of day
-    ]
-    
-    for test_datetime in times_to_test:
-        with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
-            utils.get_current_cycle_week.cache_clear()
-            result = utils.get_current_cycle_week()
-            assert result == 1, f"Failed for time {test_datetime}"
-
-def test_get_current_cycle_week_edge_cases():
-    """Test edge cases around cycle boundaries"""
-    test_cases = [
-        # (date, expected_cycle, description)
-        (datetime(2025, 7, 6), 1, "Day before start"),  # -1 days, (-1//7)%2 = 1 in Python
-        (datetime(2025, 7, 7), 0, "Start date"),        # 0 days = week 0, (0//7)%2 = 0
-        (datetime(2025, 7, 8), 0, "Day after start"),   # 1 day = week 0, (1//7)%2 = 0
-        (datetime(2025, 7, 13), 0, "End of Week 0"),    # 6 days = week 0, (6//7)%2 = 0
-        (datetime(2025, 7, 14), 1, "Start of Week 1"),  # 7 days = week 1, (7//7)%2 = 1
-        (datetime(2025, 7, 20), 1, "End of Week 1"),    # 13 days = week 1, (13//7)%2 = 1
-        (datetime(2025, 7, 21), 0, "Start of Week 0 again"), # 14 days = week 2, (14//7)%2 = 0
-        (datetime(2025, 8, 4), 0, "Week 0 after month boundary"),  # 28 days = week 4, (28//7)%2 = 0
-        (datetime(2025, 8, 11), 1, "Week 1 after month boundary"), # 35 days = week 5, (35//7)%2 = 1
-    ]
-    
-    for test_datetime, expected_cycle, description in test_cases:
-        with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
-            utils.get_current_cycle_week.cache_clear()
-            result = utils.get_current_cycle_week()
-            assert result == expected_cycle, f"{description}: expected {expected_cycle}, got {result}"
-
-def test_get_current_cycle_week_caching_behavior():
-    """Test that the LRU cache works correctly"""
-    test_date = datetime(2025, 7, 14)
-    mock_datetime = MockDateTime(test_date)
-    
-    with patch('backend.bcssm_backend.utils.datetime', mock_datetime):
-        utils.get_current_cycle_week.cache_clear()
-        
-        # First call should calculate
-        result1 = utils.get_current_cycle_week()
-        
-        # Second call should use cache
-        result2 = utils.get_current_cycle_week()
-        
-        # Results should be the same
-        assert result1 == result2 == 1
-
-def test_get_current_cycle_week_long_term_pattern():
-    """Test the cycle pattern over a longer period"""
+def test_cycle_week_for_date_full_camp_schedule():
+    """All 14 days of camp have correct cycle weeks"""
     from datetime import timedelta
-    
-    # Test the pattern for several weeks
-    start_date = datetime(2025, 7, 7)
-    
-    for week_num in range(8):  # Test 8 weeks
-        test_datetime = start_date + timedelta(weeks=week_num)
-        expected_cycle = week_num % 2
-        
-        with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
-            utils.get_current_cycle_week.cache_clear()
-            result = utils.get_current_cycle_week()
-            assert result == expected_cycle, f"Week {week_num} ({test_datetime.date()}): expected {expected_cycle}, got {result}"
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
+    for i in range(14):
+        d = anchor + timedelta(days=i)
+        expected = 0 if i < 7 else 1
+        assert utils._cycle_week_for_date(d) == expected, f"Day {i} ({d}) should be cycle {expected}"
 
-def test_get_current_cycle_week_matches_duty_schedule_calculation():
-    """Test that get_current_cycle_week matches the calculation in get_duty_schedule"""
-    test_dates = [
-        datetime(2025, 7, 7),   # Week 0
-        datetime(2025, 7, 14),  # Week 1
-        datetime(2025, 7, 21),  # Week 0
-        datetime(2025, 7, 28),  # Week 1
-        datetime(2025, 8, 4),   # Week 0
-    ]
-    
-    for current_date in test_dates:
-        # Calculate using the same logic as get_duty_schedule
-        days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
-        expected_cycle = (days_since_cycle_start // 7) % 2
-        
-        # Test our function
-        with patch('backend.bcssm_backend.utils.datetime', MockDateTime(current_date)):
-            utils.get_current_cycle_week.cache_clear()
-            result = utils.get_current_cycle_week()
-            assert result == expected_cycle, f"Date {current_date.date()}: expected {expected_cycle}, got {result}"
-
-def test_get_current_cycle_week_before_start_date():
-    """Test behavior for dates before the cycle start date"""
-    # Test dates before July 7, 2025
+def test_cycle_week_for_date_edge_cases():
+    """Boundary days around week transitions"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
     test_cases = [
-        (datetime(2025, 7, 6), "Day before start"),    # -1 days, (-1//7)%2 = 1 in Python
-        (datetime(2025, 6, 30), "Week before start"),  # -7 days, (-7//7)%2 = 1 in Python
-        (datetime(2025, 6, 23), "Two weeks before"),   # -14 days, (-14//7)%2 = 0 in Python
+        (anchor + timedelta(days=-1), 1, "Day before anchor"),
+        (anchor + timedelta(days=0),  0, "Anchor (Week A start)"),
+        (anchor + timedelta(days=6),  0, "Last day of Week A"),
+        (anchor + timedelta(days=7),  1, "First day of Week B"),
+        (anchor + timedelta(days=13), 1, "Last day of Week B"),
+        (anchor + timedelta(days=14), 0, "Week A again"),
+        (anchor + timedelta(days=28), 0, "Week A after month boundary"),
+        (anchor + timedelta(days=35), 1, "Week B after month boundary"),
     ]
-    
-    for test_datetime, description in test_cases:
-        with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
-            utils.get_current_cycle_week.cache_clear()
-            result = utils.get_current_cycle_week()
-            
-            # Calculate expected result manually
-            days_since_start = (test_datetime.date() - datetime(2025, 7, 7).date()).days
-            expected_cycle = (days_since_start // 7) % 2
-            
-            assert result == expected_cycle, f"{description}: expected {expected_cycle}, got {result}"
+    for d, expected, description in test_cases:
+        result = utils._cycle_week_for_date(d)
+        assert result == expected, f"{description} ({d}): expected {expected}, got {result}"
 
-def test_get_current_cycle_week_cache_info():
-    """Test that the cache info is accessible and reasonable"""
-    # Get reference to the cached function
-    cached_func = utils.get_current_cycle_week
-    
-    # Clear cache first
-    cached_func.cache_clear()
-    
-    # Check initial cache info (suppress pylint warning)
-    info = cached_func.cache_info()  # pylint: disable=too-many-function-args
+def test_cycle_week_for_date_caching_same_date():
+    """Same date hits cache on second call"""
+    utils._cycle_week_for_date.cache_clear()
+    d = utils.CYCLE_ANCHOR.date()
+    utils._cycle_week_for_date(d)
+    utils._cycle_week_for_date(d)
+    info = utils._cycle_week_for_date.cache_info()
+    assert info.hits == 1
+    assert info.misses == 1
+
+def test_cycle_week_for_date_different_dates_independent():
+    """Two different dates each get their own cache entry — the core daily-eviction fix"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    week_a = utils.CYCLE_ANCHOR.date()
+    week_b = (utils.CYCLE_ANCHOR + timedelta(weeks=1)).date()
+
+    assert utils._cycle_week_for_date(week_a) == 0
+    assert utils._cycle_week_for_date(week_b) == 1
+
+    info = utils._cycle_week_for_date.cache_info()
+    assert info.currsize == 2
+    assert info.misses == 2
+
+    # Re-calling each date returns the correct cached value, not stale
+    assert utils._cycle_week_for_date(week_a) == 0
+    assert utils._cycle_week_for_date(week_b) == 1
+    assert utils._cycle_week_for_date.cache_info().hits == 2
+
+def test_cycle_week_for_date_maxsize_eviction():
+    """With maxsize=2, a third distinct date evicts the oldest entry"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
+
+    utils._cycle_week_for_date(anchor)
+    utils._cycle_week_for_date(anchor + timedelta(weeks=1))
+    assert utils._cycle_week_for_date.cache_info().currsize == 2
+
+    utils._cycle_week_for_date(anchor + timedelta(weeks=2))
+    assert utils._cycle_week_for_date.cache_info().currsize == 2  # one was evicted
+
+def test_cycle_week_for_date_long_term_pattern():
+    """Cycle alternates correctly week over week for 8 weeks"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
+    for week_num in range(8):
+        d = anchor + timedelta(weeks=week_num)
+        expected = week_num % 2
+        assert utils._cycle_week_for_date(d) == expected, f"Week {week_num} ({d}): expected {expected}"
+
+def test_cycle_week_for_date_matches_duty_schedule_calculation():
+    """_cycle_week_for_date and get_duty_schedule use identical logic"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
+    test_dates = [anchor + timedelta(weeks=n) for n in range(5)]
+    for d in test_dates:
+        days = (d - anchor).days
+        expected = (days // 7) % 2
+        assert utils._cycle_week_for_date(d) == expected, f"Mismatch for {d}"
+
+def test_cycle_week_for_date_before_anchor():
+    """Dates before CYCLE_ANCHOR follow Python floor-division semantics"""
+    from datetime import timedelta
+    utils._cycle_week_for_date.cache_clear()
+    anchor = utils.CYCLE_ANCHOR.date()
+    test_cases = [
+        anchor + timedelta(days=-1),   # -1 days  → (-1//7)%2 = 1
+        anchor + timedelta(days=-7),   # -7 days  → (-7//7)%2 = 1
+        anchor + timedelta(days=-14),  # -14 days → (-14//7)%2 = 0
+    ]
+    for d in test_cases:
+        days = (d - anchor).days
+        expected = (days // 7) % 2
+        assert utils._cycle_week_for_date(d) == expected, f"Before-anchor mismatch for {d}"
+
+def test_cycle_week_for_date_cache_info():
+    """_cycle_week_for_date has maxsize=2"""
+    utils._cycle_week_for_date.cache_clear()
+    info = utils._cycle_week_for_date.cache_info()
     assert info.currsize == 0
-    assert info.maxsize == 128  # As defined in the decorator
-    
-    # Call function to populate cache
-    with patch('backend.bcssm_backend.utils.datetime', MockDateTime(datetime(2025, 7, 14))):
-        cached_func()
-    
-    # Check cache info after call (suppress pylint warning)
-    info_after = cached_func.cache_info()  # pylint: disable=too-many-function-args
-    assert info_after.currsize == 1
-    assert info_after.hits == 0  # First call is a miss
-    assert info_after.misses == 1
+    assert info.maxsize == 2
+
+    utils._cycle_week_for_date(utils.CYCLE_ANCHOR.date())
+    info = utils._cycle_week_for_date.cache_info()
+    assert info.currsize == 1
+    assert info.misses == 1
+    assert info.hits == 0
+
+def test_get_current_cycle_week_delegates_to_date_helper(monkeypatch):
+    """get_current_cycle_week() passes today's date to _cycle_week_for_date"""
+    captured = []
+
+    def fake_cycle_week(d):
+        captured.append(d)
+        return 99
+
+    monkeypatch.setattr(utils, '_cycle_week_for_date', fake_cycle_week)
+    result = utils.get_current_cycle_week()
+
+    assert result == 99
+    assert len(captured) == 1
+    assert captured[0] == datetime.now().date()
 
 def test_get_current_cycle_week_integration_with_get_user_duty(monkeypatch, mock_readonly, mock_cache):
-    """Test that get_current_cycle_week integrates correctly with get_user_duty"""
-    # Mock datetime for both the main function and get_current_cycle_week
+    """get_current_cycle_week integrates correctly with get_user_duty"""
     FakeDatetime.today_weekday = 0  # Monday
     monkeypatch.setattr(utils, 'datetime', FakeDatetime)
-    
-    # Mock the get_current_cycle_week to return the expected value
     monkeypatch.setattr(utils, 'get_current_cycle_week', lambda: 1)
-    
-    # Set up database response
+
     mock_readonly.return_value = [
         ("Test User", "Test Section", "Leader", "Test Team", "Test Duty")
     ]
-    
-    # Act: Call get_user_duty which should use get_current_cycle_week
+
     result = utils.get_user_duty("Test User")
-    
-    # Assert: Check that the correct parameters were used
+
     sql, params = mock_readonly.call_args[0]
-    assert params['cycle_week'] == 1  # Should be Week 1 for July 14, 2025
-    assert params['day'] == 1  # Monday with corrected calculation: (0 + 1) % 7 = 1
-    
-    # Check that the result is as expected
+    assert params['cycle_week'] == 1
+    assert params['day'] == 1  # Monday: (0 + 1) % 7 = 1
+
     assert result['user'] == "Test User"
     assert result['duty'] == "Test Duty"
-
-def test_get_current_cycle_week_real_calculation():
-    """Test the actual calculation without mocking to ensure it works correctly"""
-    # Manually test the calculation logic
-    start_date = datetime(2025, 7, 7).date()
-    
-    test_cases = [
-        (datetime(2025, 7, 7).date(), 0),   # Day 0, Week 0
-        (datetime(2025, 7, 14).date(), 1),  # Day 7, Week 1
-        (datetime(2025, 7, 21).date(), 0),  # Day 14, Week 0 again
-        (datetime(2025, 7, 28).date(), 1),  # Day 21, Week 1 again
-    ]
-    
-    for test_date, expected_cycle in test_cases:
-        # Calculate manually what the function should return
-        days_since_start = (test_date - start_date).days
-        calculated_cycle = (days_since_start // 7) % 2
-        
-        assert calculated_cycle == expected_cycle, f"Manual calculation failed for {test_date}"
-        
-        # Test with mocked datetime
-        test_datetime = datetime.combine(test_date, datetime.min.time())
-        with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
-            utils.get_current_cycle_week.cache_clear()
-            result = utils.get_current_cycle_week()
-            
-            assert result == expected_cycle, f"Function returned {result}, expected {expected_cycle} for {test_date}"
-
-def test_get_current_cycle_week_specific_monday_july_14():
-    """Test specifically for Monday July 14, 2025 which should be cycle week 1"""
-    test_datetime = datetime(2025, 7, 14, 12, 0, 0)  # Monday July 14, 2025 at noon
-
-    with patch('backend.bcssm_backend.utils.datetime', MockDateTime(test_datetime)):
-        utils.get_current_cycle_week.cache_clear()
-        result = utils.get_current_cycle_week()
-
-        # July 14, 2025 is exactly 7 days after July 7, 2025
-        # (7 // 7) % 2 = 1 % 2 = 1
-        assert result == 1, f"July 14, 2025 should be cycle week 1, got {result}"
 
 
 # ─── Tests for get_feedback_by_date ─────────────────────────────────────────
