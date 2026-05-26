@@ -363,7 +363,7 @@ export default function DutiesPage() {
                                       if (dateOnly === "2026-07-04" || dateOnly === "2026-07-05") {
                                         return <span className="week-badge-small prep-week">Prep Week</span>;
                                       } else if (dateOnly === "2026-07-11") {
-                                        return <span className="week-badge-small prep-week">FREEDOM</span>;;
+                                        return <span className="week-badge-small prep-week">FREEDOM</span>;
                                       } else if (day.week === "Week A" || day.week === "Week B") {
                                         return (
                                           <span className={`week-badge-small ${day.week === "Week A" ? "week-a" : "week-b"}`}>

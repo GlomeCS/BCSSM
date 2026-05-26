@@ -1402,7 +1402,7 @@ def test_get_current_cycle_week_integration_with_get_user_duty(monkeypatch, mock
 
     result = utils.get_user_duty("Test User")
 
-    sql, params = mock_readonly.call_args[0]
+    _sql, params = mock_readonly.call_args[0]
     assert params['cycle_week'] == 1
     assert params['day'] == 1  # Monday: (0 + 1) % 7 = 1
 
