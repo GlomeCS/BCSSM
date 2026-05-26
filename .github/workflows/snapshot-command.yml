@@ -4,9 +4,7 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: read-all
 
 jobs:
   update-snapshots:
@@ -15,6 +13,9 @@ jobs:
       startsWith(github.event.comment.body, '/update-snapshots') &&
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     defaults:
       run:
         working-directory: frontend
@@ -30,6 +31,7 @@ jobs:
               pull_number: context.issue.number,
             });
             core.setOutput('head_ref', pr.data.head.ref);
+            core.setOutput('head_sha', pr.data.head.sha);
             core.setOutput('is_fork', String(
               pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`
             ));
@@ -50,7 +52,7 @@ jobs:
         if: steps.pr.outputs.is_fork == 'false'
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.pr.outputs.head_ref }}
+          ref: ${{ steps.pr.outputs.head_sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
@@ -80,12 +82,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Scoped add is the guard that makes [skip ci] safe — only snapshot
+          # files are staged, so no code changes can bypass CI via this path.
           git add frontend/tests/e2e/snapshots/
           if git diff --staged --quiet; then
             echo "no_changes=true" >> $GITHUB_OUTPUT
           else
             git commit -m "chore: update Playwright visual snapshots [skip ci]"
-            git push
+            git push origin HEAD:${{ steps.pr.outputs.head_ref }}
             echo "no_changes=false" >> $GITHUB_OUTPUT
           fi
 
