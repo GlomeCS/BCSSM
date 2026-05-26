@@ -193,7 +193,7 @@ def test_get_duty_schedule_success_with_session(client, patch_duties_helpers):
     ph = patch_duties_helpers
     mock_schedule = [
         {
-            "date": "2025-07-05",
+            "date": "2026-07-04",
             "day_name": "Saturday",
             "week": "Week A",
             "duties": [
@@ -278,7 +278,7 @@ def test_get_duty_schedule_complex_schedule_data(client, patch_duties_helpers):
     ph = patch_duties_helpers
     mock_schedule = [
         {
-            "date": "2025-07-05",
+            "date": "2026-07-04",
             "day_name": "Saturday",
             "week": "Week A",
             "duties": [
@@ -303,7 +303,7 @@ def test_get_duty_schedule_complex_schedule_data(client, patch_duties_helpers):
             ]
         },
         {
-            "date": "2025-07-06",
+            "date": "2026-07-05",
             "day_name": "Sunday",
             "week": "Week A",
             "duties": [
@@ -325,9 +325,9 @@ def test_get_duty_schedule_complex_schedule_data(client, patch_duties_helpers):
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data["schedule"]) == 2
-    assert data["schedule"][0]["date"] == "2025-07-05"
+    assert data["schedule"][0]["date"] == "2026-07-04"
     assert len(data["schedule"][0]["duties"]) == 2
-    assert data["schedule"][1]["date"] == "2025-07-06"
+    assert data["schedule"][1]["date"] == "2026-07-05"
     assert len(data["schedule"][1]["duties"]) == 1
 
 
@@ -336,7 +336,7 @@ def test_get_duty_schedule_two_week_period(client, patch_duties_helpers):
     mock_schedule = []
     for i in range(14):
         day_data = {
-            "date": f"2025-07-{5+i:02d}",
+            "date": f"2026-07-{4+i:02d}",
             "day_name": "Saturday",
             "week": "Week A" if i < 7 else "Week B",
             "duties": []
@@ -352,8 +352,8 @@ def test_get_duty_schedule_two_week_period(client, patch_duties_helpers):
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data["schedule"]) == 14
-    assert data["schedule"][0]["date"] == "2025-07-05"
-    assert data["schedule"][13]["date"] == "2025-07-18"
+    assert data["schedule"][0]["date"] == "2026-07-04"
+    assert data["schedule"][13]["date"] == "2026-07-17"
 
 
 # ─── 5) Tests for username handling edge cases ─────────────────────────────────
@@ -420,7 +420,7 @@ def test_logging_on_exception(client, patch_duties_helpers, caplog):
 def test_both_endpoints_with_same_user(client, patch_duties_helpers):
     ph = patch_duties_helpers
     ph["todays_duties"].return_value = [{"id": "123", "name": "Today's duty"}]
-    ph["duty_schedule"].return_value = [{"date": "2025-07-05", "duties": []}]
+    ph["duty_schedule"].return_value = [{"date": "2026-07-04", "duties": []}]
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
@@ -431,7 +431,7 @@ def test_both_endpoints_with_same_user(client, patch_duties_helpers):
 
     resp2 = client.get("/api/duties/schedule")
     assert resp2.status_code == 200
-    assert resp2.get_json()["schedule"][0]["date"] == "2025-07-05"
+    assert resp2.get_json()["schedule"][0]["date"] == "2026-07-04"
 
     ph["todays_duties"].assert_called_once_with("Alice")
     ph["duty_schedule"].assert_called_once()

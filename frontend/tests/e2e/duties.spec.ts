@@ -25,16 +25,16 @@ const TODAY_DUTIES = [
 const SCHEDULE = {
   schedule: [
     {
-      date: '2025-07-05',
+      date: '2026-07-04',
       day_name: 'Saturday',
-      week: 'Prep',
+      week: 'Week A',
       duties: [
         { duty_name: 'Setup', duty_description: 'Set up', team_name: 'Duty Team 1', team_members: [] },
         { duty_name: 'Teardown', duty_description: 'Pack away', team_name: 'Duty Team 2', team_members: [] },
       ],
     },
     {
-      date: '2025-07-07',
+      date: '2026-07-06',
       day_name: 'Monday',
       week: 'Week A',
       duties: [
@@ -43,7 +43,7 @@ const SCHEDULE = {
       ],
     },
     {
-      date: '2025-07-14',
+      date: '2026-07-13',
       day_name: 'Monday',
       week: 'Week B',
       duties: [
@@ -140,7 +140,7 @@ test('switching to Schedule tab shows the schedule table', async ({ page }) => {
   await expect(page.getByRole('columnheader', { name: 'Setup' })).toBeVisible();
   await expect(page.getByRole('columnheader', { name: 'Teardown' })).toBeVisible();
   // Date rows
-  await expect(page.getByText(/Sat.*5.*Jul/i)).toBeVisible();
+  await expect(page.getByText(/Sat.*4.*Jul/i)).toBeVisible();
 });
 
 test('duties page visual snapshot - today tab', async ({ page }) => {

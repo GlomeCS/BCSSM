@@ -40,11 +40,11 @@ def init_duties_routes(app):
     @app.route('/api/duties/schedule', methods=['GET'])
     def get_duty_schedule_route():
         """
-        Returns JSON object with 2-week duty schedule starting from July 5th, 2025:
+        Returns JSON object with 2-week duty schedule starting from July 4th, 2026:
         {
           "schedule": [
             {
-              "date": "2025-07-05",
+              "date": "2026-07-04",
               "day_name": "Saturday",
               "week": "Week A",
               "duties": [

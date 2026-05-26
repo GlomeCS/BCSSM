@@ -16,12 +16,15 @@ from backend.bcssm_backend.exceptions import ValidationError, CacheError, Authen
 
 logger = logging.getLogger(__name__)
 
-@lru_cache(maxsize=128)
-def get_current_cycle_week():
-    """Pre-calculate cycle week to avoid repeated computation"""
-    current_date = datetime.now()  # or datetime.utcnow() if server uses UTC
-    days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
+CYCLE_ANCHOR = datetime(2026, 7, 4)
+
+@lru_cache(maxsize=2)
+def _cycle_week_for_date(target_date):
+    days_since_cycle_start = (target_date - CYCLE_ANCHOR.date()).days
     return (days_since_cycle_start // 7) % 2
+
+def get_current_cycle_week():
+    return _cycle_week_for_date(datetime.now().date())
 
 def generate_cache_key(*args, **kwargs):
     """Generate a consistent cache key from function arguments"""
@@ -197,17 +200,16 @@ def _duty_schedule_key():
 
 @cached_result(_duty_schedule_key, 7200, error_ttl=60, on_error=[])
 def get_duty_schedule():
-    start_date = datetime(2025, 7, 5)
-    
+    start_date = CYCLE_ANCHOR
+
     # Pre-calculate all day/cycle combinations we need
     day_cycle_combinations = []
     date_to_info = {}
-    
+
     for i in range(14):
         current_date = start_date + timedelta(days=i)
         db_day = (current_date.weekday() + 1) % 7  # Adjust to Sunday=0
-        days_since_cycle_start = (current_date.date() - datetime(2025, 7, 7).date()).days
-        cycle_week = (days_since_cycle_start // 7) % 2
+        cycle_week = _cycle_week_for_date(current_date.date())
         
         day_cycle_combinations.append((db_day, cycle_week))
         date_to_info[current_date.date()] = {
