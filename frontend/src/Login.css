@@ -312,6 +312,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .login-container,
+  .login-header::before,
   .login-form .loading-spinner,
   .button-spinner,
   .login-btn {

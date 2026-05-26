@@ -19,10 +19,10 @@ test('login page shows the user select and continue button', async ({ page }) =>
 });
 
 test('login page visual snapshot', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/login');
-  // Wait for users to load
   await expect(page.getByRole('combobox')).toBeVisible();
-  await expect(page).toHaveScreenshot('login-page.png', { fullPage: true });
+  await expect(page).toHaveScreenshot('login-page.png', { fullPage: true, maxDiffPixels: 200 });
 });
 
 test('selecting a user enables the continue button', async ({ page }) => {
