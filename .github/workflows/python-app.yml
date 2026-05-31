@@ -76,6 +76,15 @@ jobs:
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
+            const { data: { artifacts } } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            const artifact = artifacts.find(a => a.name === 'snapshot-diffs');
+            const artifactUrl = artifact
+              ? `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}/artifacts/${artifact.id}`
+              : `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -83,7 +92,7 @@ jobs:
               body: [
                 '### Snapshot mismatch detected',
                 '',
-                'Visual snapshot tests failed. Download the **snapshot-diffs** artifact from this run to review the changes.',
+                `Visual snapshot tests failed. [Download the **snapshot-diffs** artifact](${artifactUrl}) to review the changes.`,
                 '',
                 'If the changes are **intentional**, comment `/update-snapshots` to regenerate and commit updated snapshots to this branch.',
                 '',

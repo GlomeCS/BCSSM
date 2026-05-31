@@ -94,7 +94,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add frontend/tests/e2e/snapshots/
-          git commit -m "chore: update Playwright visual snapshots [skip ci]"
+          git commit -m "chore: update Playwright visual snapshots"
           git push origin "HEAD:${HEAD_REF}"
 
       - name: Post result comment
