@@ -4,7 +4,6 @@ import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import lru_cache
-import hashlib
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -25,11 +24,6 @@ def _cycle_week_for_date(target_date):
 
 def get_current_cycle_week():
     return _cycle_week_for_date(datetime.now().date())
-
-def generate_cache_key(*args, **kwargs):
-    """Generate a consistent cache key from function arguments"""
-    key_data = str(args) + str(sorted(kwargs.items()))
-    return hashlib.md5(key_data.encode()).hexdigest()
 
 def execute_readonly_query(query, params=None, silent=False):
     """

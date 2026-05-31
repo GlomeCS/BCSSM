@@ -549,6 +549,70 @@ def test_update_user_db_error(client, patch_helpers):
     assert data["success"] is False
 
 
+def test_validate_params_post_missing_param(app):
+    """validate_params checks POST JSON body (lines 28-30) for required params."""
+    from flask import jsonify
+    from backend.bcssm_backend.routes.users import validate_params
+
+    @validate_params('required_field')
+    def dummy():
+        return jsonify({"ok": True}), 200
+
+    with app.test_request_context('/test', method='POST', json={}):
+        resp = dummy()
+        assert resp[1] == 400
+        data = resp[0].get_json()
+        assert "Missing parameters" in data["error"]
+        assert "required_field" in data["error"]
+
+
+def test_validate_params_post_present(app):
+    """validate_params POST path passes through when required param is in JSON body."""
+    from flask import jsonify
+    from backend.bcssm_backend.routes.users import validate_params
+
+    @validate_params('required_field')
+    def dummy():
+        return jsonify({"ok": True}), 200
+
+    with app.test_request_context('/test', method='POST', json={'required_field': 'value'}):
+        resp = dummy()
+        assert resp[1] == 200
+
+
+def test_inject_user_state_cache_hit(app, patch_helpers):
+    """Context processor returns cached data when cache.get returns user data (lines 313-314)."""
+    ph = patch_helpers
+    ph["cache"].get.return_value = {'section_name': 'Minis', 'is_leader': True, 'id': 42}
+
+    with app.test_request_context('/'):
+        from flask import session
+        session['user_name'] = 'TestUser'
+        inject_func = next(
+            (p for p in app.template_context_processors.get(None, [])
+             if p.__name__ == 'inject_user_state'), None
+        )
+        result = inject_func()
+        assert result['is_logged_in'] is True
+        assert result['user_section'] == 'Minis'
+        assert result['is_leader'] is True
+        assert result['user_id'] == 42
+
+
+def test_inject_user_state_not_logged_in(app, patch_helpers):
+    """Context processor returns is_logged_in=False when no user in request (line 331)."""
+    with app.test_request_context('/'):
+        inject_func = next(
+            (p for p in app.template_context_processors.get(None, [])
+             if p.__name__ == 'inject_user_state'), None
+        )
+        result = inject_func()
+        assert result['is_logged_in'] is False
+        assert result['user_section'] is None
+        assert result['is_leader'] is False
+        assert result['user_id'] is None
+
+
 def test_inject_user_state_redis_error(app, patch_helpers):
     """Context processor falls back to session when cache.get raises RedisError."""
     ph = patch_helpers
