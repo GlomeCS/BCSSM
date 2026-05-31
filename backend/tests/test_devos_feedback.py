@@ -191,6 +191,34 @@ def test_edit_unauthenticated(client):
     assert "Invalid user" in data["error"]
 
 
+def test_edit_feedback_too_long(client):
+    """Feedback over 140 chars → 400."""
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "x" * 141})
+    assert resp.status_code == 400
+    assert "140 characters" in resp.get_json()["error"]
+
+
+def test_edit_feedback_exactly_140(client, mock_write):
+    """Feedback exactly 140 chars is accepted."""
+    def side_effect(query, params=None):
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None
+
+    mock_write.side_effect = side_effect
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "x" * 140})
+    assert resp.status_code == 200
+
+
 def test_edit_authenticated_via_session_username(client, mock_write):
     """Edit with session user_name (resolved to user_id via DB lookup)."""
     def side_effect(query, params=None):

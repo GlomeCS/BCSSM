@@ -68,6 +68,9 @@ def init_feedback_routes(app):
         if not date_str or not section_name or new_feedback is None:
             return jsonify({'error': 'Missing date, section, or feedback'}), 400
 
+        if len(new_feedback) > 140:
+            return jsonify({'error': 'Feedback must be 140 characters or fewer'}), 400
+
         try:
             save_devos_feedback(section_name, date_str, new_feedback, editor_id)
             return jsonify({'success': True}), 200
