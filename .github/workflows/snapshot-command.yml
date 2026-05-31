@@ -1,0 +1,73 @@
+name: Snapshot Update Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: read-all
+
+jobs:
+  update-snapshots:
+    if: |
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/update-snapshots') &&
+      contains(fromJSON('["OWNER", "MEMBER"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      pull-requests: write
+    steps:
+      - name: Get PR details
+        id: pr
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('head_ref', pr.data.head.ref);
+            core.setOutput('head_sha', pr.data.head.sha);
+            core.setOutput('is_fork', String(
+              pr.data.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`
+            ));
+
+      - name: Refuse fork PR
+        if: steps.pr.outputs.is_fork == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'Cannot auto-update snapshots for fork PRs — CI cannot push to a forked repository.\n\nPlease run `npx playwright test --grep "visual snapshot" --update-snapshots` locally and push the updated snapshot files.',
+            });
+
+      - name: Dispatch snapshot generation
+        if: steps.pr.outputs.is_fork == 'false'
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'snapshot-generate.yml',
+              ref: 'develop',
+              inputs: {
+                pr_number: process.env.PR_NUMBER,
+                head_sha: process.env.HEAD_SHA,
+                head_ref: process.env.HEAD_REF,
+              },
+            });
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'Regenerating snapshots… I\'ll post an update when done.',
+            });
