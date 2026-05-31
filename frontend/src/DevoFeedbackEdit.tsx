@@ -60,6 +60,8 @@ const DevoFeedbackEdit: React.FC = () => {
     return () => controller.abort();
   }, [currentUser, dateStr, section]);
 
+  const MAX_CHARS = 140;
+
   const handleFeedbackChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setFeedback(value);
@@ -72,6 +74,11 @@ const DevoFeedbackEdit: React.FC = () => {
 
     if (!feedback.trim()) {
       setError('Please enter some feedback before saving');
+      return;
+    }
+
+    if (feedback.length > MAX_CHARS) {
+      setError(`Feedback must be ${MAX_CHARS} characters or fewer`);
       return;
     }
 
@@ -167,16 +174,17 @@ const DevoFeedbackEdit: React.FC = () => {
                 <textarea
                   id="feedbackArea"
                   className="feedback-textarea"
-                  rows={12}
+                  rows={6}
                   required
+                  maxLength={MAX_CHARS}
                   value={feedback}
                   onChange={handleFeedbackChange}
                   placeholder={`Share your praise and prayer points about the ${section}' day on ${formatDate(dateStr)}...`}
                   disabled={saving}
                 />
                 <div className="character-counter">
-                  <span className={characterCount > 1000 ? 'warning' : ''}>
-                    {characterCount.toLocaleString()} characters
+                  <span className={characterCount >= MAX_CHARS ? 'at-limit' : characterCount >= MAX_CHARS * 0.85 ? 'warning' : ''}>
+                    {characterCount} / {MAX_CHARS}
                   </span>
                 </div>
               </div>

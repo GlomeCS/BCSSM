@@ -119,24 +119,6 @@ def test_route_query_param_rejected(client, patch_helpers):
 
 
 def test_route_with_date_and_leader_via_session(client, patch_helpers):
-    """Test route with username from session."""
-    fake_fb, fake_ui = patch_helpers
-    fake_fb.return_value = ({"X": "Y"}, None)
-    fake_ui.return_value = {"name": "A", "role": "Section Leader", "section": "S"}
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "A"
-
-    date_str = "2025-06-07"
-    resp = client.get(f"/api/devos-feedback?date={quote(date_str)}")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data["date"] == date_str
-    assert data["feedback"] == {"X": "Y"}
-    assert data["user"] == {"name": "A", "role": "Section Leader", "section": "S"}
-    assert data["is_leader"] is True
-
-def test_route_with_date_and_leader_via_session(client, patch_helpers):
     """Test route with username via session (backward compatibility)"""
     fake_fb, fake_ui = patch_helpers
     fake_fb.return_value = ({"X": "Y"}, None)
@@ -189,6 +171,29 @@ def test_edit_unauthenticated(client):
     assert resp.status_code == 400
     data = resp.get_json()
     assert "Invalid user" in data["error"]
+
+
+def test_edit_feedback_too_long(client):
+    """Feedback over 140 chars → 400."""
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "x" * 141})
+    assert resp.status_code == 400
+    assert "140 characters" in resp.get_json()["error"]
+
+
+def test_edit_feedback_exactly_140(client, mock_write):
+    """Feedback exactly 140 chars is accepted."""
+    mock_write.return_value = [(5,)]
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "x" * 140})
+    assert resp.status_code == 200
 
 
 def test_edit_authenticated_via_session_username(client, mock_write):

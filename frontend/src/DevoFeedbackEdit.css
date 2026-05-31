@@ -176,6 +176,11 @@
   font-weight: 600;
 }
 
+.character-counter .at-limit {
+  color: var(--color-error, #dc2626);
+  font-weight: 700;
+}
+
 /* ── Form actions ───────────────────────────────────────────────────────── */
 
 .form-actions {
