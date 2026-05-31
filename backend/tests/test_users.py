@@ -592,6 +592,7 @@ def test_inject_user_state_cache_hit(app, patch_helpers):
             (p for p in app.template_context_processors.get(None, [])
              if p.__name__ == 'inject_user_state'), None
         )
+        assert inject_func is not None, "inject_user_state context processor not found"
         result = inject_func()
         assert result['is_logged_in'] is True
         assert result['user_section'] == 'Minis'
@@ -606,6 +607,7 @@ def test_inject_user_state_not_logged_in(app, patch_helpers):
             (p for p in app.template_context_processors.get(None, [])
              if p.__name__ == 'inject_user_state'), None
         )
+        assert inject_func is not None, "inject_user_state context processor not found"
         result = inject_func()
         assert result['is_logged_in'] is False
         assert result['user_section'] is None

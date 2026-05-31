@@ -183,7 +183,7 @@ const DevoFeedbackEdit: React.FC = () => {
                   disabled={saving}
                 />
                 <div className="character-counter">
-                  <span className={characterCount >= MAX_CHARS ? 'at-limit' : characterCount > MAX_CHARS * 0.85 ? 'warning' : ''}>
+                  <span className={characterCount >= MAX_CHARS ? 'at-limit' : characterCount >= MAX_CHARS * 0.85 ? 'warning' : ''}>
                     {characterCount} / {MAX_CHARS}
                   </span>
                 </div>
@@ -202,7 +202,7 @@ const DevoFeedbackEdit: React.FC = () => {
               <button
                 type="submit"
                 className="save-btn"
-                disabled={saving || !feedback.trim() || characterCount > MAX_CHARS}
+                disabled={saving || !feedback.trim()}
               >
                 {saving ? (
                   <>
