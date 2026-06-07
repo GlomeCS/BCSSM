@@ -140,6 +140,8 @@ jobs:
         coverage run -m pytest --junitxml=pytest-results.xml
         coverage report
         coverage xml
+    - name: Import Codecov GPG key
+      run: gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 27034E7FDB850E0BBC2C62FF806BB28AED779869
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v5
       with:
