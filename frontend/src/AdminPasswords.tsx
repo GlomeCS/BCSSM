@@ -106,10 +106,11 @@ function AdminPasswords() {
         setSetError((data as { error?: string }).error || "Failed to set password.");
         return;
       }
-      setSuccessMessage(`Password set for ${selectedUser}.`);
+      const savedUser = selectedUser;
       setNewPassword("");
       setSelectedUser("");
       await fetchUsers(adminSecret);
+      setSuccessMessage(`Password set for ${savedUser}.`);
     } catch {
       setSetError("Network error. Is the server running?");
     } finally {

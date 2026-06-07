@@ -1617,3 +1617,44 @@ def test_evict_user_login_cache_deletes_correct_key(mock_cache):
 def test_evict_user_login_cache_swallows_redis_error(mock_cache):
     mock_cache.delete.side_effect = RedisError("Redis down")
     utils.evict_user_login_cache("Alice")  # must not raise
+
+
+# ─── get_user_role ────────────────────────────────────────────────────────────
+def test_get_user_role_found(mock_readonly):
+    mock_readonly.return_value = [("Admin",)]
+    result = utils.get_user_role("Harrison")
+    assert result == "Admin"
+    assert mock_readonly.call_args.kwargs.get("silent") is True
+
+
+def test_get_user_role_not_found(mock_readonly):
+    mock_readonly.return_value = []
+    result = utils.get_user_role("Ghost")
+    assert result is None
+
+
+# ─── get_all_users_password_status ───────────────────────────────────────────
+def test_get_all_users_password_status(mock_readonly):
+    mock_readonly.return_value = [("Alice", True), ("Bob", False)]
+    result = utils.get_all_users_password_status()
+    assert result == [
+        {"name": "Alice", "has_password": True},
+        {"name": "Bob", "has_password": False},
+    ]
+
+
+# ─── set_user_password ────────────────────────────────────────────────────────
+def test_set_user_password_found(mock_db_session):
+    mock_result = MagicMock()
+    mock_result.returns_rows = True
+    mock_result.fetchall.return_value = [(1,)]
+    mock_db_session.execute.return_value = mock_result
+    assert utils.set_user_password("Alice", "$2b$12$hash") is True
+
+
+def test_set_user_password_not_found(mock_db_session):
+    mock_result = MagicMock()
+    mock_result.returns_rows = True
+    mock_result.fetchall.return_value = []
+    mock_db_session.execute.return_value = mock_result
+    assert utils.set_user_password("Ghost", "$2b$12$hash") is False
