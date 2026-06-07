@@ -643,7 +643,7 @@ def test_api_login_success(client, patch_helpers):
         "section_name": "Minis", "is_leader": True,
     }
 
-    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    resp = client.post("/api/auth/login", json={"user_name": "Alice", "password": "secret123"})
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["ok"] is True
@@ -664,7 +664,7 @@ def test_api_login_calls_cache_user_login(client, patch_helpers):
             "section_name": "Seniors", "is_leader": False}
     ph["authenticate_user"].return_value = user
 
-    client.post("/api/auth/login", json={"user_name": "Bob"})
+    client.post("/api/auth/login", json={"user_name": "Bob", "password": "secret123"})
 
     ph["cache_user_login"].assert_called_once_with(user)
 
@@ -677,7 +677,7 @@ def test_api_login_name_with_apostrophe(client, patch_helpers):
         "section_name": "Minis", "is_leader": False,
     }
 
-    resp = client.post("/api/auth/login", json={"user_name": "O'Reilly"})
+    resp = client.post("/api/auth/login", json={"user_name": "O'Reilly", "password": "secret123"})
     assert resp.status_code == 200
 
     called_with = ph["authenticate_user"].call_args[0][0]
@@ -691,14 +691,21 @@ def test_api_login_missing_user_name(client, patch_helpers):
     assert "user_name required" in resp.get_json()["error"]
 
 
+def test_api_login_missing_password(client, patch_helpers):
+    """POST body without password → 400."""
+    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    assert resp.status_code == 400
+    assert "password required" in resp.get_json()["error"]
+
+
 def test_api_login_invalid_user(client, patch_helpers):
     """authenticate_user raises AuthenticationError → 401."""
     ph = patch_helpers
     ph["authenticate_user"].side_effect = AuthenticationError("Invalid user")
 
-    resp = client.post("/api/auth/login", json={"user_name": "Ghost"})
+    resp = client.post("/api/auth/login", json={"user_name": "Ghost", "password": "secret123"})
     assert resp.status_code == 401
-    assert "Invalid user" in resp.get_json()["error"]
+    assert "Invalid credentials" in resp.get_json()["error"]
 
 
 def test_api_login_db_error(client, patch_helpers):
@@ -706,7 +713,7 @@ def test_api_login_db_error(client, patch_helpers):
     ph = patch_helpers
     ph["authenticate_user"].side_effect = SQLAlchemyError("db down")
 
-    resp = client.post("/api/auth/login", json={"user_name": "Alice"})
+    resp = client.post("/api/auth/login", json={"user_name": "Alice", "password": "secret123"})
     assert resp.status_code == 500
     assert "internal error" in resp.get_json()["error"].lower()
 
@@ -719,7 +726,7 @@ def test_api_login_non_leader_role(client, patch_helpers):
         "section_name": "Minis", "is_leader": False,
     }
 
-    resp = client.post("/api/auth/login", json={"user_name": "Dave"})
+    resp = client.post("/api/auth/login", json={"user_name": "Dave", "password": "secret123"})
     assert resp.status_code == 200
     assert resp.get_json()["is_leader"] is False
 

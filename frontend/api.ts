@@ -37,8 +37,8 @@ export const getCurrentUser = (): string | null => {
     });
   };
   
-  export const login = (userName: string): Promise<Response> => {
-    return apiPost('/api/auth/login', { user_name: userName });
+  export const login = (userName: string, password: string): Promise<Response> => {
+    return apiPost('/api/auth/login', { user_name: userName, password });
   };
 
   export const logout = async (): Promise<void> => {

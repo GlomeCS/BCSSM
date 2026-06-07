@@ -1,9 +1,12 @@
+import hmac
 import logging
 import os
 import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import lru_cache
+
+import bcrypt
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -626,10 +629,10 @@ def get_health_status() -> dict:
     return health
 
 
-def authenticate_user(user_name: str) -> dict:
-    """Validate user_name against DB and return user dict. Raises AuthenticationError if not found."""
+def authenticate_user(user_name: str, password: str) -> dict:
+    """Validate credentials against DB. Raises AuthenticationError on any failure."""
     rows = execute_readonly_query(
-        "SELECT u.id, u.name, u.role, COALESCE(s.name, 'Unassigned') AS section_name "
+        "SELECT u.id, u.name, u.role, COALESCE(s.name, 'Unassigned') AS section_name, u.password_hash "
         "FROM users u "
         "LEFT JOIN sections s ON u.section_id = s.id "
         "WHERE u.name = :user_name",
@@ -637,8 +640,12 @@ def authenticate_user(user_name: str) -> dict:
         silent=True,
     )
     if not rows:
-        raise AuthenticationError("Invalid user")
-    user_id, name, role, section_name = rows[0]
+        raise AuthenticationError("Invalid credentials")
+    user_id, name, role, section_name, password_hash = rows[0]
+    if not password_hash:
+        raise AuthenticationError("Invalid credentials")
+    if not bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8")):
+        raise AuthenticationError("Invalid credentials")
     return {
         "id": user_id,
         "name": name,

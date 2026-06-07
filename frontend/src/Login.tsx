@@ -6,6 +6,7 @@ import "./Login.css";
 function Login() {
   const [users, setUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<string>("");
@@ -43,12 +44,16 @@ function Login() {
       setError("Please select a user!");
       return;
     }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
 
     setIsLoading(true);
     setError("");
 
     try {
-      const response = await login(selectedUser);
+      const response = await login(selectedUser, password);
 
       if (!response.ok) {
         throw new Error(`Server error: ${response.status}`);
@@ -111,7 +116,7 @@ function Login() {
               <span className="label-icon">👤</span>
               Choose User
             </label>
-            
+
             {isLoadingUsers ? (
               <div className="loading-container">
                 <div className="loading-spinner"></div>
@@ -124,6 +129,7 @@ function Login() {
                   value={selectedUser}
                   onChange={(e) => {
                     setSelectedUser(e.target.value);
+                    setPassword("");
                     setError("");
                   }}
                   disabled={isLoading}
@@ -144,11 +150,33 @@ function Login() {
             )}
           </div>
 
+          {selectedUser && (
+            <div className="form-group">
+              <label className="form-label">
+                <span className="label-icon">🔒</span>
+                Password
+              </label>
+              <input
+                className="password-input"
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="Enter your password"
+                disabled={isLoading}
+                autoFocus
+              />
+            </div>
+          )}
+
           <div className="form-actions">
             <button
               className="login-btn"
               onClick={handleLogin}
-              disabled={!selectedUser || isLoading || isLoadingUsers}
+              disabled={!selectedUser || !password || isLoading || isLoadingUsers}
             >
               {isLoading ? (
                 <>

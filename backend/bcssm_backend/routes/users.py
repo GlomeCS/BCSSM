@@ -142,12 +142,15 @@ def init_users_routes(app):
         """Establish a server-side session for the React login flow."""
         data = request.json or {}
         user_name = (data.get('user_name') or '').strip()
+        password = data.get('password') or ''
         if not user_name:
             return jsonify({'error': 'user_name required'}), 400
+        if not password:
+            return jsonify({'error': 'password required'}), 400
         try:
-            user = authenticate_user(user_name)
+            user = authenticate_user(user_name, password)
         except AuthenticationError:
-            return jsonify({'error': 'Invalid user'}), 401
+            return jsonify({'error': 'Invalid credentials'}), 401
         except SQLAlchemyError as e:
             app.logger.error("Login DB error for %s: %s", user_name, e)
             return jsonify({'error': 'An internal error has occurred.'}), 500
@@ -155,6 +158,7 @@ def init_users_routes(app):
             'user_name': user['name'],
             'user_id': user['id'],
             'user_section': user['section_name'],
+            'user_role': user['role'],
             'is_leader': user['is_leader'],
         })
         cache_user_login(user)

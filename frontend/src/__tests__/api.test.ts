@@ -121,19 +121,20 @@ describe('login', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('POSTs to /api/auth/login with the supplied username', async () => {
+  it('POSTs to /api/auth/login with the supplied username and password', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
-    await login('Alice');
+    await login('Alice', 'secret123');
     const [url, options] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe('/api/auth/login');
     expect(options?.method).toBe('POST');
     const body = JSON.parse(options?.body as string);
     expect(body.user_name).toBe('Alice');
+    expect(body.password).toBe('secret123');
   });
 
   it('sends credentials: include so the session cookie is accepted', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response('{}'));
-    await login('Alice');
+    await login('Alice', 'secret123');
     const [, options] = vi.mocked(fetch).mock.calls[0];
     expect(options?.credentials).toBe('include');
   });

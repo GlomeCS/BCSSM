@@ -1,7 +1,9 @@
+import hmac
 import os
 import logging
 
-from flask import request, jsonify
+import bcrypt
+from flask import request, jsonify, session
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
@@ -10,6 +12,7 @@ from backend.bcssm_backend.exceptions import BaseError, CacheError
 from backend.bcssm_backend.utils import (
     clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
     get_cache_status, get_cache_info, _redact_redis_url,
+    execute_query, execute_readonly_query,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +64,81 @@ def init_admin_routes(app):
     @app.route("/api/admin/cache/info", methods=['GET'])
     def cache_info():
         return jsonify(get_cache_info())
+
+    def _is_authorized_admin():
+        """Returns True if the request carries a valid admin credential.
+
+        Accepts either:
+        - a logged-in session whose user has role 'Admin' (fast path), or
+        - a session with a user_name whose DB role is 'Admin' (handles stale sessions
+          created before user_role was added to the session), or
+        - a matching X-Admin-Secret header (bootstrap / out-of-band access).
+        """
+        if session.get('user_role') == 'Admin':
+            return True
+        user_name = session.get('user_name')
+        if user_name:
+            try:
+                rows = execute_readonly_query(
+                    "SELECT role FROM users WHERE name = :name",
+                    {'name': user_name},
+                    silent=True,
+                )
+                if rows and rows[0][0] == 'Admin':
+                    session['user_role'] = 'Admin'
+                    return True
+            except SQLAlchemyError:
+                pass
+        admin_secret = os.getenv('ADMIN_SECRET', '').strip()
+        provided = request.headers.get('X-Admin-Secret', '').strip()
+        if not admin_secret:
+            logger.warning("Admin endpoint called but ADMIN_SECRET env var is not set")
+            return False
+        if not provided:
+            logger.warning("Admin endpoint called with no X-Admin-Secret header")
+            return False
+        result = hmac.compare_digest(provided, admin_secret)
+        if not result:
+            logger.warning("Admin endpoint called with incorrect X-Admin-Secret header")
+        return result
+
+    @app.route("/api/admin/passwords-status", methods=['GET'])
+    def passwords_status():
+        if not _is_authorized_admin():
+            return jsonify({'error': 'Unauthorized'}), 403
+        try:
+            rows = execute_readonly_query(
+                "SELECT u.name, (u.password_hash IS NOT NULL) AS has_password "
+                "FROM users u ORDER BY u.name"
+            )
+            return jsonify({'users': [{'name': r[0], 'has_password': bool(r[1])} for r in rows]}), 200
+        except SQLAlchemyError as e:
+            logger.error("Failed to fetch password status: %s", e)
+            return jsonify({'error': 'Database error'}), 500
+
+    @app.route("/api/admin/set-password", methods=['POST'])
+    def set_password():
+        if not _is_authorized_admin():
+            return jsonify({'error': 'Unauthorized'}), 403
+        data = request.json or {}
+        user_name = (data.get('user_name') or '').strip()
+        password = data.get('password') or ''
+        if not user_name or not password:
+            return jsonify({'error': 'user_name and password required'}), 400
+        if len(password) < 8:
+            return jsonify({'error': 'Password must be at least 8 characters'}), 400
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        try:
+            rows = execute_query(
+                "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
+                {'hash': password_hash, 'name': user_name}
+            )
+            if not rows:
+                return jsonify({'error': 'User not found'}), 404
+            return jsonify({'ok': True, 'user_name': user_name}), 200
+        except SQLAlchemyError as e:
+            logger.error("Failed to set password for %s: %s", user_name, e)
+            return jsonify({'error': 'Database error'}), 500
 
 
 def register_error_handlers(app):

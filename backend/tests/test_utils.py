@@ -1512,9 +1512,13 @@ def test_save_devos_feedback_does_not_clear_cache_when_section_not_found(monkeyp
 
 
 # ─── authenticate_user ────────────────────────────────────────────────────────
-def test_authenticate_user_success(mock_readonly):
-    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
-    result = utils.authenticate_user("Alice")
+_FAKE_HASH = "$2b$12$fakehashfakehashfakehashfakehashfakehashfakehashfakeha"
+
+
+def test_authenticate_user_success(mock_readonly, mocker):
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
+    result = utils.authenticate_user("Alice", "secret123")
     assert result == {
         "id": 1,
         "name": "Alice",
@@ -1527,21 +1531,37 @@ def test_authenticate_user_success(mock_readonly):
 def test_authenticate_user_not_found_raises(mock_readonly):
     mock_readonly.return_value = []
     with pytest.raises(AuthenticationError):
-        utils.authenticate_user("Ghost")
+        utils.authenticate_user("Ghost", "secret123")
 
 
-def test_authenticate_user_null_section_coalesced(mock_readonly):
-    mock_readonly.return_value = [(1, "Alice", "Team Member", "Unassigned")]
-    result = utils.authenticate_user("Alice")
+def test_authenticate_user_no_password_hash_raises(mock_readonly):
+    """Users with NULL password_hash cannot log in."""
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", None)]
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Alice", "secret123")
+
+
+def test_authenticate_user_wrong_password_raises(mock_readonly, mocker):
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=False)
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Alice", "wrongpassword")
+
+
+def test_authenticate_user_null_section_coalesced(mock_readonly, mocker):
+    mock_readonly.return_value = [(1, "Alice", "Team Member", "Unassigned", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
+    result = utils.authenticate_user("Alice", "secret123")
     assert result["section_name"] == "Unassigned"
 
 
-def test_authenticate_user_uses_silent_query(mock_readonly, caplog):
+def test_authenticate_user_uses_silent_query(mock_readonly, mocker, caplog):
     """Auth lookup must not emit user_name or row data at INFO level."""
     import logging
-    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
     with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.utils"):
-        utils.authenticate_user("Alice")
+        utils.authenticate_user("Alice", "secret123")
     info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
     assert not any("Alice" in m for m in info_messages)
     assert not any("user_name" in m for m in info_messages)
@@ -1550,7 +1570,7 @@ def test_authenticate_user_uses_silent_query(mock_readonly, caplog):
 def test_authenticate_user_db_error_propagates(mock_readonly):
     mock_readonly.side_effect = SQLAlchemyError("db down")
     with pytest.raises(SQLAlchemyError):
-        utils.authenticate_user("Alice")
+        utils.authenticate_user("Alice", "secret123")
 
 
 @pytest.mark.parametrize("role,expected", [
@@ -1559,9 +1579,10 @@ def test_authenticate_user_db_error_propagates(mock_readonly):
     ("Admin", True),
     ("Team Member", False),
 ])
-def test_authenticate_user_is_leader_roles(mock_readonly, role, expected):
-    mock_readonly.return_value = [(1, "Alice", role, "Minis")]
-    result = utils.authenticate_user("Alice")
+def test_authenticate_user_is_leader_roles(mock_readonly, mocker, role, expected):
+    mock_readonly.return_value = [(1, "Alice", role, "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
+    result = utils.authenticate_user("Alice", "secret123")
     assert result["is_leader"] is expected
 
 

@@ -6,6 +6,7 @@ import SimpleTest from "./SimpleTest";
 import DevoFeedbackEdit from "./DevoFeedbackEdit";
 import DutiesPage from "./DutiesPage";
 import Sections from "./Sections";
+import AdminPasswords from "./AdminPasswords";
 
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
       <Route path="/duties" element={<DutiesPage />} />
       <Route path="/sections" element={<Sections />} />
       <Route path="/test" element={<SimpleTest />} />
+      <Route path="/admin/passwords" element={<AdminPasswords />} />
     </Routes>
   );
 }
