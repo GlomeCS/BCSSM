@@ -1556,15 +1556,24 @@ def test_authenticate_user_null_section_coalesced(mock_readonly, mocker):
 
 
 def test_authenticate_user_uses_silent_query(mock_readonly, mocker, caplog):
-    """Auth lookup must not emit user_name or row data at INFO level."""
+    """Auth lookup must pass silent=True and not emit sensitive data at INFO level."""
     import logging
     mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
     mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
     with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.utils"):
         utils.authenticate_user("Alice", "secret123")
+    assert mock_readonly.call_args.kwargs.get("silent") is True
     info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
     assert not any("Alice" in m for m in info_messages)
     assert not any("user_name" in m for m in info_messages)
+
+
+def test_authenticate_user_malformed_hash_raises(mock_readonly, mocker):
+    """A malformed stored hash must raise AuthenticationError, not propagate ValueError."""
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", side_effect=ValueError("invalid hash"))
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Alice", "secret123")
 
 
 def test_authenticate_user_db_error_propagates(mock_readonly):

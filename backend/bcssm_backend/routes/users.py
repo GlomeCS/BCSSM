@@ -141,12 +141,14 @@ def init_users_routes(app):
     def api_login():
         """Establish a server-side session for the React login flow."""
         data = request.json or {}
-        user_name = (data.get('user_name') or '').strip()
-        password = data.get('password') or ''
-        if not user_name:
+        raw_user_name = data.get('user_name')
+        raw_password = data.get('password')
+        if not isinstance(raw_user_name, str) or not raw_user_name.strip():
             return jsonify({'error': 'user_name required'}), 400
-        if not password:
+        if not isinstance(raw_password, str) or not raw_password:
             return jsonify({'error': 'password required'}), 400
+        user_name = raw_user_name.strip()
+        password = raw_password
         try:
             user = authenticate_user(user_name, password)
         except AuthenticationError:

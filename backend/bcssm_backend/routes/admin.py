@@ -12,7 +12,7 @@ from backend.bcssm_backend.exceptions import BaseError, CacheError
 from backend.bcssm_backend.utils import (
     clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
     get_cache_status, get_cache_info, _redact_redis_url,
-    execute_query, execute_readonly_query,
+    get_user_role, get_all_users_password_status, set_user_password,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,12 +79,7 @@ def init_admin_routes(app):
         user_name = session.get('user_name')
         if user_name:
             try:
-                rows = execute_readonly_query(
-                    "SELECT role FROM users WHERE name = :name",
-                    {'name': user_name},
-                    silent=True,
-                )
-                if rows and rows[0][0] == 'Admin':
+                if get_user_role(user_name) == 'Admin':
                     session['user_role'] = 'Admin'
                     return True
             except SQLAlchemyError:
@@ -107,17 +102,13 @@ def init_admin_routes(app):
         if not _is_authorized_admin():
             return jsonify({'error': 'Unauthorized'}), 403
         try:
-            rows = execute_readonly_query(
-                "SELECT u.name, (u.password_hash IS NOT NULL) AS has_password "
-                "FROM users u ORDER BY u.name"
-            )
-            return jsonify({'users': [{'name': r[0], 'has_password': bool(r[1])} for r in rows]}), 200
+            return jsonify({'users': get_all_users_password_status()}), 200
         except SQLAlchemyError as e:
             logger.error("Failed to fetch password status: %s", e)
             return jsonify({'error': 'Database error'}), 500
 
     @app.route("/api/admin/set-password", methods=['POST'])
-    def set_password():
+    def admin_set_password():
         if not _is_authorized_admin():
             return jsonify({'error': 'Unauthorized'}), 403
         data = request.json or {}
@@ -129,11 +120,8 @@ def init_admin_routes(app):
             return jsonify({'error': 'Password must be at least 8 characters'}), 400
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         try:
-            rows = execute_query(
-                "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
-                {'hash': password_hash, 'name': user_name}
-            )
-            if not rows:
+            found = set_user_password(user_name, password_hash)
+            if not found:
                 return jsonify({'error': 'User not found'}), 404
             return jsonify({'ok': True, 'user_name': user_name}), 200
         except SQLAlchemyError as e:

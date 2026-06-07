@@ -8,7 +8,8 @@ interface UserPasswordStatus {
 }
 
 function AdminPasswords() {
-  const isAdminUser = localStorage.getItem("user_role") === "Admin";
+  // null = still checking, true = confirmed Admin session, false = use secret form
+  const [sessionIsAdmin, setSessionIsAdmin] = useState<boolean | null>(null);
 
   const [adminSecret, setAdminSecret] = useState("");
   const [users, setUsers] = useState<UserPasswordStatus[] | null>(null);
@@ -20,8 +21,30 @@ function AdminPasswords() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSetting, setIsSetting] = useState(false);
 
+  // On mount: validate the server session before trusting localStorage
+  useEffect(() => {
+    const localRole = localStorage.getItem("user_role");
+    if (localRole !== "Admin") {
+      setSessionIsAdmin(false);
+      return;
+    }
+    // Verify the session is still live before relying on it
+    apiGet("/api/admin/passwords-status")
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          setSessionIsAdmin(true);
+          setUsers(data.users);
+        } else {
+          // Session gone or role changed — fall back to the secret form
+          setSessionIsAdmin(false);
+        }
+      })
+      .catch(() => setSessionIsAdmin(false));
+  }, []);
+
   const extraHeaders = (secret: string): Record<string, string> =>
-    isAdminUser ? {} : { "X-Admin-Secret": secret };
+    sessionIsAdmin ? {} : { "X-Admin-Secret": secret };
 
   const fetchUsers = async (secret: string) => {
     setIsLoading(true);
@@ -48,16 +71,8 @@ function AdminPasswords() {
     }
   };
 
-  // Auto-load when an Admin-role user visits the page
-  useEffect(() => {
-    if (isAdminUser) {
-      fetchUsers("");
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const loadUsers = () => {
-    if (!isAdminUser && !adminSecret) {
+    if (!sessionIsAdmin && !adminSecret) {
       setLoadError("Admin secret is required.");
       return;
     }
@@ -102,6 +117,18 @@ function AdminPasswords() {
     }
   };
 
+  if (sessionIsAdmin === null) {
+    return (
+      <div className="admin-page">
+        <div className="admin-container">
+          <div className="admin-body">
+            <p className="admin-loading">Verifying session…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="admin-page">
       <div className="admin-container">
@@ -111,8 +138,8 @@ function AdminPasswords() {
         </div>
 
         <div className="admin-body">
-          {/* Secret + Load — hidden for logged-in Admin users */}
-          {!isAdminUser && (
+          {/* Secret + Load — only shown when not using an Admin session */}
+          {!sessionIsAdmin && (
             <div className="admin-section">
               <label className="admin-label">Admin Secret</label>
               <div className="admin-row">
@@ -134,13 +161,6 @@ function AdminPasswords() {
               </div>
               {loadError && <p className="admin-error">{loadError}</p>}
             </div>
-          )}
-
-          {isAdminUser && isLoading && (
-            <p className="admin-loading">Loading users...</p>
-          )}
-          {isAdminUser && loadError && (
-            <p className="admin-error">{loadError}</p>
           )}
 
           {/* User status list */}
