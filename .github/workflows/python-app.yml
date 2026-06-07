@@ -141,7 +141,7 @@ jobs:
         coverage report
         coverage xml
     - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@1e68e06f1dbfde0e4cefc87efeba9e4643565303
+      uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
@@ -150,7 +150,7 @@ jobs:
         fail_ci_if_error: true
     - name: Upload test results to Codecov
       if: ${{ !cancelled() }}
-      uses: codecov/test-results-action@9739113ad922ea0a9abb4b2c0f8bf6a4aa8ef820
+      uses: codecov/test-results-action@v1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./pytest-results.xml  # Path to the JUnit XML file
+        files: ./pytest-results.xml
