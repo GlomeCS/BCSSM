@@ -51,21 +51,29 @@ def execute_readonly_query(query, params=None, silent=False):
 
 user_assignments = {}
 
-def execute_query(query, params=None):
+def execute_query(query, params=None, silent=False):
     try:
         with db.session.begin():
-            logger.info("Executing query: %s with params: %s", query, params)
+            if not silent:
+                logger.info("Executing query: %s with params: %s", query, params)
             result = db.session.execute(text(query), params)
             if result.returns_rows:
                 rows = result.fetchall()
-                logger.info("Raw rows fetched: %s", rows)
+                if not silent:
+                    logger.info("Raw rows fetched: %s", rows)
                 return rows
-            logger.info("Query executed successfully with no rows returned.")
+            if not silent:
+                logger.info("Query executed successfully with no rows returned.")
             return None
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
+        logger.error(
+            "Query failed. Query: %s, Params: %s, Error: %s",
+            query,
+            "<redacted>" if silent else params,
+            e,
+        )
         raise
 
 @cached_result('users:all:list', 900, on_error=[])
@@ -682,7 +690,8 @@ def set_user_password(user_name: str, password_hash: str) -> bool:
     """Write a bcrypt hash for a user. Returns True if the user was found."""
     rows = execute_query(
         "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
-        {'hash': password_hash, 'name': user_name}
+        {'hash': password_hash, 'name': user_name},
+        silent=True,
     )
     return bool(rows)
 

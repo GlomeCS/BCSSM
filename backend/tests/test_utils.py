@@ -1658,3 +1658,23 @@ def test_set_user_password_not_found(mock_db_session):
     mock_result.fetchall.return_value = []
     mock_db_session.execute.return_value = mock_result
     assert utils.set_user_password("Ghost", "$2b$12$hash") is False
+
+
+def test_set_user_password_redacts_hash_in_error_log(caplog):
+    """On DB failure, execute_query must log '<redacted>' not the real bcrypt hash."""
+    import logging
+    _real_execute_query = utils.execute_query
+    with patch('backend.bcssm_backend.utils.db') as mock_db:
+        mock_db.session.begin.return_value.__enter__ = MagicMock(return_value=mock_db.session)
+        mock_db.session.begin.return_value.__exit__ = MagicMock(return_value=None)
+        mock_db.session.execute.side_effect = SQLAlchemyError("db down")
+        with caplog.at_level(logging.ERROR, logger="backend.bcssm_backend.utils"):
+            with pytest.raises(SQLAlchemyError):
+                _real_execute_query(
+                    "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
+                    {'hash': '$2b$12$realhash', 'name': 'Alice'},
+                    silent=True,
+                )
+    error_messages = " ".join(r.getMessage() for r in caplog.records if r.levelno == logging.ERROR)
+    assert "$2b$12$realhash" not in error_messages
+    assert "<redacted>" in error_messages
