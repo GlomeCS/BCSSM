@@ -36,7 +36,7 @@ export function useRequireAuth(): { currentUser: string | null; loading: boolean
         // Network/transport error: don't clear the session — the server may be
         // temporarily unavailable. Keep the user logged in so they aren't forced
         // out during a transient outage.
-        // Trade-off: stale localStorage metadata (e.g. user_role, is_leader) may
+        // Trade-off: stale localStorage metadata (e.g. user_role, can_edit_all) may
         // persist if the server is down for an extended period and roles change in
         // the DB during the outage. See GitHub issue #135 for tracking.
         console.error("Auth check failed (transient):", error);

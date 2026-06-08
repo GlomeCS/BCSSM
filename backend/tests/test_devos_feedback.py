@@ -106,7 +106,7 @@ def test_route_default_date_with_user_via_session(client, patch_helpers):
     assert "date" in data
     assert data["feedback"] == {}
     assert data["user"]["name"] == "TestUser"
-    assert data["is_leader"] is False
+    assert data["can_edit_all"] is False
 
 
 def test_route_query_param_rejected(client, patch_helpers):
@@ -134,7 +134,7 @@ def test_route_with_date_and_leader_via_session(client, patch_helpers):
     assert data["date"] == date_str
     assert data["feedback"] == {"X": "Y"}
     assert data["user"] == {"name": "A", "role": "Section Leader", "section": "S"}
-    assert data["is_leader"] is True
+    assert data["can_edit_all"] is True
 
 def test_route_invalid_user(client, patch_helpers):
     """Session user not found in DB → 400."""

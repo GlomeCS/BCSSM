@@ -156,7 +156,7 @@ describe('validateAuth', () => {
   it('returns true and updates localStorage on valid response', async () => {
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ is_valid: true, role: 'Admin', section: 'A', is_leader: true }), {
+      new Response(JSON.stringify({ is_valid: true, role: 'Admin', section: 'A', can_edit_all: true }), {
         headers: { 'Content-Type': 'application/json' },
       })
     );
@@ -164,7 +164,7 @@ describe('validateAuth', () => {
     expect(result).toBe(true);
     expect(localStorage.getItem('user_role')).toBe('Admin');
     expect(localStorage.getItem('user_section')).toBe('A');
-    expect(localStorage.getItem('is_leader')).toBe('true');
+    expect(localStorage.getItem('can_edit_all')).toBe('true');
     expect(localStorage.getItem('is_logged_in')).toBe('true');
   });
 
@@ -218,7 +218,7 @@ describe('logout', () => {
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('user_role', 'Team Member');
     localStorage.setItem('user_section', 'Seniors');
-    localStorage.setItem('is_leader', 'false');
+    localStorage.setItem('can_edit_all', 'false');
     vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => {

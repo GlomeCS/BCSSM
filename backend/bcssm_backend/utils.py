@@ -663,7 +663,7 @@ def authenticate_user(user_name: str, password: str) -> dict:
         "name": name,
         "role": role,
         "section_name": section_name,
-        "is_leader": role in {"Section Leader", "Team Leader", "Admin"},
+        "can_edit_all": role in {"Section Leader", "Team Leader", "Admin"},
     }
 
 

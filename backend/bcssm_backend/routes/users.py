@@ -156,12 +156,13 @@ def init_users_routes(app):
         except SQLAlchemyError as e:
             app.logger.error("Login DB error for %s: %s", user_name, e)
             return jsonify({'error': 'An internal error has occurred.'}), 500
+        session.clear()
         session.update({
             'user_name': user['name'],
             'user_id': user['id'],
             'user_section': user['section_name'],
             'user_role': user['role'],
-            'is_leader': user['is_leader'],
+            'can_edit_all': user['can_edit_all'],
         })
         cache_user_login(user)
         return jsonify({
@@ -169,7 +170,7 @@ def init_users_routes(app):
             'user_name': user['name'],
             'role': user['role'],
             'section': user['section_name'],
-            'is_leader': user['is_leader'],
+            'can_edit_all': user['can_edit_all'],
         }), 200
 
     @app.route('/api/auth/logout', methods=['POST'])
@@ -204,14 +205,14 @@ def init_users_routes(app):
                 return jsonify({"is_valid": False, "error": "Invalid user"}), 400
             
             user_id, name, role, section_name = user_rows[0]
-            is_leader = role in {"Section Leader", "Team Leader", "Admin"}
+            can_edit_all = role in {"Section Leader", "Team Leader", "Admin"}
             
             return jsonify({
                 "is_valid": True,
                 "user_name": user_name,
                 "role": role,
                 "section": section_name,
-                "is_leader": is_leader
+                "can_edit_all": can_edit_all
             })
             
         except SQLAlchemyError as e:
@@ -320,7 +321,7 @@ def init_users_routes(app):
                     return {
                         'is_logged_in': True,
                         'user_section': user_data.get('section_name'),
-                        'is_leader': user_data.get('is_leader'),
+                        'can_edit_all': user_data.get('can_edit_all'),
                         'user_id': user_data.get('id')
                     }
             except RedisError as e:
@@ -330,13 +331,13 @@ def init_users_routes(app):
             return {
                 'is_logged_in': True,
                 'user_section': session.get('user_section'),
-                'is_leader': session.get('is_leader'),
+                'can_edit_all': session.get('can_edit_all'),
                 'user_id': session.get('user_id')
             }
         else:
             return {
                 'is_logged_in': False,
                 'user_section': None,
-                'is_leader': False,
+                'can_edit_all': False,
                 'user_id': None
             }

@@ -36,4 +36,4 @@ ENV FLASK_APP=backend.bcssm_backend:create_app
 EXPOSE 8080
 
 # Run the app using Gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "--access-logfile", "-", "--error-logfile", "-", "backend.bcssm_backend:create_app()"]
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "--timeout", "120", "--keep-alive", "2", "--access-logfile", "-", "--error-logfile", "-", "backend.bcssm_backend:create_app()"]

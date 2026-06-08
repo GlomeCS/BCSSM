@@ -10,7 +10,7 @@ const FEEDBACK_RESPONSE = {
     Minis: 'Wonderful morning, everyone engaged well.',
   },
   user: { section: 'Seniors' },
-  is_leader: true,
+  can_edit_all: true,
 };
 
 async function setupDevoFeedbackPage(page: Page, isLeader = true, path = '/react/devos-feedback') {
@@ -18,13 +18,13 @@ async function setupDevoFeedbackPage(page: Page, isLeader = true, path = '/react
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Alice');
     localStorage.setItem('user_role', leader ? 'Section Leader' : 'Leader');
-    localStorage.setItem('is_leader', leader ? 'true' : 'false');
+    localStorage.setItem('can_edit_all', leader ? 'true' : 'false');
   }, { leader: isLeader });
   await page.route('**/api/auth/validate*', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', is_leader: isLeader }),
+      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: isLeader }),
     })
   );
   await page.route('**/api/sections*', route =>
@@ -38,7 +38,7 @@ async function setupDevoFeedbackPage(page: Page, isLeader = true, path = '/react
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ ...FEEDBACK_RESPONSE, is_leader: isLeader }),
+      body: JSON.stringify({ ...FEEDBACK_RESPONSE, can_edit_all: isLeader }),
     })
   );
   await page.goto(path);

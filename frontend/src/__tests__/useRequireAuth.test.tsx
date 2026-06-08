@@ -27,7 +27,7 @@ afterEach(() => {
 function mockValidateAuth(isValid: boolean) {
   vi.mocked(fetch).mockResolvedValueOnce(
     new Response(
-      JSON.stringify({ is_valid: isValid, role: 'Team Member', section: 'Seniors', is_leader: false }),
+      JSON.stringify({ is_valid: isValid, role: 'Team Member', section: 'Seniors', can_edit_all: false }),
       { headers: { 'Content-Type': 'application/json' } }
     )
   );
@@ -102,7 +102,7 @@ describe('useRequireAuth', () => {
       // Simulate another tab calling localStorage.clear() mid-flight
       localStorage.clear();
       return new Response(
-        JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', is_leader: false }),
+        JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', can_edit_all: false }),
         { headers: { 'Content-Type': 'application/json' } }
       );
     });
@@ -153,7 +153,7 @@ describe('useRequireAuth', () => {
   });
 
   // Finding 4 (stale metadata trade-off): during an outage the hook keeps users logged in,
-  // which means stale localStorage values like user_role/is_leader may persist.
+  // which means stale localStorage values like user_role/can_edit_all may persist.
   // This is a deliberate trade-off to avoid logging users out during transient outages.
   // Tracked in GitHub issue #135.
 });
