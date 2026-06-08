@@ -65,18 +65,19 @@ def init_feedback_routes(app):
             return jsonify({'error': 'Invalid user'}), 400
 
         editor_name = get_username_from_request()
-        editor_info = get_user_info(editor_name) if editor_name else None
-        if not editor_info:
-            return jsonify({'error': 'Invalid user'}), 400
+        if editor_name:
+            editor_info = get_user_info(editor_name)
+            if not editor_info:
+                return jsonify({'error': 'Invalid user'}), 400
 
-        LEADER_ROLES = {"Section Leader", "Team Leader", "Admin"}
-        can_edit_all = editor_info.get("role") in LEADER_ROLES
-        if not can_edit_all and editor_info.get("section") != section_name:
-            logger.warning(
-                "User %s (section=%s, role=%s) attempted to edit feedback for section %s",
-                editor_name, editor_info.get("section"), editor_info.get("role"), section_name
-            )
-            return jsonify({'error': 'Forbidden'}), 403
+            LEADER_ROLES = {"Section Leader", "Team Leader", "Admin"}
+            can_edit_all = editor_info.get("role") in LEADER_ROLES
+            if not can_edit_all and editor_info.get("section") != section_name:
+                logger.warning(
+                    "User %s (section=%s, role=%s) attempted to edit feedback for section %s",
+                    editor_name, editor_info.get("section"), editor_info.get("role"), section_name
+                )
+                return jsonify({'error': 'Forbidden'}), 403
 
         # Validate input
         if not date_str or not section_name or new_feedback is None:

@@ -196,8 +196,11 @@ def test_edit_feedback_exactly_140(client, mock_write):
     assert resp.status_code == 200
 
 
-def test_edit_authenticated_via_session_username(client, mock_write):
+def test_edit_authenticated_via_session_username(client, mock_write, patch_helpers):
     """Edit with session user_name (resolved to user_id via DB lookup)."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             return [(1,)]
@@ -269,8 +272,11 @@ def test_edit_missing_params(client):
     assert "Missing date, section, or feedback" in resp.get_json()["error"]
 
 
-def test_edit_section_not_found(client, mock_write):
+def test_edit_section_not_found(client, mock_write, patch_helpers):
     """RETURNING [] from the combined query → 400 Section not found."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             return [(1,)]
@@ -289,8 +295,11 @@ def test_edit_section_not_found(client, mock_write):
     assert "Section not found" in resp.get_json()["error"]
 
 
-def test_edit_success(client, mock_write):
+def test_edit_success(client, mock_write, patch_helpers):
     """Successful edit — single atomic INSERT...SELECT...RETURNING query."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+
     calls = []
 
     def side_effect(query, params=None):
@@ -315,8 +324,11 @@ def test_edit_success(client, mock_write):
     assert any("INSERT INTO feedback" in call[0] for call in calls)
 
 
-def test_edit_upsert_error(client, mock_write):
+def test_edit_upsert_error(client, mock_write, patch_helpers):
     """Combined INSERT...SELECT query raises → 500."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+
     def side_effect(query, params=None):
         if "SELECT u.id FROM users u WHERE u.name" in query:
             return [(1,)]
@@ -351,6 +363,44 @@ def test_edit_section_lookup_db_error(client, mock_write):
                        json={"feedback": "X"})
     assert resp.status_code == 500
     assert "Internal server error" in resp.get_json()["error"]
+
+
+def test_edit_forbidden_wrong_section(client, mock_write, patch_helpers):
+    """Leader trying to edit another section's feedback → 403."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Leader", "section": "Minis"}
+
+    mock_write.return_value = [(1,)]  # name→ID lookup
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Majors",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 403
+    assert "Forbidden" in resp.get_json()["error"]
+
+
+def test_edit_allowed_own_section(client, mock_write, patch_helpers):
+    """Leader editing their own section's feedback → 200."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Leader", "section": "Minis"}
+
+    def side_effect(query, params=None):
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None  # pragma: no cover
+
+    mock_write.side_effect = side_effect
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 200
 
 
 def test_get_user_id_from_request_db_error(client, mock_write):
