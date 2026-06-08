@@ -82,6 +82,15 @@ def patch_helpers(monkeypatch):
         "backend.bcssm_backend.routes.devos_feedback.get_user_info",
         fake_ui
     )
+    # Default: session-user_id path resolves to a can_edit_all user so tests
+    # that set only user_id in session still reach their intended assertion.
+    fake_ui_by_id = MagicMock(
+        return_value={"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+    )
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.devos_feedback.get_user_info_by_id",
+        fake_ui_by_id
+    )
     return fake_fb, fake_ui
 
 def test_route_default_date_no_user(client, patch_helpers):

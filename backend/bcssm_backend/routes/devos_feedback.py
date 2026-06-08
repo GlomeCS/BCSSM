@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import request, jsonify
 from sqlalchemy.exc import SQLAlchemyError
-from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info, save_devos_feedback
+from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info, get_user_info_by_id, save_devos_feedback
 from backend.bcssm_backend.auth import get_username_from_request, get_user_id_from_request
 from backend.bcssm_backend.exceptions import ValidationError
 
@@ -65,19 +65,23 @@ def init_feedback_routes(app):
             return jsonify({'error': 'Invalid user'}), 400
 
         editor_name = get_username_from_request()
-        if editor_name:
-            editor_info = get_user_info(editor_name)
-            if not editor_info:
-                return jsonify({'error': 'Invalid user'}), 400
+        try:
+            editor_info = get_user_info(editor_name) if editor_name else get_user_info_by_id(editor_id)
+        except SQLAlchemyError as e:
+            logger.error("Failed to resolve editor info: %s", e)
+            return jsonify({'error': 'Internal server error'}), 500
 
-            LEADER_ROLES = {"Section Leader", "Team Leader", "Admin"}
-            can_edit_all = editor_info.get("role") in LEADER_ROLES
-            if not can_edit_all and editor_info.get("section") != section_name:
-                logger.warning(
-                    "User %s (section=%s, role=%s) attempted to edit feedback for section %s",
-                    editor_name, editor_info.get("section"), editor_info.get("role"), section_name
-                )
-                return jsonify({'error': 'Forbidden'}), 403
+        if not editor_info:
+            return jsonify({'error': 'Invalid user'}), 400
+
+        LEADER_ROLES = {"Section Leader", "Team Leader", "Admin"}
+        can_edit_all = editor_info.get("role") in LEADER_ROLES
+        if not can_edit_all and editor_info.get("section") != section_name:
+            logger.warning(
+                "User %s (section=%s, role=%s) attempted to edit feedback for section %s",
+                editor_info.get("name"), editor_info.get("section"), editor_info.get("role"), section_name
+            )
+            return jsonify({'error': 'Forbidden'}), 403
 
         # Validate input
         if not date_str or not section_name or new_feedback is None:

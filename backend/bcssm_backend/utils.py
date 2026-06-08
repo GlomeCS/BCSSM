@@ -358,6 +358,27 @@ def get_user_info(user_name):
         raise
 
 
+def get_user_info_by_id(user_id):
+    query = """
+    SELECT u.name, u.role, s.name AS section_name
+    FROM users u
+    LEFT JOIN sections s ON u.section_id = s.id
+    WHERE u.id = :user_id;
+    """
+    try:
+        rows = execute_readonly_query(query, {"user_id": user_id})
+        if rows:
+            return {
+                "name": rows[0][0],
+                "role": rows[0][1],
+                "section": rows[0][2],
+            }
+        return None
+    except SQLAlchemyError as e:
+        logger.error("Failed to fetch user info for id %s: %s", user_id, e)
+        raise
+
+
 def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, editor_id: int) -> None:
     # Single-query approach: INSERT...SELECT eliminates the TOCTOU gap between
     # the section lookup and the upsert. RETURNING lets us detect a missing section.
