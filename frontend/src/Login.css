@@ -364,6 +364,13 @@
     color: black;
   }
 
+  .login-title {
+    -webkit-text-fill-color: currentColor;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    background: none;
+  }
+
   .user-select {
     border: 2px solid black;
   }
@@ -376,6 +383,6 @@
 
 .user-select:focus,
 .login-btn:focus {
-  outline: 2px solid #E89863;
+  outline: 3px solid #3c4059;
   outline-offset: 2px;
 }
