@@ -153,6 +153,7 @@ body {
 
 [data-theme="dark"] .date-input,
 [data-theme="dark"] .user-select,
+[data-theme="dark"] .password-input,
 [data-theme="dark"] .role-filter,
 [data-theme="dark"] .feedback-textarea {
   background: #1e293b;
