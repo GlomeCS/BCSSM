@@ -1,9 +1,12 @@
+import hmac
 import logging
 import os
 import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
 from functools import lru_cache
+
+import bcrypt
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -48,21 +51,29 @@ def execute_readonly_query(query, params=None, silent=False):
 
 user_assignments = {}
 
-def execute_query(query, params=None):
+def execute_query(query, params=None, silent=False):
     try:
         with db.session.begin():
-            logger.info("Executing query: %s with params: %s", query, params)
+            if not silent:
+                logger.info("Executing query: %s with params: %s", query, params)
             result = db.session.execute(text(query), params)
             if result.returns_rows:
                 rows = result.fetchall()
-                logger.info("Raw rows fetched: %s", rows)
+                if not silent:
+                    logger.info("Raw rows fetched: %s", rows)
                 return rows
-            logger.info("Query executed successfully with no rows returned.")
+            if not silent:
+                logger.info("Query executed successfully with no rows returned.")
             return None
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        logger.error("Query failed. Query: %s, Params: %s, Error: %s", query, params, e)
+        logger.error(
+            "Query failed. Query: %s, Params: %s, Error: %s",
+            query,
+            "<redacted>" if silent else params,
+            e,
+        )
         raise
 
 @cached_result('users:all:list', 900, on_error=[])
@@ -626,10 +637,10 @@ def get_health_status() -> dict:
     return health
 
 
-def authenticate_user(user_name: str) -> dict:
-    """Validate user_name against DB and return user dict. Raises AuthenticationError if not found."""
+def authenticate_user(user_name: str, password: str) -> dict:
+    """Validate credentials against DB. Raises AuthenticationError on any failure."""
     rows = execute_readonly_query(
-        "SELECT u.id, u.name, u.role, COALESCE(s.name, 'Unassigned') AS section_name "
+        "SELECT u.id, u.name, u.role, COALESCE(s.name, 'Unassigned') AS section_name, u.password_hash "
         "FROM users u "
         "LEFT JOIN sections s ON u.section_id = s.id "
         "WHERE u.name = :user_name",
@@ -637,8 +648,16 @@ def authenticate_user(user_name: str) -> dict:
         silent=True,
     )
     if not rows:
-        raise AuthenticationError("Invalid user")
-    user_id, name, role, section_name = rows[0]
+        raise AuthenticationError("Invalid credentials")
+    user_id, name, role, section_name, password_hash = rows[0]
+    if not password_hash:
+        raise AuthenticationError("Invalid credentials")
+    try:
+        is_valid = bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except (ValueError, TypeError):
+        raise AuthenticationError("Invalid credentials")
+    if not is_valid:
+        raise AuthenticationError("Invalid credentials")
     return {
         "id": user_id,
         "name": name,
@@ -646,6 +665,35 @@ def authenticate_user(user_name: str) -> dict:
         "section_name": section_name,
         "is_leader": role in {"Section Leader", "Team Leader", "Admin"},
     }
+
+
+def get_user_role(user_name: str):
+    """Return the role string for a user, or None if not found."""
+    rows = execute_readonly_query(
+        "SELECT role FROM users WHERE name = :name",
+        {'name': user_name},
+        silent=True,
+    )
+    return rows[0][0] if rows else None
+
+
+def get_all_users_password_status() -> list:
+    """Return list of {name, has_password} dicts ordered by name."""
+    rows = execute_readonly_query(
+        "SELECT u.name, (u.password_hash IS NOT NULL) AS has_password "
+        "FROM users u ORDER BY u.name"
+    )
+    return [{'name': r[0], 'has_password': bool(r[1])} for r in rows]
+
+
+def set_user_password(user_name: str, password_hash: str) -> bool:
+    """Write a bcrypt hash for a user. Returns True if the user was found."""
+    rows = execute_query(
+        "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
+        {'hash': password_hash, 'name': user_name},
+        silent=True,
+    )
+    return bool(rows)
 
 
 def cache_user_login(user_data: dict) -> None:

@@ -25,10 +25,13 @@ test('login page visual snapshot', async ({ page }) => {
   await expect(page).toHaveScreenshot('login-page.png', { fullPage: true, maxDiffPixels: 200 });
 });
 
-test('selecting a user enables the continue button', async ({ page }) => {
+test('selecting a user and entering a password enables the continue button', async ({ page }) => {
   await page.goto('/login');
   await page.waitForSelector('select.user-select');
   await page.selectOption('select.user-select', 'Alice');
+  // Button stays disabled until a password is also entered
+  await expect(page.getByRole('button', { name: /continue/i })).toBeDisabled();
+  await page.fill('input[type="password"]', 'secret123');
   await expect(page.getByRole('button', { name: /continue/i })).toBeEnabled();
 });
 

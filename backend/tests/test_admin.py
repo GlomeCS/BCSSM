@@ -1,6 +1,7 @@
 import os
 import pytest
 from unittest.mock import MagicMock, patch
+from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend.utils import _fmt_ttl, _redact_redis_url
 from backend.bcssm_backend import create_app
@@ -151,3 +152,249 @@ def test_path_traversal_dot_dot_blocked(app, tmp_path, monkeypatch):
         resp = c.get("/../../credentials.txt")
         assert resp.status_code == 200
         assert b"SENSITIVE" not in resp.data
+
+
+# ─── _is_authorized_admin: session fast path ─────────────────────────────────
+
+def test_passwords_status_session_admin_fast_path(client, monkeypatch):
+    """Session with user_role='Admin' grants access without DB lookup or secret."""
+    fake_status = [{"name": "Alice", "has_password": True}]
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
+        lambda: fake_status,
+    )
+    with client.session_transaction() as sess:
+        sess["user_role"] = "Admin"
+
+    resp = client.get("/api/admin/passwords-status")
+    assert resp.status_code == 200
+    assert resp.get_json()["users"] == fake_status
+
+
+def test_passwords_status_session_username_db_admin(client, monkeypatch):
+    """Session with user_name gets DB lookup; Admin role grants access."""
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_user_role",
+        lambda _: "Admin",
+    )
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
+        lambda: [],
+    )
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Harrison"
+
+    resp = client.get("/api/admin/passwords-status")
+    assert resp.status_code == 200
+    # Confirm session was updated with the looked-up role
+    with client.session_transaction() as sess:
+        assert sess.get("user_role") == "Admin"
+
+
+def test_passwords_status_session_username_non_admin_falls_through(client, monkeypatch):
+    """Session with user_name whose DB role is not Admin falls through to secret check."""
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_user_role",
+        lambda _: "Team Member",
+    )
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
+        lambda: [],
+    )
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Bob"
+
+    resp = client.get(
+        "/api/admin/passwords-status",
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_passwords_status_session_username_db_error_falls_through(client, monkeypatch):
+    """SQLAlchemyError during DB role lookup falls through to secret check."""
+    def raise_db_error(_):
+        raise SQLAlchemyError("db down")
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_user_role",
+        raise_db_error,
+    )
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
+        lambda: [],
+    )
+    with client.session_transaction() as sess:
+        sess["user_name"] = "Harrison"
+
+    resp = client.get(
+        "/api/admin/passwords-status",
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
+    assert resp.status_code == 200
+
+
+def test_passwords_status_no_admin_secret_env_returns_403(client, monkeypatch):
+    """No ADMIN_SECRET env var → 403 even with a header."""
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+    resp = client.get(
+        "/api/admin/passwords-status",
+        headers={"X-Admin-Secret": "anything"},
+    )
+    assert resp.status_code == 403
+
+
+def test_passwords_status_no_header_returns_403(client, monkeypatch):
+    """ADMIN_SECRET set but no X-Admin-Secret header → 403."""
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    resp = client.get("/api/admin/passwords-status")
+    assert resp.status_code == 403
+
+
+def test_passwords_status_wrong_header_returns_403(client, monkeypatch):
+    """Wrong X-Admin-Secret value → 403."""
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    resp = client.get(
+        "/api/admin/passwords-status",
+        headers={"X-Admin-Secret": "wrong-secret"},
+    )
+    assert resp.status_code == 403
+
+
+def test_passwords_status_correct_header_returns_200(client, monkeypatch):
+    """Correct X-Admin-Secret → 200 with users list."""
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    fake_users = [{"name": "Alice", "has_password": True}]
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
+        lambda: fake_users,
+    )
+    resp = client.get(
+        "/api/admin/passwords-status",
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["users"] == fake_users
+
+
+def test_passwords_status_db_error_returns_500(client, monkeypatch):
+    """SQLAlchemyError from get_all_users_password_status → 500."""
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+
+    def raise_db_error():
+        raise SQLAlchemyError("db down")
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
+        raise_db_error,
+    )
+    resp = client.get(
+        "/api/admin/passwords-status",
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
+    assert resp.status_code == 500
+
+
+# ─── /api/admin/set-password ─────────────────────────────────────────────────
+
+def _auth_headers(monkeypatch):
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    return {"X-Admin-Secret": "correct-secret"}
+
+
+def test_set_password_unauthorized_returns_403(client, monkeypatch):
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+    resp = client.post(
+        "/api/admin/set-password",
+        json={"user_name": "Alice", "password": "validpassword"},
+    )
+    assert resp.status_code == 403
+
+
+def test_set_password_missing_user_name_returns_400(client, monkeypatch):
+    headers = _auth_headers(monkeypatch)
+    resp = client.post(
+        "/api/admin/set-password",
+        json={"password": "validpassword"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "user_name" in resp.get_json()["error"]
+
+
+def test_set_password_missing_password_returns_400(client, monkeypatch):
+    headers = _auth_headers(monkeypatch)
+    resp = client.post(
+        "/api/admin/set-password",
+        json={"user_name": "Alice"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+
+
+def test_set_password_too_short_returns_400(client, monkeypatch):
+    headers = _auth_headers(monkeypatch)
+    resp = client.post(
+        "/api/admin/set-password",
+        json={"user_name": "Alice", "password": "short"},
+        headers=headers,
+    )
+    assert resp.status_code == 400
+    assert "8 characters" in resp.get_json()["error"]
+
+
+def test_set_password_user_not_found_returns_404(client, monkeypatch):
+    headers = _auth_headers(monkeypatch)
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.set_user_password",
+        lambda user_name, password_hash: False,
+    )
+    with patch("backend.bcssm_backend.routes.admin.bcrypt.hashpw", return_value=b"$2b$12$fakehash"):
+        with patch("backend.bcssm_backend.routes.admin.bcrypt.gensalt", return_value=b"$2b$12$"):
+            resp = client.post(
+                "/api/admin/set-password",
+                json={"user_name": "Ghost", "password": "validpassword"},
+                headers=headers,
+            )
+    assert resp.status_code == 404
+
+
+def test_set_password_success_returns_200(client, monkeypatch):
+    headers = _auth_headers(monkeypatch)
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.set_user_password",
+        lambda user_name, password_hash: True,
+    )
+    with patch("backend.bcssm_backend.routes.admin.bcrypt.hashpw", return_value=b"$2b$12$fakehash"):
+        with patch("backend.bcssm_backend.routes.admin.bcrypt.gensalt", return_value=b"$2b$12$"):
+            resp = client.post(
+                "/api/admin/set-password",
+                json={"user_name": "Alice", "password": "validpassword"},
+                headers=headers,
+            )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["ok"] is True
+    assert data["user_name"] == "Alice"
+
+
+def test_set_password_db_error_returns_500(client, monkeypatch):
+    headers = _auth_headers(monkeypatch)
+
+    def raise_db_error(user_name, password_hash):
+        raise SQLAlchemyError("db down")
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.routes.admin.set_user_password",
+        raise_db_error,
+    )
+    with patch("backend.bcssm_backend.routes.admin.bcrypt.hashpw", return_value=b"$2b$12$fakehash"):
+        with patch("backend.bcssm_backend.routes.admin.bcrypt.gensalt", return_value=b"$2b$12$"):
+            resp = client.post(
+                "/api/admin/set-password",
+                json={"user_name": "Alice", "password": "validpassword"},
+                headers=headers,
+            )
+    assert resp.status_code == 500

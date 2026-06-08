@@ -1512,9 +1512,13 @@ def test_save_devos_feedback_does_not_clear_cache_when_section_not_found(monkeyp
 
 
 # ─── authenticate_user ────────────────────────────────────────────────────────
-def test_authenticate_user_success(mock_readonly):
-    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
-    result = utils.authenticate_user("Alice")
+_FAKE_HASH = "$2b$12$fakehashfakehashfakehashfakehashfakehashfakehashfakeha"
+
+
+def test_authenticate_user_success(mock_readonly, mocker):
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
+    result = utils.authenticate_user("Alice", "secret123")
     assert result == {
         "id": 1,
         "name": "Alice",
@@ -1527,30 +1531,55 @@ def test_authenticate_user_success(mock_readonly):
 def test_authenticate_user_not_found_raises(mock_readonly):
     mock_readonly.return_value = []
     with pytest.raises(AuthenticationError):
-        utils.authenticate_user("Ghost")
+        utils.authenticate_user("Ghost", "secret123")
 
 
-def test_authenticate_user_null_section_coalesced(mock_readonly):
-    mock_readonly.return_value = [(1, "Alice", "Team Member", "Unassigned")]
-    result = utils.authenticate_user("Alice")
+def test_authenticate_user_no_password_hash_raises(mock_readonly):
+    """Users with NULL password_hash cannot log in."""
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", None)]
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Alice", "secret123")
+
+
+def test_authenticate_user_wrong_password_raises(mock_readonly, mocker):
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=False)
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Alice", "wrongpassword")
+
+
+def test_authenticate_user_null_section_coalesced(mock_readonly, mocker):
+    mock_readonly.return_value = [(1, "Alice", "Team Member", "Unassigned", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
+    result = utils.authenticate_user("Alice", "secret123")
     assert result["section_name"] == "Unassigned"
 
 
-def test_authenticate_user_uses_silent_query(mock_readonly, caplog):
-    """Auth lookup must not emit user_name or row data at INFO level."""
+def test_authenticate_user_uses_silent_query(mock_readonly, mocker, caplog):
+    """Auth lookup must pass silent=True and not emit sensitive data at INFO level."""
     import logging
-    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis")]
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
     with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.utils"):
-        utils.authenticate_user("Alice")
+        utils.authenticate_user("Alice", "secret123")
+    assert mock_readonly.call_args.kwargs.get("silent") is True
     info_messages = [r.message for r in caplog.records if r.levelno == logging.INFO]
     assert not any("Alice" in m for m in info_messages)
     assert not any("user_name" in m for m in info_messages)
 
 
+def test_authenticate_user_malformed_hash_raises(mock_readonly, mocker):
+    """A malformed stored hash must raise AuthenticationError, not propagate ValueError."""
+    mock_readonly.return_value = [(1, "Alice", "Section Leader", "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", side_effect=ValueError("invalid hash"))
+    with pytest.raises(AuthenticationError):
+        utils.authenticate_user("Alice", "secret123")
+
+
 def test_authenticate_user_db_error_propagates(mock_readonly):
     mock_readonly.side_effect = SQLAlchemyError("db down")
     with pytest.raises(SQLAlchemyError):
-        utils.authenticate_user("Alice")
+        utils.authenticate_user("Alice", "secret123")
 
 
 @pytest.mark.parametrize("role,expected", [
@@ -1559,9 +1588,10 @@ def test_authenticate_user_db_error_propagates(mock_readonly):
     ("Admin", True),
     ("Team Member", False),
 ])
-def test_authenticate_user_is_leader_roles(mock_readonly, role, expected):
-    mock_readonly.return_value = [(1, "Alice", role, "Minis")]
-    result = utils.authenticate_user("Alice")
+def test_authenticate_user_is_leader_roles(mock_readonly, mocker, role, expected):
+    mock_readonly.return_value = [(1, "Alice", role, "Minis", _FAKE_HASH)]
+    mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
+    result = utils.authenticate_user("Alice", "secret123")
     assert result["is_leader"] is expected
 
 
@@ -1587,3 +1617,64 @@ def test_evict_user_login_cache_deletes_correct_key(mock_cache):
 def test_evict_user_login_cache_swallows_redis_error(mock_cache):
     mock_cache.delete.side_effect = RedisError("Redis down")
     utils.evict_user_login_cache("Alice")  # must not raise
+
+
+# ─── get_user_role ────────────────────────────────────────────────────────────
+def test_get_user_role_found(mock_readonly):
+    mock_readonly.return_value = [("Admin",)]
+    result = utils.get_user_role("Harrison")
+    assert result == "Admin"
+    assert mock_readonly.call_args.kwargs.get("silent") is True
+
+
+def test_get_user_role_not_found(mock_readonly):
+    mock_readonly.return_value = []
+    result = utils.get_user_role("Ghost")
+    assert result is None
+
+
+# ─── get_all_users_password_status ───────────────────────────────────────────
+def test_get_all_users_password_status(mock_readonly):
+    mock_readonly.return_value = [("Alice", True), ("Bob", False)]
+    result = utils.get_all_users_password_status()
+    assert result == [
+        {"name": "Alice", "has_password": True},
+        {"name": "Bob", "has_password": False},
+    ]
+
+
+# ─── set_user_password ────────────────────────────────────────────────────────
+def test_set_user_password_found(mock_db_session):
+    mock_result = MagicMock()
+    mock_result.returns_rows = True
+    mock_result.fetchall.return_value = [(1,)]
+    mock_db_session.execute.return_value = mock_result
+    assert utils.set_user_password("Alice", "$2b$12$hash") is True
+
+
+def test_set_user_password_not_found(mock_db_session):
+    mock_result = MagicMock()
+    mock_result.returns_rows = True
+    mock_result.fetchall.return_value = []
+    mock_db_session.execute.return_value = mock_result
+    assert utils.set_user_password("Ghost", "$2b$12$hash") is False
+
+
+def test_set_user_password_redacts_hash_in_error_log(caplog):
+    """On DB failure, execute_query must log '<redacted>' not the real bcrypt hash."""
+    import logging
+    _real_execute_query = utils.execute_query
+    with patch('backend.bcssm_backend.utils.db') as mock_db:
+        mock_db.session.begin.return_value.__enter__ = MagicMock(return_value=mock_db.session)
+        mock_db.session.begin.return_value.__exit__ = MagicMock(return_value=None)
+        mock_db.session.execute.side_effect = SQLAlchemyError("db down")
+        with caplog.at_level(logging.ERROR, logger="backend.bcssm_backend.utils"):
+            with pytest.raises(SQLAlchemyError):
+                _real_execute_query(
+                    "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
+                    {'hash': '$2b$12$realhash', 'name': 'Alice'},
+                    silent=True,
+                )
+    error_messages = " ".join(r.getMessage() for r in caplog.records if r.levelno == logging.ERROR)
+    assert "$2b$12$realhash" not in error_messages
+    assert "<redacted>" in error_messages

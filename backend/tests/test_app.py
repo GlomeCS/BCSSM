@@ -3,7 +3,6 @@
 import logging
 import os
 from unittest.mock import MagicMock, patch
-import json
 
 import pytest
 from flask import Flask
