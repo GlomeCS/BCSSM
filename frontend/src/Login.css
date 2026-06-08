@@ -365,10 +365,10 @@
   }
 
   .login-title {
+    background: none;
     -webkit-text-fill-color: currentColor;
     -webkit-background-clip: initial;
     background-clip: initial;
-    background: none;
   }
 
   .user-select {
