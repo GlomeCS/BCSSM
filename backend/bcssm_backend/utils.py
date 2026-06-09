@@ -338,6 +338,8 @@ def get_feedback_by_date(date_str):
 
 
 def _fetch_user_info(where_clause, params, log_identifier):
+    # where_clause must be a hard-coded SQL fragment (e.g. "u.name = :user_name");
+    # all user input goes through params so execute_readonly_query keeps it parameterized.
     query = (
         "SELECT u.name, u.role, s.name AS section_name "
         "FROM users u "
