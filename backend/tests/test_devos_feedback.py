@@ -412,6 +412,32 @@ def test_edit_allowed_own_section(client, mock_write, patch_helpers):
     assert resp.status_code == 200
 
 
+def test_edit_allowed_cross_section_for_section_leader(client, mock_write, patch_helpers):
+    """Section Leader editing a different section's feedback → 200 (can_edit_all branch)."""
+    # test_edit_forbidden_wrong_section covers the 403 path (non-privileged role, wrong section).
+    # test_edit_allowed_own_section covers the 200 path for own section (non-privileged role).
+    # This test covers the remaining branch: a can_edit_all role bypasses the section check.
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+
+    def side_effect(query, params=None):
+        if "SELECT u.id FROM users u WHERE u.name" in query:
+            return [(1,)]
+        if "INSERT INTO feedback" in query:
+            return [(5,)]
+        return None  # pragma: no cover
+
+    mock_write.side_effect = side_effect
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Majors",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 200
+    assert resp.get_json() == {"success": True}
+
+
 def test_get_user_id_from_request_db_error(client, mock_write):
     """DB error during user ID lookup is caught by the route → 500."""
     def side_effect(query, params=None):

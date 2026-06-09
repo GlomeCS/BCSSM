@@ -337,46 +337,29 @@ def get_feedback_by_date(date_str):
         return None, "An error occurred while fetching feedback"
 
 
-def get_user_info(user_name):
-    user_info_query = """
-    SELECT u.name, u.role, s.name AS section_name
-    FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE u.name = :user_name;
-    """
+def _fetch_user_info(where_clause, params, log_identifier):
+    query = (
+        "SELECT u.name, u.role, s.name AS section_name "
+        "FROM users u "
+        "LEFT JOIN sections s ON u.section_id = s.id "
+        f"WHERE {where_clause};"
+    )
     try:
-        user_rows = execute_readonly_query(user_info_query, {"user_name": user_name})
-        if user_rows:
-            return {
-                "name": user_rows[0][0],
-                "role": user_rows[0][1],
-                "section": user_rows[0][2],
-            }
+        rows = execute_readonly_query(query, params)
+        if rows:
+            return {"name": rows[0][0], "role": rows[0][1], "section": rows[0][2]}
         return None
     except SQLAlchemyError as e:
-        logger.error("Failed to fetch user info for %s: %s", user_name, e)
+        logger.error("Failed to fetch user info for %s: %s", log_identifier, e)
         raise
+
+
+def get_user_info(user_name):
+    return _fetch_user_info("u.name = :user_name", {"user_name": user_name}, user_name)
 
 
 def get_user_info_by_id(user_id):
-    query = """
-    SELECT u.name, u.role, s.name AS section_name
-    FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE u.id = :user_id;
-    """
-    try:
-        rows = execute_readonly_query(query, {"user_id": user_id})
-        if rows:
-            return {
-                "name": rows[0][0],
-                "role": rows[0][1],
-                "section": rows[0][2],
-            }
-        return None
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch user info for id %s: %s", user_id, e)
-        raise
+    return _fetch_user_info("u.id = :user_id", {"user_id": user_id}, f"id {user_id}")
 
 
 def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, editor_id: int) -> None:
