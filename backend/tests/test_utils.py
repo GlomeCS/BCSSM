@@ -1450,6 +1450,13 @@ def test_get_user_info_exception(monkeypatch):
         utils.get_user_info("Alice")
 
 
+def test_get_user_info_by_id_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[("Alice", "Leader", "Minis")])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    info = utils.get_user_info_by_id(42)
+    assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
+
+
 # ─── Tests for save_devos_feedback ───────────────────────────────────────────
 
 def test_save_devos_feedback_success(monkeypatch):
@@ -1524,7 +1531,7 @@ def test_authenticate_user_success(mock_readonly, mocker):
         "name": "Alice",
         "role": "Section Leader",
         "section_name": "Minis",
-        "is_leader": True,
+        "can_edit_all": True,
     }
 
 
@@ -1588,17 +1595,17 @@ def test_authenticate_user_db_error_propagates(mock_readonly):
     ("Admin", True),
     ("Team Member", False),
 ])
-def test_authenticate_user_is_leader_roles(mock_readonly, mocker, role, expected):
+def test_authenticate_user_can_edit_all_roles(mock_readonly, mocker, role, expected):
     mock_readonly.return_value = [(1, "Alice", role, "Minis", _FAKE_HASH)]
     mocker.patch("backend.bcssm_backend.utils.bcrypt.checkpw", return_value=True)
     result = utils.authenticate_user("Alice", "secret123")
-    assert result["is_leader"] is expected
+    assert result["can_edit_all"] is expected
 
 
 # ─── cache_user_login ─────────────────────────────────────────────────────────
 def test_cache_user_login_writes_correct_key_and_ttl(mock_cache):
     user_data = {"id": 1, "name": "Alice", "role": "Section Leader",
-                 "section_name": "Minis", "is_leader": True}
+                 "section_name": "Minis", "can_edit_all": True}
     utils.cache_user_login(user_data)
     mock_cache.set.assert_called_once_with("user:data:Alice", user_data, timeout=1800)
 

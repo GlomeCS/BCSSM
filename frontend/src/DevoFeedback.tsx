@@ -13,7 +13,7 @@ type DevoFeedbackResponse = {
   feedback?: FeedbackData;
   date?: string;
   user?: { section: string };
-  is_leader?: boolean;
+  can_edit_all?: boolean;
 };
 
 const DevoFeedback: React.FC = () => {
@@ -24,7 +24,7 @@ const DevoFeedback: React.FC = () => {
   const [feedback, setFeedback] = useState<FeedbackData>({});
   const [sections, setSections] = useState<string[]>([]);
   const [userSection, setUserSection] = useState<string | null>(null);
-  const [isLeaderState, setIsLeaderState] = useState<boolean>(false);
+  const [canEditAllState, setIsLeaderState] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [sectionsLoading, setSectionsLoading] = useState<boolean>(true);
   const [splitPickerOpen, setSplitPickerOpen] = useState(false);
@@ -74,7 +74,7 @@ const DevoFeedback: React.FC = () => {
   };
 
   const canEdit = (section: string) =>
-    currentUser !== null && (isLeaderState || userSection === section);
+    currentUser !== null && (canEditAllState || userSection === section);
 
   useEffect(() => {
     if (windowSize === 0) return;
@@ -147,7 +147,7 @@ const DevoFeedback: React.FC = () => {
 
         if (dataParsed.user) {
           setUserSection(dataParsed.user.section);
-          setIsLeaderState(dataParsed.is_leader ?? false);
+          setIsLeaderState(dataParsed.can_edit_all ?? false);
         }
 
       } catch (error) {
@@ -375,7 +375,7 @@ const DevoFeedback: React.FC = () => {
                   <div className="feedback-card-header">
                     <h3 className="section-title">{section}</h3>
                     <span className="expand-icon" aria-hidden="true">⤢</span>
-                    {currentUser !== null && (isLeaderState || userSection === section) && (
+                    {currentUser !== null && (canEditAllState || userSection === section) && (
                       <div className="action-buttons">
                         {hasContent ? (
                           <Link

@@ -13,7 +13,7 @@ const FEEDBACK_RESPONSE = {
     Minis: 'Wonderful morning, everyone engaged well.',
   },
   user: { section: 'Seniors' },
-  is_leader: true,
+  can_edit_all: true,
 };
 
 const mockNavigate = vi.fn();
@@ -29,7 +29,7 @@ function setupMockFetch(isLeader = true) {
     if (url.includes('/api/auth/validate')) {
       return Promise.resolve(
         new Response(
-          JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', is_leader: isLeader }),
+          JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: isLeader }),
           { headers: { 'Content-Type': 'application/json' } }
         )
       );
@@ -42,7 +42,7 @@ function setupMockFetch(isLeader = true) {
     if (url.includes('/api/devos-feedback')) {
       return Promise.resolve(
         new Response(
-          JSON.stringify({ ...FEEDBACK_RESPONSE, is_leader: isLeader }),
+          JSON.stringify({ ...FEEDBACK_RESPONSE, can_edit_all: isLeader }),
           { headers: { 'Content-Type': 'application/json' } }
         )
       );
@@ -69,7 +69,7 @@ describe('DevoFeedback', () => {
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Alice');
     localStorage.setItem('user_role', 'Section Leader');
-    localStorage.setItem('is_leader', 'true');
+    localStorage.setItem('can_edit_all', 'true');
     mockNavigate.mockClear();
     vi.stubGlobal('fetch', vi.fn());
   });

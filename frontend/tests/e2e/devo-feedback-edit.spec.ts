@@ -8,7 +8,7 @@ const EXISTING_FEEDBACK_RESPONSE = {
     Seniors: 'Existing feedback text already here.',
   },
   user: { section: 'Seniors' },
-  is_leader: true,
+  can_edit_all: true,
 };
 
 async function setupEditPage(page: Page, existingFeedback = 'Existing feedback text already here.') {
@@ -16,13 +16,13 @@ async function setupEditPage(page: Page, existingFeedback = 'Existing feedback t
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Alice');
     localStorage.setItem('user_role', 'Section Leader');
-    localStorage.setItem('is_leader', 'true');
+    localStorage.setItem('can_edit_all', 'true');
   });
   await page.route('**/api/auth/validate*', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', is_leader: true }),
+      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: true }),
     })
   );
   await page.route('**/api/devos-feedback/edit*', route => {
@@ -65,13 +65,13 @@ test('shows error when date or section params are missing', async ({ page }) => 
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Alice');
     localStorage.setItem('user_role', 'Section Leader');
-    localStorage.setItem('is_leader', 'true');
+    localStorage.setItem('can_edit_all', 'true');
   });
   await page.route('**/api/auth/validate*', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', is_leader: true }),
+      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: true }),
     })
   );
   await page.goto('/react/devos-feedback/edit');

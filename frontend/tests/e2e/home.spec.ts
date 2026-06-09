@@ -5,7 +5,7 @@ async function loginAs(page: Page, role = 'Team Member', isLeader = false) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role, section: 'Seniors', is_leader: isLeader }),
+      body: JSON.stringify({ is_valid: true, role, section: 'Seniors', can_edit_all: isLeader }),
     })
   );
   await page.route('**/duty-teams*', route =>
@@ -22,7 +22,7 @@ async function loginAs(page: Page, role = 'Team Member', isLeader = false) {
       localStorage.setItem('is_logged_in', 'true');
       localStorage.setItem('currentUser', 'Alice');
       localStorage.setItem('user_role', r);
-      localStorage.setItem('is_leader', leader ? 'true' : 'false');
+      localStorage.setItem('can_edit_all', leader ? 'true' : 'false');
     },
     { r: role, leader: isLeader }
   );

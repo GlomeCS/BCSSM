@@ -36,7 +36,7 @@ function mockLoginSuccess(user: string) {
         user_name: user,
         role: 'Team Member',
         section: 'Seniors',
-        is_leader: false,
+        can_edit_all: false,
       }),
       { headers: { 'Content-Type': 'application/json' } }
     )
@@ -134,7 +134,7 @@ describe('Login', () => {
     expect(localStorage.getItem('is_logged_in')).toBe('true');
     expect(localStorage.getItem('user_role')).toBe('Team Member');
     expect(localStorage.getItem('user_section')).toBe('Seniors');
-    expect(localStorage.getItem('is_leader')).toBe('false');
+    expect(localStorage.getItem('can_edit_all')).toBe('false');
   });
 
   it('shows an error message on failed login request', async () => {

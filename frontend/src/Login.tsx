@@ -78,7 +78,7 @@ function Login() {
         localStorage.removeItem("user_role");
       }
 
-      localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
+      localStorage.setItem("can_edit_all", data.can_edit_all ? "true" : "false");
 
       // Navigate to home page
       console.log("Login successful, navigating to home");

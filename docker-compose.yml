@@ -20,6 +20,8 @@ services:
       FLASK_ENV: production
       # Override ONLY for local Docker - doesn't affect Render
       REDIS_URL: redis://redis:6379
+      # Local Docker runs over HTTP - Secure cookie flag must be off or browsers reject Set-Cookie
+      SESSION_COOKIE_SECURE: "false"
     depends_on:
       - redis
     restart: unless-stopped

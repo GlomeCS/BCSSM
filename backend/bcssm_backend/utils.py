@@ -337,25 +337,31 @@ def get_feedback_by_date(date_str):
         return None, "An error occurred while fetching feedback"
 
 
-def get_user_info(user_name):
-    user_info_query = """
-    SELECT u.name, u.role, s.name AS section_name
-    FROM users u
-    LEFT JOIN sections s ON u.section_id = s.id
-    WHERE u.name = :user_name;
-    """
+def _fetch_user_info(where_clause, params, log_identifier):
+    # where_clause must be a hard-coded SQL fragment (e.g. "u.name = :user_name");
+    # all user input goes through params so execute_readonly_query keeps it parameterized.
+    query = (
+        "SELECT u.name, u.role, s.name AS section_name "
+        "FROM users u "
+        "LEFT JOIN sections s ON u.section_id = s.id "
+        f"WHERE {where_clause};"
+    )
     try:
-        user_rows = execute_readonly_query(user_info_query, {"user_name": user_name})
-        if user_rows:
-            return {
-                "name": user_rows[0][0],
-                "role": user_rows[0][1],
-                "section": user_rows[0][2],
-            }
+        rows = execute_readonly_query(query, params)
+        if rows:
+            return {"name": rows[0][0], "role": rows[0][1], "section": rows[0][2]}
         return None
     except SQLAlchemyError as e:
-        logger.error("Failed to fetch user info for %s: %s", user_name, e)
+        logger.error("Failed to fetch user info for %s: %s", log_identifier, e)
         raise
+
+
+def get_user_info(user_name):
+    return _fetch_user_info("u.name = :user_name", {"user_name": user_name}, user_name)
+
+
+def get_user_info_by_id(user_id):
+    return _fetch_user_info("u.id = :user_id", {"user_id": user_id}, f"id {user_id}")
 
 
 def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, editor_id: int) -> None:
@@ -663,7 +669,7 @@ def authenticate_user(user_name: str, password: str) -> dict:
         "name": name,
         "role": role,
         "section_name": section_name,
-        "is_leader": role in {"Section Leader", "Team Leader", "Admin"},
+        "can_edit_all": role in {"Section Leader", "Team Leader", "Admin"},
     }
 
 

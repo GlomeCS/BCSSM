@@ -200,7 +200,7 @@ def test_get_selected_user_with_cache(client, patch_helpers):
         "name": "Zed", 
         "role": "Leader",
         "section_name": "Minors",
-        "is_leader": True
+        "can_edit_all": True
     }
     
     with client.session_transaction() as sess:
@@ -358,7 +358,7 @@ def test_validate_user_success_with_session(client, patch_helpers):
     assert data["user_name"] == "Charlie"
     assert data["role"] == "Admin"
     assert data["section"] == "Unassigned"
-    assert data["is_leader"] is True
+    assert data["can_edit_all"] is True
 
 
 def test_validate_user_query_param_rejected(client, patch_helpers):
@@ -398,7 +398,7 @@ def test_validate_user_team_leader_role(client, patch_helpers):
     assert data["user_name"] == "David"
     assert data["role"] == "Team Leader"
     assert data["section"] == "Micros"
-    assert data["is_leader"] is True
+    assert data["can_edit_all"] is True
 
 
 def test_validate_user_no_username_provided(client, patch_helpers):
@@ -455,7 +455,7 @@ def test_validate_user_user_without_section(client, patch_helpers):
     assert data["user_name"] == "Eve"
     assert data["role"] == "Team Member"
     assert data["section"] is None
-    assert data["is_leader"] is False
+    assert data["can_edit_all"] is False
 
 
 def test_validate_user_session_takes_priority(client, patch_helpers):
@@ -583,7 +583,7 @@ def test_validate_params_post_present(app):
 def test_inject_user_state_cache_hit(app, patch_helpers):
     """Context processor returns cached data when cache.get returns user data (lines 313-314)."""
     ph = patch_helpers
-    ph["cache"].get.return_value = {'section_name': 'Minis', 'is_leader': True, 'id': 42}
+    ph["cache"].get.return_value = {'section_name': 'Minis', 'can_edit_all': True, 'id': 42}
 
     with app.test_request_context('/'):
         from flask import session
@@ -596,7 +596,7 @@ def test_inject_user_state_cache_hit(app, patch_helpers):
         result = inject_func()
         assert result['is_logged_in'] is True
         assert result['user_section'] == 'Minis'
-        assert result['is_leader'] is True
+        assert result['can_edit_all'] is True
         assert result['user_id'] == 42
 
 
@@ -611,7 +611,7 @@ def test_inject_user_state_not_logged_in(app, patch_helpers):
         result = inject_func()
         assert result['is_logged_in'] is False
         assert result['user_section'] is None
-        assert result['is_leader'] is False
+        assert result['can_edit_all'] is False
         assert result['user_id'] is None
 
 
@@ -640,7 +640,7 @@ def test_api_login_success(client, patch_helpers):
     ph = patch_helpers
     ph["authenticate_user"].return_value = {
         "id": 1, "name": "Alice", "role": "Section Leader",
-        "section_name": "Minis", "is_leader": True,
+        "section_name": "Minis", "can_edit_all": True,
     }
 
     resp = client.post("/api/auth/login", json={"user_name": "Alice", "password": "secret123"})
@@ -650,7 +650,7 @@ def test_api_login_success(client, patch_helpers):
     assert data["user_name"] == "Alice"
     assert data["role"] == "Section Leader"
     assert data["section"] == "Minis"
-    assert data["is_leader"] is True
+    assert data["can_edit_all"] is True
 
     with client.session_transaction() as sess:
         assert sess["user_name"] == "Alice"
@@ -661,7 +661,7 @@ def test_api_login_calls_cache_user_login(client, patch_helpers):
     """Successful login calls cache_user_login with the user dict."""
     ph = patch_helpers
     user = {"id": 2, "name": "Bob", "role": "Team Member",
-            "section_name": "Seniors", "is_leader": False}
+            "section_name": "Seniors", "can_edit_all": False}
     ph["authenticate_user"].return_value = user
 
     client.post("/api/auth/login", json={"user_name": "Bob", "password": "secret123"})
@@ -674,7 +674,7 @@ def test_api_login_name_with_apostrophe(client, patch_helpers):
     ph = patch_helpers
     ph["authenticate_user"].return_value = {
         "id": 10, "name": "O'Reilly", "role": "Team Member",
-        "section_name": "Minis", "is_leader": False,
+        "section_name": "Minis", "can_edit_all": False,
     }
 
     resp = client.post("/api/auth/login", json={"user_name": "O'Reilly", "password": "secret123"})
@@ -719,16 +719,16 @@ def test_api_login_db_error(client, patch_helpers):
 
 
 def test_api_login_non_leader_role(client, patch_helpers):
-    """Team Member role results in is_leader=False."""
+    """Team Member role results in can_edit_all=False."""
     ph = patch_helpers
     ph["authenticate_user"].return_value = {
         "id": 4, "name": "Dave", "role": "Team Member",
-        "section_name": "Minis", "is_leader": False,
+        "section_name": "Minis", "can_edit_all": False,
     }
 
     resp = client.post("/api/auth/login", json={"user_name": "Dave", "password": "secret123"})
     assert resp.status_code == 200
-    assert resp.get_json()["is_leader"] is False
+    assert resp.get_json()["can_edit_all"] is False
 
 
 # ─── 14) POST /api/auth/logout ────────────────────────────────────────────────

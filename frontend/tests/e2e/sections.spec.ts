@@ -33,13 +33,13 @@ async function setupSectionsPage(page: Page) {
     localStorage.setItem('is_logged_in', 'true');
     localStorage.setItem('currentUser', 'Alice');
     localStorage.setItem('user_role', 'Team Member');
-    localStorage.setItem('is_leader', 'false');
+    localStorage.setItem('can_edit_all', 'false');
   });
   await page.route('**/api/auth/validate*', route =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', is_leader: false }),
+      body: JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', can_edit_all: false }),
     })
   );
   await page.route('**/api/users/by-section*', route =>

@@ -49,7 +49,7 @@ export const getCurrentUser = (): string | null => {
       localStorage.removeItem('is_logged_in');
       localStorage.removeItem('user_role');
       localStorage.removeItem('user_section');
-      localStorage.removeItem('is_leader');
+      localStorage.removeItem('can_edit_all');
     }
   };
 
@@ -75,9 +75,10 @@ export const getCurrentUser = (): string | null => {
 
     if (data.is_valid) {
       localStorage.setItem("is_logged_in", "true");
+      if (data.user_name) localStorage.setItem("currentUser", data.user_name);
       if (data.role) localStorage.setItem("user_role", data.role);
       if (data.section) localStorage.setItem("user_section", data.section);
-      localStorage.setItem("is_leader", data.is_leader ? "true" : "false");
+      localStorage.setItem("can_edit_all", data.can_edit_all ? "true" : "false");
       return true;
     }
 

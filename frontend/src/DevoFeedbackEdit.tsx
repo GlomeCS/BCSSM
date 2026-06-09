@@ -14,6 +14,9 @@ const DevoFeedbackEdit: React.FC = () => {
   const { currentUser, loading: authLoading } = useRequireAuth();
   const [feedback, setFeedback] = useState<string>('');
   const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const canEditAll = localStorage.getItem('can_edit_all') === 'true';
+  const userSection = localStorage.getItem('user_section') ?? '';
+  const canEdit = canEditAll || userSection === section;
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [characterCount, setCharacterCount] = useState<number>(0);
@@ -120,6 +123,11 @@ const DevoFeedbackEdit: React.FC = () => {
       return dateString;
     }
   };
+
+  if (!authLoading && currentUser && !canEdit) {
+    navigate(`/react/devos-feedback?date=${encodeURIComponent(dateStr)}`, { replace: true });
+    return null;
+  }
 
   if (authLoading || dataLoading) {
     return (

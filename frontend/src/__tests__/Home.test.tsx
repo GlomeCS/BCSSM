@@ -22,7 +22,7 @@ function setupLoggedInUser(overrides: Record<string, string> = {}) {
     is_logged_in: 'true',
     currentUser: 'Alice',
     user_role: 'Team Member',
-    is_leader: 'false',
+    can_edit_all: 'false',
   };
   Object.entries({ ...defaults, ...overrides }).forEach(([k, v]) =>
     localStorage.setItem(k, v)
@@ -32,7 +32,7 @@ function setupLoggedInUser(overrides: Record<string, string> = {}) {
 function mockValidateAuthSuccess(role = 'Team Member', isLeader = false) {
   vi.mocked(fetch).mockResolvedValueOnce(
     new Response(
-      JSON.stringify({ is_valid: true, role, section: 'Seniors', is_leader: isLeader }),
+      JSON.stringify({ is_valid: true, role, section: 'Seniors', can_edit_all: isLeader }),
       { headers: { 'Content-Type': 'application/json' } }
     )
   );
