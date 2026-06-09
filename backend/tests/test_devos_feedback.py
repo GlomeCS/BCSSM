@@ -467,3 +467,33 @@ def test_route_get_outer_sqlalchemy_error(client, patch_helpers):
     resp = client.get("/api/devos-feedback")
     assert resp.status_code == 500
     assert "Internal server error" in resp.get_json()["error"]
+
+
+def test_edit_editor_info_db_error(client, mock_write, patch_helpers):
+    """get_user_info raises SQLAlchemyError during editor info lookup → 500."""
+    _, fake_ui = patch_helpers
+    fake_ui.side_effect = SQLAlchemyError("editor info lookup failed")
+    mock_write.return_value = [(1,)]
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 500
+    assert "Internal server error" in resp.get_json()["error"]
+
+
+def test_edit_editor_info_not_found(client, mock_write, patch_helpers):
+    """get_user_info returns None for editor → 400 Invalid user."""
+    _, fake_ui = patch_helpers
+    fake_ui.return_value = None
+    mock_write.return_value = [(1,)]
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "Test"})
+    assert resp.status_code == 400
+    assert "Invalid user" in resp.get_json()["error"]

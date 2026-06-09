@@ -1450,6 +1450,13 @@ def test_get_user_info_exception(monkeypatch):
         utils.get_user_info("Alice")
 
 
+def test_get_user_info_by_id_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[("Alice", "Leader", "Minis")])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    info = utils.get_user_info_by_id(42)
+    assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
+
+
 # ─── Tests for save_devos_feedback ───────────────────────────────────────────
 
 def test_save_devos_feedback_success(monkeypatch):
