@@ -227,10 +227,11 @@ def test_get_user_duty_short_row(monkeypatch, mock_readonly, mock_cache):
     assert "Unexpected data format" in result["error"]
 
 def test_execute_readonly_query_db_error():
-    """Test execute_readonly_query except SQLAlchemyError block (covers lines 39-43)"""
+    """Test execute_readonly_query wraps SQLAlchemyError as DatabaseError"""
+    from backend.bcssm_backend.exceptions import DatabaseError
     with patch('backend.bcssm_backend.utils.db') as mock_db:
         mock_db.engine.connect.side_effect = SQLAlchemyError("connection failed")
-        with pytest.raises(SQLAlchemyError, match="connection failed"):
+        with pytest.raises(DatabaseError, match="connection failed"):
             _real_execute_readonly_query("SELECT 1")
 
 # ─── 6) Tests for get_users_by_section() ───────────────────────────────────
@@ -1415,17 +1416,15 @@ def test_get_current_cycle_week_integration_with_get_user_duty(monkeypatch, mock
 def test_get_feedback_by_date_success(monkeypatch):
     mock_exec = MagicMock(return_value=[("Minis", "Great job"), ("Majors", None)])
     monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
-    result, error = utils.get_feedback_by_date("2025-06-07")
-    assert error is None
+    result = utils.get_feedback_by_date("2025-06-07")
     assert result == {"Minis": "Great job", "Majors": "No feedback available"}
 
 
 def test_get_feedback_by_date_exception(monkeypatch):
     mock_exec = MagicMock(side_effect=SQLAlchemyError("DB fail"))
     monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
-    result, error = utils.get_feedback_by_date("2025-06-07")
-    assert result is None
-    assert error == "An error occurred while fetching feedback"
+    with pytest.raises(SQLAlchemyError):
+        utils.get_feedback_by_date("2025-06-07")
 
 
 # ─── Tests for get_user_info ─────────────────────────────────────────────────
@@ -1670,13 +1669,14 @@ def test_set_user_password_not_found(mock_db_session):
 def test_set_user_password_redacts_hash_in_error_log(caplog):
     """On DB failure, execute_query must log '<redacted>' not the real bcrypt hash."""
     import logging
+    from backend.bcssm_backend.exceptions import DatabaseError
     _real_execute_query = utils.execute_query
     with patch('backend.bcssm_backend.utils.db') as mock_db:
         mock_db.session.begin.return_value.__enter__ = MagicMock(return_value=mock_db.session)
         mock_db.session.begin.return_value.__exit__ = MagicMock(return_value=None)
         mock_db.session.execute.side_effect = SQLAlchemyError("db down")
         with caplog.at_level(logging.ERROR, logger="backend.bcssm_backend.utils"):
-            with pytest.raises(SQLAlchemyError):
+            with pytest.raises(DatabaseError):
                 _real_execute_query(
                     "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
                     {'hash': '$2b$12$realhash', 'name': 'Alice'},

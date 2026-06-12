@@ -320,7 +320,7 @@ def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpe
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
-    assert "Failed to get duty information" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_db):
@@ -336,7 +336,7 @@ def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_
     resp = client.get("/duty-teams")
     assert resp.status_code == 500
     data = resp.get_json()
-    assert "Failed to get duty information" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 # ─── 6) Testing static‐file or React SPA fallback ──────────────────────────────
