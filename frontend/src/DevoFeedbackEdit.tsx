@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
 import { apiGet, apiPost } from '../api';
 import { useRequireAuth } from './hooks/useRequireAuth';
+import { useAuth } from './AuthContext';
 import "./DevoFeedbackEdit.css";
 
 const DevoFeedbackEdit: React.FC = () => {
@@ -12,10 +13,9 @@ const DevoFeedbackEdit: React.FC = () => {
   const navigate = useNavigate();
 
   const { currentUser, loading: authLoading } = useRequireAuth();
+  const { canEditAll, userSection } = useAuth();
   const [feedback, setFeedback] = useState<string>('');
   const [dataLoading, setDataLoading] = useState<boolean>(true);
-  const canEditAll = localStorage.getItem('can_edit_all') === 'true';
-  const userSection = localStorage.getItem('user_section') ?? '';
   const canEdit = canEditAll || userSection === section;
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);

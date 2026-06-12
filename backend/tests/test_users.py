@@ -145,13 +145,10 @@ def test_user_duty_success(client, patch_helpers):
 
 
 def test_user_duty_query_param_rejected(client, patch_helpers):
-    """Query param user is no longer trusted — must return 400."""
-    ph = patch_helpers
-    ph["duty"].return_value = {"user": "Alice", "duty": "Cleaning"}
-
+    """Query param user is not trusted — session required."""
     resp = client.get("/user-duty?user=Alice")
-    assert resp.status_code == 400
-    ph["duty"].assert_not_called()
+    assert resp.status_code == 401
+    patch_helpers["duty"].assert_not_called()
 
 
 def test_user_duty_error_response(client, patch_helpers):
@@ -170,12 +167,10 @@ def test_user_duty_error_response(client, patch_helpers):
 
 
 def test_user_duty_missing_param(client, patch_helpers):
-    """No session → 400."""
+    """No session → 401."""
     resp = client.get("/user-duty")
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "error" in data
-    assert "Username required" in data["error"]
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
 
 
 def test_user_duty_exception(client, patch_helpers):
@@ -241,10 +236,10 @@ def test_get_selected_user_cache_error(client, patch_helpers):
     assert data["user"] == "Zed"
     # Should fall back to basic response when cache fails
 
-def test_get_selected_user_none(client, patch_helpers):
+def test_get_selected_user_no_session(client, patch_helpers):
+    """No session → 401 (route now requires auth)."""
     resp = client.get("/get-selected-user")
-    assert resp.status_code == 200
-    assert resp.get_json() == {"user": None}
+    assert resp.status_code == 401
 
 # ─── 7) GET /get-users ────────────────────────────────────────────────────────────
 def test_get_users_success(client, patch_helpers):

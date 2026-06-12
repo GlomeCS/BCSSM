@@ -119,7 +119,7 @@ def test_get_users_by_section_route_unauthenticated(client):
     
     assert response.status_code == 401
     data = json.loads(response.data)
-    assert data["error"] == "User not authenticated"
+    assert "Authentication required" in data["error"]
 
 def test_get_users_by_section_route_utility_error(client, mock_utils):
     """Test endpoint handles utility function errors"""
@@ -279,7 +279,7 @@ def test_get_section_users_route_unauthenticated(client):
     
     assert response.status_code == 401
     data = json.loads(response.data)
-    assert data["error"] == "User not authenticated"
+    assert "Authentication required" in data["error"]
 
 def test_get_section_users_route_utility_error(client, mock_utils):
     """Test endpoint handles utility function errors"""
@@ -477,14 +477,14 @@ def test_both_endpoints_authentication_consistency(client):
     if response1.status_code != 404:  # Skip if route not implemented
         assert response1.status_code == 401
         data1 = json.loads(response1.data)
-        assert data1["error"] == "User not authenticated"
-    
+        assert "Authentication required" in data1["error"]
+
     # Act & Assert for second endpoint
     response2 = client.get('/api/users/section/TestSection')
     if response2.status_code != 404:  # Skip if route not implemented
         assert response2.status_code == 401
         data2 = json.loads(response2.data)
-        assert data2["error"] == "User not authenticated"
+        assert "Authentication required" in data2["error"]
 
 def test_get_users_by_section_auth_via_query_param_rejected(client, mock_utils):
     """Query-param user_name is no longer trusted — must return 401."""

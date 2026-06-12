@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import Navbar from './Navbar';
 import { apiGet } from '../api';
 import { useRequireAuth } from './hooks/useRequireAuth';
+import { useAuth } from './AuthContext';
 import "./DevoFeedback.css";
 
 type FeedbackData = {
@@ -12,19 +13,16 @@ type FeedbackData = {
 type DevoFeedbackResponse = {
   feedback?: FeedbackData;
   date?: string;
-  user?: { section: string };
-  can_edit_all?: boolean;
 };
 
 const DevoFeedback: React.FC = () => {
   const { currentUser, loading: authLoading } = useRequireAuth();
+  const { canEditAll: canEditAllState, userSection } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const currentDateStr = searchParams.get('date') || new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(currentDateStr);
   const [feedback, setFeedback] = useState<FeedbackData>({});
   const [sections, setSections] = useState<string[]>([]);
-  const [userSection, setUserSection] = useState<string | null>(null);
-  const [canEditAllState, setIsLeaderState] = useState<boolean>(false);
   const [dataLoading, setDataLoading] = useState<boolean>(true);
   const [sectionsLoading, setSectionsLoading] = useState<boolean>(true);
   const [splitPickerOpen, setSplitPickerOpen] = useState(false);
@@ -106,30 +104,21 @@ const DevoFeedback: React.FC = () => {
     if (!currentUser) return;
     setDataLoading(true);
     setFeedback({});
-    setUserSection(null);
-    setIsLeaderState(false);
 
     const fetchFeedbackData = async () => {
       try {
         const url = `/api/devos-feedback?date=${currentDateStr}`;
-        console.log('Fetching devos-feedback from:', url);
-
         const res = await apiGet(url);
 
-        console.log('Response status:', res.status, 'Content-Type:', res.headers.get('content-type'));
         if (!res.ok) {
           throw new Error(`Network response was not ok: ${res.status}`);
         }
 
         const text = await res.text();
-        console.log('Raw devos-feedback response text:', text);
-
         let dataParsed: DevoFeedbackResponse;
         try {
           dataParsed = JSON.parse(text);
-          // Handle double-encoded JSON string
           if (typeof dataParsed === 'string') {
-            console.log('Outer JSON was a string, parsing inner JSON:', dataParsed);
             dataParsed = JSON.parse(dataParsed);
           }
         } catch (e) {
@@ -137,18 +126,12 @@ const DevoFeedback: React.FC = () => {
           throw e;
         }
 
-        console.log('Parsed devos-feedback data:', dataParsed);
         setFeedback(dataParsed.feedback || {});
 
         const dateVal = typeof dataParsed.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dataParsed.date)
           ? dataParsed.date
           : currentDateStr;
         setDate(dateVal);
-
-        if (dataParsed.user) {
-          setUserSection(dataParsed.user.section);
-          setIsLeaderState(dataParsed.can_edit_all ?? false);
-        }
 
       } catch (error) {
         console.error('Error fetching or parsing devos-feedback:', error);
