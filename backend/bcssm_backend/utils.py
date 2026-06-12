@@ -298,19 +298,6 @@ def get_all_sections():
     result = execute_readonly_query(query)
     return [row[0] for row in result]
 
-@cached_result(lambda section: f'users:section:{section}', 1800, error_ttl=60,
-               on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
-def get_users_by_section(section):
-    query = """
-    SELECT u.name, u.role
-    FROM users u
-    INNER JOIN sections s ON u.section_id = s.id
-    WHERE s.name = :section
-    ORDER BY u.name;
-    """
-    result = execute_readonly_query(query, {"section": section})
-    return [{"name": row[0], "role": row[1]} for row in result]
-
 @cached_result('feedback:dates:all', 7200, error_ttl=60,
                on_error=lambda e: {"error": f"Failed to fetch feedback dates: {e}"})
 def get_all_feedback_dates():
@@ -504,9 +491,9 @@ def get_section_statistics():
         for row in rows
     ]
 
-@cached_result(lambda section_name: f'users:section:{section_name}:detailed', 1800, error_ttl=60,
+@cached_result(lambda section_name: f'users:section:{section_name}', 1800, error_ttl=60,
                on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
-def get_users_by_section_optimized(section_name):
+def get_users_by_section(section_name):
     if section_name == "Unassigned":
         query = """
         SELECT u.name, 
@@ -537,30 +524,20 @@ def get_users_by_section_optimized(section_name):
     return [{"name": row[0], "role": row[1]} for row in result]
 
 
-# Update the clear_user_cache function to include new cache keys
 def clear_user_cache():
     """Clear user-related caches after user data changes"""
     try:
         cache.delete('users:all:list')
         cache.delete('sections:all:list')
-        cache.delete('sections:with_users:all')
-        cache.delete('sections:with_users:all_v2')
-        cache.delete('sections:with_users:all_v3')
-        cache.delete('sections:with_users:all_v4')
         cache.delete('sections:with_users:all_v6')
         cache.delete('sections:statistics:summary')
-        
-        # Clear individual section caches using pattern matching if supported
-        # Otherwise, clear specific known sections
+
         sections = get_all_sections()
         if isinstance(sections, list):
             for section in sections:
                 cache.delete(f'users:section:{section}')
-                cache.delete(f'users:section:{section}:detailed')
-        
-        # Also clear the "Unassigned" section cache
-        cache.delete('users:section:Unassigned:detailed')
-        
+        cache.delete('users:section:Unassigned')
+
         logger.info("Cleared user-related caches")
     except RedisError as e:
         logger.warning("Failed to clear user caches: %s", e)
