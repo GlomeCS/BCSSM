@@ -3,7 +3,7 @@ from flask import g, jsonify
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend.decorators import require_auth
-from backend.bcssm_backend.utils import get_all_sections_with_users, get_users_by_section_optimized
+from backend.bcssm_backend.utils import get_all_sections_with_users, get_users_by_section
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ def init_users_sections_routes(app):
         try:
             logger.info("Fetching users for section: %s", section_name)
             
-            users = get_users_by_section_optimized(section_name)
+            users = get_users_by_section(section_name)
             
             if isinstance(users, dict) and "error" in users:
                 logger.error("Error fetching users for section %s: %s", section_name, users["error"])
