@@ -1,14 +1,25 @@
-import { useState, useEffect } from "react";
 import Navbar from "./Navbar";
-import { apiGet } from "../api";
 import { useRequireAuth } from "./hooks/useRequireAuth";
+import { useApiGet } from "./hooks/useApiGet";
 import "./Home.css";
+
+type DutyTeamsResponse = {
+  user?: string;
+  duty_message?: string | null;
+  role?: string;
+};
 
 function Home() {
   const { currentUser, loading: authLoading } = useRequireAuth();
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [dutyMessage, setDutyMessage] = useState<string | null>(null);
-  const [dataLoading, setDataLoading] = useState<boolean>(true);
+  const localRole = localStorage.getItem("user_role");
+
+  const { data: dutyData, loading: dataLoading } = useApiGet<DutyTeamsResponse>(
+    "/duty-teams",
+    { skip: !currentUser }
+  );
+
+  const userRole = (dutyData?.user ? dutyData.role : null) ?? localRole;
+  const dutyMessage = dutyData?.user ? (dutyData.duty_message ?? null) : null;
 
   // Check if user has access to forms based on their role
   const hasFormsAccess = (role: string | null): boolean => {
@@ -16,38 +27,6 @@ function Home() {
     const allowedRoles = ["Section Leader", "Team Leader", "Admin"];
     return allowedRoles.includes(role);
   };
-
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const fetchDutyInfo = async () => {
-      const role = localStorage.getItem("user_role");
-      setUserRole(role);
-
-      try {
-        console.log("Fetching duty info...");
-        const response = await apiGet("/duty-teams");
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log("Duty data received:", data);
-
-        if (data && data.user) {
-          setDutyMessage(data.duty_message);
-          setUserRole(data.role || role);
-        }
-      } catch (error) {
-        console.error("Error fetching duty info:", error);
-      } finally {
-        setDataLoading(false);
-      }
-    };
-
-    fetchDutyInfo();
-  }, [currentUser]);
 
   if (authLoading || dataLoading) {
     return (
