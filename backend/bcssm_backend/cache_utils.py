@@ -167,12 +167,11 @@ def clear_group(group_name: str, cache=None) -> None:
             cache.delete(key)
         for pattern in glob_patterns:
             _scan_delete(cache, pattern)
+        logger.info(
+            "Cleared cache group '%s': %d static key(s), %d pattern(s)",
+            group_name, len(static_keys), len(glob_patterns),
+        )
     except Exception as e:
         logger.warning(
             "clear_group(%s) encountered an error: %s", group_name, e
         )
-
-    logger.info(
-        "Cleared cache group '%s': %d static key(s), %d pattern(s)",
-        group_name, len(static_keys), len(glob_patterns),
-    )
