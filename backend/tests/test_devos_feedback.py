@@ -375,11 +375,16 @@ def test_edit_allowed_cross_section_for_section_leader(client, mock_write, patch
     assert resp.get_json() == {"success": True}
 
 
-def test_edit_no_user_id_in_session(client, mock_write, patch_helpers):
-    """user_id absent from session → editor_id is None; route proceeds (DB enforces NOT NULL)."""
+def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypatch):
+    """user_id absent from session → @require_auth resolves it from DB; route succeeds."""
     _, fake_ui = patch_helpers
     fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
     mock_write.return_value = [(5,)]
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 42,
+    )
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"  # user_id intentionally omitted
@@ -387,6 +392,9 @@ def test_edit_no_user_id_in_session(client, mock_write, patch_helpers):
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
     assert resp.status_code == 200
+    # Verify the write was called with the resolved user_id (42), not None
+    write_call_params = mock_write.call_args[0][1]
+    assert write_call_params.get("editor_id") == 42
 
 
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):

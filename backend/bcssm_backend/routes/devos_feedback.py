@@ -51,6 +51,9 @@ def init_feedback_routes(app):
         if not date_str or not section_name or new_feedback is None:
             return jsonify({'error': 'Missing date, section, or feedback'}), 400
 
+        if not isinstance(new_feedback, str):
+            return jsonify({'error': 'Feedback must be a string'}), 400
+
         editor_id = g.user_id
         editor_name = g.user_name
         logger.debug("edit_devos_feedback - editor_id: %s", editor_id)
