@@ -64,12 +64,6 @@ export const getCurrentUser = (): string | null => {
   // Returns false if the server explicitly says the session is invalid.
   // Throws on network/transport errors so callers can distinguish transient failures.
   export const validateAuth = async (): Promise<boolean> => {
-    const currentUser = getCurrentUser();
-
-    if (!currentUser) {
-      return false;
-    }
-
     const response = await apiGet('/api/auth/validate');
     if (!response.ok) {
       // 400 = no session / not authenticated; 401/403 = explicitly rejected.

@@ -24,40 +24,61 @@ def env_and_deny_db(monkeypatch):
     # Mock the database session and related components
     mock_sess = MagicMock()
     mock_result = MagicMock()
-    
+
     # Mock the context manager for session.begin()
     mock_sess.begin.return_value.__enter__ = MagicMock(return_value=mock_sess)
     mock_sess.begin.return_value.__exit__ = MagicMock(return_value=None)
-    
+
     # Mock the execute result
     mock_result.returns_rows = True  # Assume SELECT queries return rows
     mock_result.fetchall.return_value = []  # Default to empty (no users)
-    
+
     mock_sess.execute.return_value = mock_result
     mock_sess.rollback = MagicMock()
-    
+
+    # Mock execute_readonly_query directly (avoids needing an app context for db.engine)
+    mock_readonly = MagicMock(return_value=[])
+
+    # Mock get_user_info in routes module so tests can configure it with (id, name, role) tuples
+    mock_get_user_info = MagicMock(return_value=None)
+    monkeypatch.setattr(
+        'backend.bcssm_backend.routes.routes.get_user_info', mock_get_user_info
+    )
+
     # Mock the text() function from SQLAlchemy
     mock_text = MagicMock(side_effect=lambda x: x)  # Just return the query string
-    
+
     # Patch all the components
     monkeypatch.setattr('backend.bcssm_backend.db.session', mock_sess)
+    monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
     monkeypatch.setattr('backend.bcssm_backend.utils.text', mock_text)
-    
-    return mock_sess, mock_result
+
+    return mock_sess, mock_result, mock_readonly, mock_get_user_info
 
 
 # Helper function to setup database responses
 def setup_db_response(env_and_deny_db, user_data=None):
     """
-    Helper to setup what the database should return
-    user_data: List of tuples like [(1, 'Username', 'Role')] or None/[] for no users
+    Helper to setup what the database should return.
+    user_data: List of tuples like [(id, 'Username', 'Role')] or None/[] for no users.
+    Configures mock_get_user_info to return {"name": name, "role": role, "section": None}.
     """
-    mock_sess, mock_result = env_and_deny_db
-    
+    mock_sess, mock_result, mock_readonly, mock_get_user_info = env_and_deny_db
+
     if user_data is None:
         user_data = []
-    
+
     mock_result.fetchall.return_value = user_data
+    mock_readonly.return_value = user_data
+
+    if user_data:
+        row = user_data[0]
+        name = row[1] if len(row) > 1 else None
+        role = row[2] if len(row) > 2 else None
+        mock_get_user_info.return_value = {"name": name, "role": role, "section": None}
+    else:
+        mock_get_user_info.return_value = None
+
     return mock_sess, mock_result
 
 

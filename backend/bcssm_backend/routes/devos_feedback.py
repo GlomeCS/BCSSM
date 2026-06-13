@@ -43,13 +43,18 @@ def init_feedback_routes(app):
     def edit_devos_feedback():
         date_str = request.args.get('date')
         section_name = request.args.get('section')
-        payload = request.get_json() or {}
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return jsonify({'error': 'Request body must be a JSON object'}), 400
         new_feedback = payload.get('feedback')
 
         if not date_str or not section_name or new_feedback is None:
             return jsonify(
                 {'error': 'Missing date, section, or feedback'}
             ), 400
+
+        if not isinstance(new_feedback, str):
+            return jsonify({'error': 'Feedback must be a string'}), 400
 
         if len(new_feedback) > 140:
             return jsonify(

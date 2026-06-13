@@ -231,7 +231,7 @@ def test_execute_readonly_query_db_error():
     from backend.bcssm_backend.exceptions import DatabaseError
     with patch('backend.bcssm_backend.utils.db') as mock_db:
         mock_db.engine.connect.side_effect = SQLAlchemyError("connection failed")
-        with pytest.raises(DatabaseError, match="connection failed"):
+        with pytest.raises(DatabaseError, match="Database error"):
             _real_execute_readonly_query("SELECT 1")
 
 # ─── 6) Tests for get_users_by_section() ───────────────────────────────────
@@ -325,7 +325,7 @@ def test_execute_query_success_no_results(mock_db_session):
 
 def test_execute_query_failure_triggers_rollback(mock_db_session):
     mock_db_session.execute.side_effect = SQLAlchemyError("DB error")
-    with pytest.raises(Exception, match="DB error"):
+    with pytest.raises(Exception, match="Database error"):
         utils.execute_query("DELETE FROM users")
     mock_db_session.rollback.assert_called_once()
 

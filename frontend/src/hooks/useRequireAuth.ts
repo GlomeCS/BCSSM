@@ -5,12 +5,13 @@ import { useAuth } from "../AuthContext";
 export function useRequireAuth(): { currentUser: string | null; loading: boolean } {
   const { currentUser, loading } = useAuth();
   const navigate = useNavigate();
+  const redirecting = !loading && !currentUser;
 
   useEffect(() => {
-    if (!loading && !currentUser) {
+    if (redirecting) {
       navigate("/login");
     }
-  }, [loading, currentUser, navigate]);
+  }, [redirecting, navigate]);
 
-  return { currentUser, loading };
+  return { currentUser, loading: loading || redirecting };
 }

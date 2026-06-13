@@ -42,10 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const refresh = useCallback(async () => {
-    if (!isLoggedIn() || !getCurrentUser()) {
-      setState({ currentUser: null, userRole: null, userSection: null, canEditAll: false, loading: false });
-      return;
-    }
     try {
       const valid = await validateAuth();
       if (!valid) {
@@ -54,7 +50,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     } catch {
-      // Transient network error — keep existing localStorage values
+      // Transient network error — fall back to localStorage
+      if (!isLoggedIn() || !getCurrentUser()) {
+        setState({ currentUser: null, userRole: null, userSection: null, canEditAll: false, loading: false });
+        return;
+      }
     }
     setState({
       currentUser: getCurrentUser(),

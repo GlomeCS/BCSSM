@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 from flask import g, redirect, request, session, jsonify
 from markupsafe import escape
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
-from backend.bcssm_backend.utils import get_user_duty, user_assignments, execute_query
+from backend.bcssm_backend.utils import get_user_duty, get_user_info, user_assignments
 
 
 def init_main_routes(app):
@@ -41,12 +41,9 @@ def init_main_routes(app):
         """Get duty info for a user."""
         user_name = g.user_name
 
-        user_rows = execute_query(
-            "SELECT u.id, u.name, u.role FROM users u WHERE u.name = :user_name",
-            {'user_name': user_name}
-        )
+        user_info = get_user_info(user_name)
 
-        if not user_rows:
+        if not user_info:
             app.logger.warning("User '%s' not found in database", user_name)
             return jsonify({"error": "Invalid user"}), 400
 
@@ -54,7 +51,7 @@ def init_main_routes(app):
 
         if not duty_data or duty_data.get('error'):
             duty_message = "No duty assigned"
-            user_role = user_rows[0][2] if len(user_rows[0]) > 2 else None
+            user_role = user_info.get('role')
         else:
             duty_message = duty_data.get('duty', 'No duty assigned')
             user_role = duty_data.get('role')

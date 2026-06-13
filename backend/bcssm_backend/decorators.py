@@ -3,6 +3,7 @@ import traceback
 from functools import wraps
 
 from flask import g, jsonify, session
+from werkzeug.exceptions import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend.exceptions import (
@@ -19,7 +20,11 @@ def require_auth(f):
         if not user_name:
             return jsonify({'error': 'Authentication required'}), 401
         g.user_name = user_name
-        g.user_id = session.get('user_id')
+        user_id = session.get('user_id')
+        if user_id is None:
+            from backend.bcssm_backend.utils import get_user_id_by_name
+            user_id = get_user_id_by_name(user_name)
+        g.user_id = user_id
         return f(*args, **kwargs)
     return decorated_function
 
@@ -44,6 +49,8 @@ def handle_route_errors(f):
             msg = e.message if isinstance(e, DatabaseError) else str(e)
             logger.error("Database error in %s: %s", f.__name__, msg)
             return jsonify({'error': 'Internal server error'}), 500
+        except HTTPException:
+            raise
         except Exception as e:
             logger.critical(
                 "Unexpected error in %s: %s\n%s",
