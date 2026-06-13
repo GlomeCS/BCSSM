@@ -241,37 +241,6 @@ def test_execute_readonly_query_db_error():
             _real_execute_readonly_query("SELECT 1")
 
 # ─── 6) Tests for get_users_by_section() ───────────────────────────────────
-def test_get_users_by_section_returns_list_of_dicts(mock_readonly, mock_cache):
-    mock_readonly.return_value = [
-        ("Alice","Section Leader"),
-        ("Bob","Team Member")
-    ]
-    result = utils.get_users_by_section("Minis")
-    assert isinstance(result, list)
-    assert result == [
-        {"name": "Alice", "role": "Section Leader"},
-        {"name": "Bob",   "role": "Team Member"},
-    ]
-    
-    # Verify cache operations
-    mock_cache.get.assert_called_once_with('users:section:Minis')
-    mock_cache.set.assert_called_once_with(
-        'users:section:Minis', 
-        [{"name": "Alice", "role": "Section Leader"}, {"name": "Bob", "role": "Team Member"}],
-        timeout=1800
-    )
-    
-    sql, params = mock_readonly.call_args[0]
-    expected_sql = """
-    SELECT u.name, u.role
-    FROM users u
-    INNER JOIN sections s ON u.section_id = s.id
-    WHERE s.name = :section
-    ORDER BY u.name;
-    """
-    assert sql.strip() == expected_sql.strip()
-    assert params == {"section": "Minis"}
-
 def test_get_users_by_section_db_error_returns_error(mock_readonly, mock_cache):
     mock_readonly.side_effect = SQLAlchemyError("DB error on section query")
     result = utils.get_users_by_section("Minis")
@@ -959,224 +928,135 @@ def test_get_section_statistics_role_counting(mock_readonly, mock_cache):
     # Verify totals add up
     assert stats['section_leaders'] + stats['team_leaders'] + stats['other_roles'] == stats['total_users']
 
-# ─── Tests for get_users_by_section_optimized() ──────────────────────────────
+# ─── Tests for get_users_by_section() (consolidated) ─────────────────────────
 
-def test_get_users_by_section_optimized_normal_section(mock_readonly, mock_cache):
-    """Test get_users_by_section_optimized with a normal section"""
-    # Arrange: return users for specific section
+def test_get_users_by_section_normal_section(mock_readonly, mock_cache):
     mock_readonly.return_value = [
         ('Alice Smith', 'Section Leader'),
         ('Bob Jones', 'Team Member'),
         ('Charlie Brown', 'Team Leader')
     ]
-    
-    # Act
-    result = utils.get_users_by_section_optimized("Minis")
-    
-    # Assert
+
+    result = utils.get_users_by_section("Minis")
+
     assert isinstance(result, list)
-    assert len(result) == 3
     assert result == [
         {"name": "Alice Smith", "role": "Section Leader"},
         {"name": "Bob Jones", "role": "Team Member"},
         {"name": "Charlie Brown", "role": "Team Leader"}
     ]
-    
-    # Verify cache operations
-    mock_cache.get.assert_called_once_with('users:section:Minis:detailed')
-    mock_cache.set.assert_called_once_with('users:section:Minis:detailed', result, timeout=1800)
-    
-    # Verify SQL query and parameters
+    mock_cache.get.assert_called_once_with('users:section:Minis')
+    mock_cache.set.assert_called_once_with('users:section:Minis', result, timeout=1800)
     sql, params = mock_readonly.call_args[0]
     assert "INNER JOIN sections s ON u.section_id = s.id" in sql
     assert "WHERE s.name = :section_name" in sql
     assert "WHEN u.role = 'Admin' THEN 'Section Leader'" in sql
     assert params == {"section_name": "Minis"}
 
-def test_get_users_by_section_optimized_unassigned_section(mock_readonly, mock_cache):
-    """Test get_users_by_section_optimized with Unassigned section"""
-    # Arrange: return unassigned users
+def test_get_users_by_section_unassigned(mock_readonly, mock_cache):
     mock_readonly.return_value = [
         ('Dave Wilson', 'Team Member'),
-        ('Eve Davis', 'Section Leader')  # Admin converted to Section Leader
+        ('Eve Davis', 'Section Leader'),
     ]
-    
-    # Act
-    result = utils.get_users_by_section_optimized("Unassigned")
-    
-    # Assert
-    assert isinstance(result, list)
-    assert len(result) == 2
+
+    result = utils.get_users_by_section("Unassigned")
+
     assert result == [
         {"name": "Dave Wilson", "role": "Team Member"},
-        {"name": "Eve Davis", "role": "Section Leader"}
+        {"name": "Eve Davis", "role": "Section Leader"},
     ]
-    
-    # Verify cache operations
-    mock_cache.get.assert_called_once_with('users:section:Unassigned:detailed')
-    mock_cache.set.assert_called_once_with('users:section:Unassigned:detailed', result, timeout=1800)
-    
-    # Verify SQL query for unassigned users
+    mock_cache.get.assert_called_once_with('users:section:Unassigned')
+    mock_cache.set.assert_called_once_with('users:section:Unassigned', result, timeout=1800)
     sql, params = mock_readonly.call_args[0]
     assert "WHERE u.section_id IS NULL" in sql
-    assert "INNER JOIN sections" not in sql  # Should not join sections for unassigned
-    assert params == {}  # No parameters for unassigned query
+    assert "INNER JOIN sections" not in sql
+    assert params == {}
 
-def test_get_users_by_section_optimized_cache_hit(mock_readonly, mock_cache):
-    """Test get_users_by_section_optimized with cache hit"""
-    # Arrange: cache returns data
-    cached_users = [
-        {"name": "Cached User", "role": "Cached Role"}
-    ]
-    mock_cache.get.return_value = cached_users
-    
-    # Act
-    result = utils.get_users_by_section_optimized("TestSection")
-    
-    # Assert
-    assert result == cached_users
-    
-    # Verify cache was checked
-    mock_cache.get.assert_called_once_with('users:section:TestSection:detailed')
-    # Verify DB was NOT queried
-    mock_readonly.assert_not_called()
-    # Verify cache was NOT set (already had data)
-    mock_cache.set.assert_not_called()
-
-def test_get_users_by_section_optimized_empty_result(mock_readonly, mock_cache):
-    """Test get_users_by_section_optimized with no users in section"""
-    # Arrange: empty result from database
-    mock_readonly.return_value = []
-    
-    # Act
-    result = utils.get_users_by_section_optimized("EmptySection")
-    
-    # Assert
-    assert result == []
-    
-    # Verify cache operations
-    mock_cache.get.assert_called_once_with('users:section:EmptySection:detailed')
-    mock_cache.set.assert_called_once_with('users:section:EmptySection:detailed', [], timeout=1800)
-
-def test_get_users_by_section_optimized_db_failure_returns_error(mock_readonly, mock_cache):
-    """Test get_users_by_section_optimized with database failure"""
-    # Arrange: database error
-    mock_readonly.side_effect = SQLAlchemyError("Section query failed")
-    
-    # Act
-    result = utils.get_users_by_section_optimized("TestSection")
-    
-    # Assert
-    assert isinstance(result, dict)
-    assert "error" in result
-    assert "Failed to fetch users by section" in result["error"]
-    assert "Section query failed" in result["error"]
-    
-    # Verify error was cached with short timeout
-    mock_cache.set.assert_called_once_with('users:section:TestSection:detailed', result, timeout=60)
-
-def test_get_users_by_section_optimized_admin_role_conversion(mock_readonly, mock_cache):
-    """Test that Admin role is converted to Section Leader"""
-    # Arrange: data with Admin role (already converted in SQL)
+def test_get_users_by_section_admin_role_mapped(mock_readonly, mock_cache):
     mock_readonly.return_value = [
-        ('Admin User', 'Section Leader'),  # Admin converted to Section Leader in SQL
-        ('Regular User', 'Team Member')
+        ('Admin User', 'Section Leader'),
+        ('Regular User', 'Team Member'),
     ]
-    
-    # Act
-    result = utils.get_users_by_section_optimized("TestSection")
-    
-    # Assert
+
+    result = utils.get_users_by_section("TestSection")
+
     admin_user = next(u for u in result if u['name'] == 'Admin User')
     assert admin_user['role'] == 'Section Leader'
-    
-    regular_user = next(u for u in result if u['name'] == 'Regular User')
-    assert regular_user['role'] == 'Team Member'
 
-def test_get_users_by_section_optimized_sorting(mock_readonly, mock_cache):
-    """Test that users are sorted by name"""
-    # Arrange: unsorted data
-    mock_readonly.return_value = [
-        ('Alice Smith', 'Team Member'),
-        ('Bob Jones', 'Section Leader'),
-        ('Charlie Brown', 'Team Leader')
-    ]
-    
-    # Act
-    result = utils.get_users_by_section_optimized("TestSection")
-    
-    # Assert - should be sorted by name (ORDER BY u.name in SQL)
-    user_names = [u['name'] for u in result]
-    assert user_names == ['Alice Smith', 'Bob Jones', 'Charlie Brown']
+def test_get_users_by_section_cache_hit(mock_readonly, mock_cache):
+    cached_users = [{"name": "Cached User", "role": "Cached Role"}]
+    mock_cache.get.return_value = cached_users
+
+    result = utils.get_users_by_section("TestSection")
+
+    assert result == cached_users
+    mock_cache.get.assert_called_once_with('users:section:TestSection')
+    mock_readonly.assert_not_called()
+    mock_cache.set.assert_not_called()
+
+def test_get_users_by_section_empty_result(mock_readonly, mock_cache):
+    mock_readonly.return_value = []
+
+    result = utils.get_users_by_section("EmptySection")
+
+    assert result == []
+    mock_cache.set.assert_called_once_with('users:section:EmptySection', [], timeout=1800)
+
+def test_get_users_by_section_db_failure_returns_error(mock_readonly, mock_cache):
+    mock_readonly.side_effect = SQLAlchemyError("Section query failed")
+
+    result = utils.get_users_by_section("TestSection")
+
+    assert isinstance(result, dict)
+    assert "Failed to fetch users by section" in result["error"]
+    assert "Section query failed" in result["error"]
+    mock_cache.set.assert_called_once_with('users:section:TestSection', result, timeout=60)
 
 # ─── Tests for clear_user_cache() updates ────────────────────────────────────
 
 def test_clear_user_cache_includes_new_keys(mock_cache):
-    """Test that clear_user_cache clears the new cache keys"""
-    # Mock get_all_sections to return some sections
     with patch('backend.bcssm_backend.utils.get_all_sections') as mock_get_sections:
         mock_get_sections.return_value = ['Minis', 'Micros', 'Majors']
-        
-        # Act
+
         utils.clear_user_cache()
-        
-        # Assert - should delete the basic cache keys plus section-specific ones
-        # Check that at least the core keys are deleted
-        expected_basic_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list'),
-            unittest.mock.call('sections:with_users:all'),
-            unittest.mock.call('sections:statistics:summary'),
-            unittest.mock.call('users:section:Unassigned:detailed')
-        ]
-        
-        mock_cache.delete.assert_has_calls(expected_basic_calls, any_order=True)
-        # Verify that we made at least the expected number of delete calls
-        assert mock_cache.delete.call_count >= 5
+
+        deleted = [call.args[0] for call in mock_cache.delete.call_args_list]
+        assert 'users:all:list' in deleted
+        assert 'sections:all:list' in deleted
+        assert 'sections:with_users:all_v6' in deleted
+        assert 'sections:statistics:summary' in deleted
+        assert 'users:section:Unassigned' in deleted
+        assert 'users:section:Minis' in deleted
+        assert 'users:section:Micros' in deleted
+        assert 'users:section:Majors' in deleted
+        # No fossil keys
+        assert not any(':all_v2' in k or ':all_v3' in k or ':all_v4' in k or ':detailed' in k
+                       for k in deleted)
 
 def test_clear_user_cache_handles_get_sections_error(mock_cache, caplog):
-    """Test that clear_user_cache handles errors from get_all_sections gracefully"""
-    # Mock get_all_sections to return an error dict
     with patch('backend.bcssm_backend.utils.get_all_sections') as mock_get_sections:
         mock_get_sections.return_value = {"error": "Failed to fetch sections"}
-        
-        # Act
+
         with caplog.at_level(logging.INFO):
             utils.clear_user_cache()
-        
-        # Assert - should still clear basic caches
-        expected_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list'),
-            unittest.mock.call('sections:with_users:all'),
-            unittest.mock.call('sections:statistics:summary'),
-            # Should still clear Unassigned
-            unittest.mock.call('users:section:Unassigned:detailed')
-        ]
-        
-        mock_cache.delete.assert_has_calls(expected_calls, any_order=True)
-        # Should not try to clear individual sections since get_all_sections failed
-        mock_cache.delete.assert_any_call('users:section:Unassigned:detailed')
+
+        deleted = [call.args[0] for call in mock_cache.delete.call_args_list]
+        assert 'users:all:list' in deleted
+        assert 'sections:all:list' in deleted
+        assert 'users:section:Unassigned' in deleted
+        # No `:detailed` variant
+        assert 'users:section:Unassigned:detailed' not in deleted
 
 def test_clear_user_cache_handles_empty_sections_list(mock_cache):
-    """Test that clear_user_cache handles empty sections list"""
-    # Mock get_all_sections to return empty list
     with patch('backend.bcssm_backend.utils.get_all_sections') as mock_get_sections:
         mock_get_sections.return_value = []
-        
-        # Act
+
         utils.clear_user_cache()
-        
-        # Assert - should clear basic caches and Unassigned
-        expected_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list'),
-            unittest.mock.call('sections:with_users:all'),
-            unittest.mock.call('sections:statistics:summary'),
-            unittest.mock.call('users:section:Unassigned:detailed')
-        ]
-        
-        mock_cache.delete.assert_has_calls(expected_calls, any_order=True)
+
+        deleted = [call.args[0] for call in mock_cache.delete.call_args_list]
+        assert 'users:all:list' in deleted
+        assert 'sections:all:list' in deleted
+        assert 'users:section:Unassigned' in deleted
 
 # ─── Integration tests for the new methods ───────────────────────────────────
 
@@ -1197,31 +1077,31 @@ def test_section_methods_integration_workflow(mock_readonly, mock_cache):
         ('Micros', 2, 1, 1, 0, 0)
     ]
     
-    # Data for get_users_by_section_optimized
+    # Data for get_users_by_section
     minis_users_data = [
         ('Alice Smith', 'Section Leader'),
         ('Bob Jones', 'Team Member')
     ]
-    
+
     # Act & Assert: Call each method and verify results
-    
+
     # 1. Get all sections with users
     mock_readonly.return_value = sections_with_users_data
     sections_result = utils.get_all_sections_with_users()
     assert len(sections_result) == 2
     assert sections_result[0]['name'] == 'Minis'
     assert sections_result[0]['user_count'] == 2
-    
+
     # 2. Get section statistics
     mock_readonly.return_value = statistics_data
     stats_result = utils.get_section_statistics()
     assert len(stats_result) == 2
     assert stats_result[0]['section_name'] == 'Minis'
     assert stats_result[0]['total_users'] == 2
-    
+
     # 3. Get users for specific section
     mock_readonly.return_value = minis_users_data
-    users_result = utils.get_users_by_section_optimized("Minis")
+    users_result = utils.get_users_by_section("Minis")
     assert len(users_result) == 2
     assert users_result[0]['name'] == 'Alice Smith'
     
@@ -1238,7 +1118,7 @@ def test_error_handling_consistency_across_methods(mock_readonly, mock_cache):
     methods_to_test = [
         (utils.get_all_sections_with_users, "Failed to fetch sections with users"),
         (utils.get_section_statistics, "Failed to fetch section statistics"),
-        (lambda: utils.get_users_by_section_optimized("TestSection"), "Failed to fetch users by section")
+        (lambda: utils.get_users_by_section("TestSection"), "Failed to fetch users by section")
     ]
     
     for method, expected_error_prefix in methods_to_test:
