@@ -135,6 +135,15 @@ def test_stacked_decorators_auth_checked_before_error_handler(app):
     assert response.status_code == 401
 
 
+def test_handle_route_errors_http_exception_passes_through(app):
+    """HTTPException (e.g. 404) must be re-raised, not swallowed as 500."""
+    from werkzeug.exceptions import NotFound
+    _make_route(app, exc=NotFound())
+    with app.test_client() as client:
+        response = client.get('/test-errors')
+    assert response.status_code == 404
+
+
 def test_stacked_decorators_errors_caught_when_authenticated(app):
     """With valid session, @handle_route_errors catches exceptions."""
     @app.route('/test-stacked-auth')

@@ -374,6 +374,35 @@ def test_edit_allowed_cross_section_for_section_leader(client, mock_write, patch
     assert resp.get_json() == {"success": True}
 
 
+def test_edit_non_dict_body_returns_400(client):
+    """JSON array body (truthy but not a dict) → 400."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+
+    resp = client.post(
+        "/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+        data='[1, 2, 3]',
+        content_type='application/json',
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "Request body must be a JSON object"
+
+
+def test_edit_non_string_feedback_returns_400(client):
+    """Numeric feedback value → 400."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+
+    resp = client.post(
+        "/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+        json={"feedback": 42},
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "Feedback must be a string"
+
+
 def test_edit_no_user_id_in_session(client, mock_write, patch_helpers):
     """user_id absent from session → editor_id is None; route proceeds (DB enforces NOT NULL)."""
     _, fake_ui = patch_helpers
