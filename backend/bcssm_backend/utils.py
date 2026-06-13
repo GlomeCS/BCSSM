@@ -298,20 +298,6 @@ def get_all_sections():
     result = execute_readonly_query(query)
     return [row[0] for row in result]
 
-@cached_result(lambda section: f'users:section:{section}',
-               registry_key='users:section:{name}',
-               on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
-def get_users_by_section(section):
-    query = """
-    SELECT u.name, u.role
-    FROM users u
-    INNER JOIN sections s ON u.section_id = s.id
-    WHERE s.name = :section
-    ORDER BY u.name;
-    """
-    result = execute_readonly_query(query, {"section": section})
-    return [{"name": row[0], "role": row[1]} for row in result]
-
 @cached_result('feedback:dates:all',
                on_error=lambda e: {"error": f"Failed to fetch feedback dates: {e}"})
 def get_all_feedback_dates():
@@ -503,10 +489,10 @@ def get_section_statistics():
         for row in rows
     ]
 
-@cached_result(lambda section_name: f'users:section:{section_name}:detailed',
-               registry_key='users:section:{name}:detailed',
+@cached_result(lambda section_name: f'users:section:{section_name}',
+               registry_key='users:section:{name}',
                on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
-def get_users_by_section_optimized(section_name):
+def get_users_by_section(section_name):
     if section_name == "Unassigned":
         query = """
         SELECT u.name, 
