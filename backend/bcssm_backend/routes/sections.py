@@ -3,7 +3,7 @@ from flask import g, jsonify
 
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
 from backend.bcssm_backend.utils import (
-    get_all_sections_with_users, get_users_by_section_optimized
+    get_all_sections_with_users, get_users_by_section
 )
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ def init_users_sections_routes(app):
     @handle_route_errors
     def get_section_users_route(section_name):
         logger.info("Fetching users for section: %s", section_name)
-        users = get_users_by_section_optimized(section_name)
+        users = get_users_by_section(section_name)
         response = {
             "section": section_name,
             "users": users,
