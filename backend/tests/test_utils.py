@@ -479,18 +479,10 @@ def test_clear_user_cache(mock_cache):
         assert 'sections:with_users:all_v6' in deleted_keys
 
 def test_clear_duty_cache(mock_cache):
-    """Test clearing duty-related caches"""
-    with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
-        # Mock today's date for predictable cache key
-        mock_dt.now.return_value.date.return_value = datetime(2025, 6, 16).date()
-        
-        # Act
+    """Test clearing duty-related caches delegates to clear_group."""
+    with patch('backend.bcssm_backend.utils.clear_group') as mock_cg:
         utils.clear_duty_cache()
-        
-        # Assert
-        # Should delete duty schedule cache key and then clear all
-        mock_cache.delete.assert_called_with('duties:schedule:14day:2025-06-16')
-        mock_cache.clear.assert_called_once()
+        mock_cg.assert_called_once_with("duties")
 
 def test_clear_feedback_cache(mock_cache):
     """Test clearing feedback-related caches"""
@@ -511,25 +503,20 @@ def test_clear_all_cache(mock_cache):
     mock_cache.delete.assert_not_called()
 
 def test_clear_cache_methods_handle_errors_gracefully(mock_cache, caplog):
-    """Test that cache clearing methods handle Redis errors gracefully"""
-    # Arrange - make cache operations fail
+    """Test that cache clearing methods handle Redis errors gracefully."""
     mock_cache.delete.side_effect = RedisError("Redis connection failed")
     mock_cache.clear.side_effect = RedisError("Redis connection failed")
-    
-    # Act & Assert - should not raise exceptions
+
+    # None of these should raise
     with caplog.at_level(logging.WARNING):
         utils.clear_user_cache()
         utils.clear_feedback_cache()
         utils.clear_all_cache()
         utils.clear_duty_cache()
-    
-    # Verify that warning messages were logged
-    assert "Failed to clear user caches" in caplog.text
-    assert "Failed to clear feedback caches" in caplog.text
+
+    # clear_all_cache still logs its own warning from utils.py
     assert "Failed to clear all caches" in caplog.text
-    assert "Failed to clear duty caches" in caplog.text
-    
-    # Verify that Redis connection failed error is mentioned
+    # clear_group swallows Redis errors and logs from cache_utils
     assert "Redis connection failed" in caplog.text
 
 def test_clear_cache_methods_are_importable():
@@ -630,65 +617,45 @@ def test_cache_clear_after_user_update_scenario(mock_readonly, mock_cache):
     mock_cache.delete.assert_called()
 
 def test_cache_clear_after_duty_schedule_update_scenario(mock_readonly, mock_cache):
-    """Test realistic scenario: duty schedule gets updated, cache gets cleared"""
-    # Arrange: Initial schedule in cache
+    """Duty schedule update: clear_duty_cache delegates to clear_group."""
     mock_readonly.return_value = [
         (1, 0, "Kitchen Duty", "Clean kitchen", "Team A", [{"name": "Alice", "week": "Both"}])
     ]
     initial_schedule = utils.get_duty_schedule()
-    
-    # Act: Clear cache after schedule update
-    utils.clear_duty_cache()
-    
-    # Arrange: New schedule data
-    mock_cache.get.return_value = None  # Cache cleared
+
+    with patch('backend.bcssm_backend.utils.clear_group') as mock_cg:
+        utils.clear_duty_cache()
+        mock_cg.assert_called_once_with("duties")
+
+    mock_cache.get.return_value = None
     mock_readonly.return_value = [
         (1, 0, "Kitchen Duty", "Clean kitchen UPDATED", "Team A", [{"name": "Bob", "week": "Both"}])
     ]
-    
-    # Act: Get fresh schedule
     updated_schedule = utils.get_duty_schedule()
-    
-    # Assert: Schedules should be different
-    assert len(initial_schedule) == 14  # 2 weeks
-    assert len(updated_schedule) == 14  # 2 weeks
-    # Cache should have been cleared
-    mock_cache.clear.assert_called()
+
+    assert len(initial_schedule) == 14
+    assert len(updated_schedule) == 14
 
 # ─── Edge case tests ─────────────────────────────────────────────────────────
 
 def test_clear_duty_cache_with_different_dates(mock_cache):
-    """Test that duty cache clearing works correctly across different dates"""
-    dates_to_test = [
-        datetime(2025, 1, 1).date(),
-        datetime(2025, 6, 15).date(),
-        datetime(2025, 12, 31).date()
-    ]
-    
-    for test_date in dates_to_test:
-        mock_cache.reset_mock()
-        
-        with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
-            mock_dt.now.return_value.date.return_value = test_date
-            
+    """Duty cache clearing is now date-independent (registry-driven SCAN)."""
+    for _ in range(3):
+        with patch('backend.bcssm_backend.utils.clear_group') as mock_cg:
             utils.clear_duty_cache()
-            
-            expected_key = f'duties:schedule:14day:{test_date}'
-            mock_cache.delete.assert_called_with(expected_key)
-            mock_cache.clear.assert_called_once()
+            mock_cg.assert_called_once_with("duties")
 
 def test_multiple_cache_clears_in_sequence(mock_cache):
-    """Test calling multiple cache clear methods in sequence"""
-    # Act: Call all cache clear methods
+    """All cache clear methods can be called in sequence without error."""
     utils.clear_user_cache()
-    utils.clear_duty_cache() 
+    utils.clear_duty_cache()
     utils.clear_feedback_cache()
     utils.clear_all_cache()
-    
-    # Assert: All appropriate methods were called
-    # Note: exact call counts depend on the implementation
-    assert mock_cache.delete.call_count >= 3  # At least user, feedback, and duty keys
-    assert mock_cache.clear.call_count >= 2   # Duty cache and all cache
+
+    # Users/sections group have static keys; feedback has one static key
+    assert mock_cache.delete.call_count >= 1
+    # Only clear_all_cache calls cache.clear()
+    assert mock_cache.clear.call_count >= 1
 
 # ─── Tests for get_all_sections_with_users() ─────────────────────────────────
 
@@ -1112,71 +1079,32 @@ def test_get_users_by_section_optimized_sorting(mock_readonly, mock_cache):
 # ─── Tests for clear_user_cache() updates ────────────────────────────────────
 
 def test_clear_user_cache_includes_new_keys(mock_cache):
-    """Test that clear_user_cache clears the new cache keys"""
-    # Mock get_all_sections to return some sections
-    with patch('backend.bcssm_backend.utils.get_all_sections') as mock_get_sections:
-        mock_get_sections.return_value = ['Minis', 'Micros', 'Majors']
-        
-        # Act
+    """clear_user_cache clears both 'users' and 'sections' groups."""
+    groups_cleared = []
+    with patch(
+        'backend.bcssm_backend.utils.clear_group',
+        side_effect=lambda g: groups_cleared.append(g),
+    ):
         utils.clear_user_cache()
-        
-        # Assert - should delete the basic cache keys plus section-specific ones
-        # Check that at least the core keys are deleted
-        expected_basic_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list'),
-            unittest.mock.call('sections:with_users:all'),
-            unittest.mock.call('sections:statistics:summary'),
-            unittest.mock.call('users:section:Unassigned:detailed')
-        ]
-        
-        mock_cache.delete.assert_has_calls(expected_basic_calls, any_order=True)
-        # Verify that we made at least the expected number of delete calls
-        assert mock_cache.delete.call_count >= 5
+    assert set(groups_cleared) == {"users", "sections"}
+
 
 def test_clear_user_cache_handles_get_sections_error(mock_cache, caplog):
-    """Test that clear_user_cache handles errors from get_all_sections gracefully"""
-    # Mock get_all_sections to return an error dict
-    with patch('backend.bcssm_backend.utils.get_all_sections') as mock_get_sections:
-        mock_get_sections.return_value = {"error": "Failed to fetch sections"}
-        
-        # Act
-        with caplog.at_level(logging.INFO):
-            utils.clear_user_cache()
-        
-        # Assert - should still clear basic caches
-        expected_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list'),
-            unittest.mock.call('sections:with_users:all'),
-            unittest.mock.call('sections:statistics:summary'),
-            # Should still clear Unassigned
-            unittest.mock.call('users:section:Unassigned:detailed')
-        ]
-        
-        mock_cache.delete.assert_has_calls(expected_calls, any_order=True)
-        # Should not try to clear individual sections since get_all_sections failed
-        mock_cache.delete.assert_any_call('users:section:Unassigned:detailed')
+    """clear_user_cache no longer calls get_all_sections."""
+    with caplog.at_level(logging.INFO):
+        utils.clear_user_cache()
+    assert "Cleared user-related caches" in caplog.text
+
 
 def test_clear_user_cache_handles_empty_sections_list(mock_cache):
-    """Test that clear_user_cache handles empty sections list"""
-    # Mock get_all_sections to return empty list
-    with patch('backend.bcssm_backend.utils.get_all_sections') as mock_get_sections:
-        mock_get_sections.return_value = []
-        
-        # Act
-        utils.clear_user_cache()
-        
-        # Assert - should clear basic caches and Unassigned
-        expected_calls = [
-            unittest.mock.call('users:all:list'),
-            unittest.mock.call('sections:all:list'),
-            unittest.mock.call('sections:with_users:all'),
-            unittest.mock.call('sections:statistics:summary'),
-            unittest.mock.call('users:section:Unassigned:detailed')
-        ]
-        
-        mock_cache.delete.assert_has_calls(expected_calls, any_order=True)
+    """clear_user_cache clears registry static keys for users+sections."""
+    utils.clear_user_cache()
+    deleted_keys = {c.args[0] for c in mock_cache.delete.call_args_list}
+    # Registry static keys in users + sections groups
+    assert "users:all:list" in deleted_keys
+    assert "sections:all:list" in deleted_keys
+    assert "sections:with_users:all_v6" in deleted_keys
+    assert "sections:statistics:summary" in deleted_keys
 
 # ─── Integration tests for the new methods ───────────────────────────────────
 

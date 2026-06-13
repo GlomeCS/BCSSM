@@ -112,3 +112,67 @@ def cached_result(key_fn, ttl=None, error_ttl=None, on_error=_RAISE, cache=None,
 
         return wrapper
     return decorator
+
+
+def _template_to_glob(template: str) -> str:
+    """Convert 'foo:{bar}:{baz}' to 'foo:*' for Redis SCAN pattern matching."""
+    idx = template.find('{')
+    return template[:idx] + '*' if idx != -1 else template
+
+
+def _scan_delete(cache_instance, pattern: str) -> int:
+    """Delete all Redis keys matching a glob pattern via SCAN."""
+    redis_client = getattr(
+        getattr(cache_instance, 'cache', None), '_write_client', None
+    )
+    if redis_client is None:
+        logger.debug(
+            "Redis client not accessible; skipping pattern delete for %s",
+            pattern,
+        )
+        return 0
+    try:
+        keys = list(redis_client.scan_iter(match=pattern, count=100))
+        if keys:
+            redis_client.delete(*keys)
+        return len(keys)
+    except Exception as e:
+        logger.warning("Pattern delete failed for %s: %s", pattern, e)
+        return 0
+
+
+def clear_group(group_name: str, cache=None) -> None:
+    """Delete all cached keys belonging to group_name.
+
+    Static keys are deleted directly. Template keys (containing {}) are
+    converted to glob patterns and deleted via Redis SCAN.
+    """
+    if cache is None:
+        from backend.globals import cache as _global_cache
+        cache = _global_cache
+
+    static_keys: list[str] = []
+    glob_patterns: set[str] = set()
+
+    for template, entry in CACHE_REGISTRY.items():
+        if entry.group != group_name:
+            continue
+        if '{' not in template:
+            static_keys.append(template)
+        else:
+            glob_patterns.add(_template_to_glob(template))
+
+    try:
+        for key in static_keys:
+            cache.delete(key)
+        for pattern in glob_patterns:
+            _scan_delete(cache, pattern)
+    except Exception as e:
+        logger.warning(
+            "clear_group(%s) encountered an error: %s", group_name, e
+        )
+
+    logger.info(
+        "Cleared cache group '%s': %d static key(s), %d pattern(s)",
+        group_name, len(static_keys), len(glob_patterns),
+    )

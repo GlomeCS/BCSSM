@@ -2,7 +2,10 @@ import pytest
 from datetime import date
 from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import SQLAlchemyError
-from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry, CACHE_REGISTRY
+from backend.bcssm_backend.cache_utils import (
+    cached_result, get_ttl_registry, CACHE_REGISTRY,
+    clear_group, _template_to_glob, _scan_delete,
+)
 
 
 def _make_cache():
@@ -252,3 +255,207 @@ def test_user_duty_key_is_date_based():
     assert key == f'user:duty:Alice:{fixed_date}'
     assert 'day' not in key
     assert 'cycle' not in key
+
+
+# ─── _template_to_glob ─────────────────────────────────────────────────────
+
+def test_template_to_glob_static_key_unchanged():
+    assert _template_to_glob('users:all:list') == 'users:all:list'
+
+
+def test_template_to_glob_single_placeholder():
+    assert _template_to_glob('users:section:{name}') == 'users:section:*'
+
+
+def test_template_to_glob_multiple_placeholders():
+    result = _template_to_glob('duties:today:{day}:{cycle}:{name}')
+    assert result == 'duties:today:*'
+
+
+def test_template_to_glob_leading_placeholder():
+    assert _template_to_glob('{key}:suffix') == '*'
+
+
+# ─── _scan_delete ───────────────────────────────────────────────────────────
+
+def test_scan_delete_finds_and_deletes_matching_keys():
+    mock_redis = MagicMock()
+    found_keys = ['duties:today:3:0:Alice', 'duties:today:4:1:Bob']
+    mock_redis.scan_iter.return_value = found_keys
+    fake_cache = MagicMock()
+    fake_cache.cache._write_client = mock_redis
+
+    count = _scan_delete(fake_cache, 'duties:today:*')
+
+    mock_redis.scan_iter.assert_called_once_with(
+        match='duties:today:*', count=100
+    )
+    mock_redis.delete.assert_called_once_with(*found_keys)
+    assert count == 2
+
+
+def test_scan_delete_no_keys_found_skips_delete():
+    mock_redis = MagicMock()
+    mock_redis.scan_iter.return_value = []
+    fake_cache = MagicMock()
+    fake_cache.cache._write_client = mock_redis
+
+    count = _scan_delete(fake_cache, 'duties:today:*')
+
+    mock_redis.delete.assert_not_called()
+    assert count == 0
+
+
+def test_scan_delete_returns_zero_when_no_redis_client():
+    fake_cache = MagicMock(spec=[])  # no attributes → _write_client is None
+    count = _scan_delete(fake_cache, 'duties:*')
+    assert count == 0
+
+
+def test_scan_delete_swallows_exception_and_returns_zero():
+    mock_redis = MagicMock()
+    mock_redis.scan_iter.side_effect = Exception("connection refused")
+    fake_cache = MagicMock()
+    fake_cache.cache._write_client = mock_redis
+
+    count = _scan_delete(fake_cache, 'duties:*')
+    assert count == 0
+
+
+# ─── clear_group ────────────────────────────────────────────────────────────
+
+def _make_cache_with_redis():
+    """Return a (fake_cache, mock_redis) pair with _write_client wired up."""
+    mock_redis = MagicMock()
+    mock_redis.scan_iter.return_value = []
+    fake_cache = MagicMock()
+    fake_cache.cache._write_client = mock_redis
+    return fake_cache, mock_redis
+
+
+def test_clear_group_feedback_deletes_static_key():
+    fake_cache, _ = _make_cache_with_redis()
+    clear_group("feedback", cache=fake_cache)
+    fake_cache.delete.assert_called_once_with("feedback:dates:all")
+
+
+def test_clear_group_sections_deletes_all_static_keys():
+    fake_cache, _ = _make_cache_with_redis()
+    clear_group("sections", cache=fake_cache)
+
+    deleted = {c.args[0] for c in fake_cache.delete.call_args_list}
+    assert "sections:all:list" in deleted
+    assert "sections:with_users:all_v6" in deleted
+    assert "sections:statistics:summary" in deleted
+
+
+def test_clear_group_users_deletes_static_and_scans_dynamic(caplog):
+    fake_cache, mock_redis = _make_cache_with_redis()
+    clear_group("users", cache=fake_cache)
+
+    fake_cache.delete.assert_called_with("users:all:list")
+
+    patterns_scanned = {
+        c.kwargs.get('match') or c.args[0]
+        for c in mock_redis.scan_iter.call_args_list
+    }
+    assert "users:section:*" in patterns_scanned
+
+
+def test_clear_group_duties_scans_all_three_patterns():
+    fake_cache, mock_redis = _make_cache_with_redis()
+    clear_group("duties", cache=fake_cache)
+
+    fake_cache.delete.assert_not_called()
+
+    patterns_scanned = {
+        c.kwargs.get('match') or c.args[0]
+        for c in mock_redis.scan_iter.call_args_list
+    }
+    assert "user:duty:*" in patterns_scanned
+    assert "duties:today:*" in patterns_scanned
+    assert "duties:schedule:14day:*" in patterns_scanned
+
+
+def test_clear_group_unknown_group_is_noop():
+    fake_cache, mock_redis = _make_cache_with_redis()
+    clear_group("nonexistent", cache=fake_cache)
+    fake_cache.delete.assert_not_called()
+    mock_redis.scan_iter.assert_not_called()
+
+
+def test_clear_group_deletes_found_dynamic_keys():
+    fake_cache, mock_redis = _make_cache_with_redis()
+    mock_redis.scan_iter.return_value = ['feedback:dates:all']
+
+    clear_group("feedback", cache=fake_cache)
+
+    fake_cache.delete.assert_called_with("feedback:dates:all")
+
+
+def test_clear_group_scan_deletes_found_keys():
+    mock_redis = MagicMock()
+    mock_redis.scan_iter.side_effect = [
+        ['user:duty:Alice:2026-01-01'],
+        ['duties:today:3:0:Alice'],
+        ['duties:schedule:14day:2026-01-01'],
+    ]
+    fake_cache = MagicMock()
+    fake_cache.cache._write_client = mock_redis
+
+    clear_group("duties", cache=fake_cache)
+
+    assert mock_redis.delete.call_count == 3
+    deleted_keys = {c.args[0] for c in mock_redis.delete.call_args_list}
+    assert 'user:duty:Alice:2026-01-01' in deleted_keys
+    assert 'duties:today:3:0:Alice' in deleted_keys
+    assert 'duties:schedule:14day:2026-01-01' in deleted_keys
+
+
+def test_clear_group_logs_cleared_group(caplog):
+    import logging
+    fake_cache, _ = _make_cache_with_redis()
+    with caplog.at_level(logging.INFO, logger='backend.bcssm_backend.cache_utils'):  # noqa: E501
+        clear_group("feedback", cache=fake_cache)
+    assert "feedback" in caplog.text
+
+
+def test_clear_group_exception_is_swallowed():
+    fake_cache = MagicMock()
+    fake_cache.delete.side_effect = Exception("Redis down")
+    clear_group("feedback", cache=fake_cache)  # must not raise
+
+
+# ─── clear_* wrappers in utils use clear_group ───────────────────────────────
+
+def test_clear_duty_cache_delegates_to_clear_group(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        'backend.bcssm_backend.utils.clear_group',
+        lambda group, **kw: calls.append(group),
+    )
+    from backend.bcssm_backend import utils
+    utils.clear_duty_cache()
+    assert calls == ["duties"]
+
+
+def test_clear_feedback_cache_delegates_to_clear_group(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        'backend.bcssm_backend.utils.clear_group',
+        lambda group, **kw: calls.append(group),
+    )
+    from backend.bcssm_backend import utils
+    utils.clear_feedback_cache()
+    assert calls == ["feedback"]
+
+
+def test_clear_user_cache_delegates_to_both_groups(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        'backend.bcssm_backend.utils.clear_group',
+        lambda group, **kw: calls.append(group),
+    )
+    from backend.bcssm_backend import utils
+    utils.clear_user_cache()
+    assert set(calls) == {"users", "sections"}

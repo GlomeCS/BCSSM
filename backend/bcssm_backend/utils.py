@@ -13,7 +13,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 
 from backend.globals import db, cache
-from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
+from backend.bcssm_backend.cache_utils import (
+    cached_result, get_ttl_registry, clear_group,
+)
 from backend.bcssm_backend.exceptions import ValidationError, CacheError, AuthenticationError
 
 logger = logging.getLogger(__name__)
@@ -388,20 +390,18 @@ def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, edi
 
 
 def clear_duty_cache():
-    """Clear duty-related caches after duty data changes"""
+    """Clear duty-related caches after duty data changes."""
     try:
-        today = datetime.now().date()
-        cache.delete(f'duties:schedule:14day:{today}')
-        # Clear today's duties (harder to clear all variations, so clear all)
-        cache.clear()  # Nuclear option for duties
+        clear_group("duties")
         logger.info("Cleared duty-related caches")
     except RedisError as e:
         logger.warning("Failed to clear duty caches: %s", e)
 
+
 def clear_feedback_cache():
-    """Clear feedback caches after feedback data changes"""
+    """Clear feedback caches after feedback data changes."""
     try:
-        cache.delete('feedback:dates:all')
+        clear_group("feedback")
         logger.info("Cleared feedback caches")
     except RedisError as e:
         logger.warning("Failed to clear feedback caches: %s", e)
@@ -537,30 +537,11 @@ def get_users_by_section_optimized(section_name):
     return [{"name": row[0], "role": row[1]} for row in result]
 
 
-# Update the clear_user_cache function to include new cache keys
 def clear_user_cache():
-    """Clear user-related caches after user data changes"""
+    """Clear user-related caches after user data changes."""
     try:
-        cache.delete('users:all:list')
-        cache.delete('sections:all:list')
-        cache.delete('sections:with_users:all')
-        cache.delete('sections:with_users:all_v2')
-        cache.delete('sections:with_users:all_v3')
-        cache.delete('sections:with_users:all_v4')
-        cache.delete('sections:with_users:all_v6')
-        cache.delete('sections:statistics:summary')
-        
-        # Clear individual section caches using pattern matching if supported
-        # Otherwise, clear specific known sections
-        sections = get_all_sections()
-        if isinstance(sections, list):
-            for section in sections:
-                cache.delete(f'users:section:{section}')
-                cache.delete(f'users:section:{section}:detailed')
-        
-        # Also clear the "Unassigned" section cache
-        cache.delete('users:section:Unassigned:detailed')
-        
+        clear_group("users")
+        clear_group("sections")
         logger.info("Cleared user-related caches")
     except RedisError as e:
         logger.warning("Failed to clear user caches: %s", e)
