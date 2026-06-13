@@ -20,8 +20,6 @@ export function useApiGet<T>(
   const [error, setError] = useState<string | null>(null);
   const [fetchCount, setFetchCount] = useState(0);
 
-  const urlRef = useRef(url);
-  urlRef.current = url;
   const transformRef = useRef(options?.transform);
   transformRef.current = options?.transform;
 
@@ -41,7 +39,7 @@ export function useApiGet<T>(
 
     const run = async () => {
       try {
-        const res = await apiGet(urlRef.current, { signal: controller.signal });
+        const res = await apiGet(url, { signal: controller.signal });
         if (!res.ok) throw new Error(`Request failed: ${res.statusText}`);
         const raw: unknown = await res.json();
         const value = transformRef.current ? transformRef.current(raw) : (raw as T);
