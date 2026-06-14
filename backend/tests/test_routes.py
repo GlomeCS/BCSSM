@@ -136,6 +136,11 @@ def patch_utils_helpers(monkeypatch):
     except (ImportError, AttributeError):
         pass
 
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
+
     return fake_users, fake_assign, fake_duty
 
 

@@ -68,6 +68,10 @@ def patch_helpers(monkeypatch):
         "backend.bcssm_backend.routes.users.evict_user_login_cache",
         fake_evict_user_login_cache
     )
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
     return {
         "by_section": fake_get_by_section,
         "duty": fake_get_duty,

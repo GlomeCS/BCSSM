@@ -32,6 +32,10 @@ def patch_duties_helpers(monkeypatch):
         "backend.bcssm_backend.routes.duties.get_duty_schedule",
         fake_get_duty_schedule
     )
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
     return {
         "todays_duties": fake_get_todays_duties,
         "duty_schedule": fake_get_duty_schedule
