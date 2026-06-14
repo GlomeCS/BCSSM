@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Navbar from "./Navbar";
-import { apiGet } from "../api";
 import { useRequireAuth } from "./hooks/useRequireAuth";
+import { useApiGet } from "./hooks/useApiGet";
 import "./DutiesPage.css";
 
 type Duty = {
@@ -38,64 +38,33 @@ type ScheduleData = {
   schedule: ScheduleDay[];
 };
 
+function mapApiDuties(raw: unknown): Duty[] {
+  return (raw as ApiDuty[]).map((d) => ({
+    id: d.id,
+    name: d.name,
+    description: d.duty_description,
+    members: d.members,
+    isCurrentUser: d.is_current_user,
+    teamName: d.team_name,
+  }));
+}
+
+function mapSchedule(raw: unknown): ScheduleDay[] {
+  return ((raw as ScheduleData).schedule) || [];
+}
+
 export default function DutiesPage() {
   const { currentUser, loading: authLoading } = useRequireAuth();
-  const [duties, setDuties] = useState<Duty[]>([]);
-  const [schedule, setSchedule] = useState<ScheduleDay[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [scheduleLoading, setScheduleLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'today' | 'schedule'>('today');
 
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const fetchDuties = async () => {
-      try {
-        const res = await apiGet("/api/duties/today");
-        if (!res.ok) throw new Error(`Failed to fetch duties: ${res.statusText}`);
-
-        const data = await res.json() as ApiDuty[];
-        console.log("Raw duties from API:", data);
-
-        const mapped: Duty[] = data.map((d) => ({
-          id: d.id,
-          name: d.name,
-          description: d.duty_description,
-          members: d.members,
-          isCurrentUser: d.is_current_user,
-          teamName: d.team_name,
-        }));
-
-        console.log("Mapped duties for UI:", mapped);
-        setDuties(mapped);
-      } catch (err) {
-        console.error("Error fetching duties:", err);
-        setError((err as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const fetchSchedule = async () => {
-      try {
-        const res = await apiGet("/api/duties/schedule");
-        if (!res.ok) throw new Error(`Failed to fetch schedule: ${res.statusText}`);
-
-        const data: ScheduleData = await res.json();
-        console.log("Raw schedule from API:", data);
-
-        setSchedule(data.schedule || []);
-      } catch (err) {
-        console.error("Error fetching schedule:", err);
-        setError((err as Error).message);
-      } finally {
-        setScheduleLoading(false);
-      }
-    };
-
-    Promise.all([fetchDuties(), fetchSchedule()]);
-  }, [currentUser]);
+  const { data: duties, loading, error } = useApiGet<Duty[]>(
+    "/api/duties/today",
+    { skip: !currentUser, transform: mapApiDuties }
+  );
+  const { data: schedule, loading: scheduleLoading } = useApiGet<ScheduleDay[]>(
+    "/api/duties/schedule",
+    { skip: !currentUser, transform: mapSchedule }
+  );
 
   // Extract team number from team name (format: "Duty Team 1", "Duty Team 2", etc.)
   const getTeamNumber = (teamName?: string): string => {
@@ -145,8 +114,8 @@ export default function DutiesPage() {
     );
   }
 
-  const myDuties = duties.filter((d) => d.isCurrentUser);
-  const otherDuties = duties.filter((d) => !d.isCurrentUser);
+  const myDuties = (duties ?? []).filter((d) => d.isCurrentUser);
+  const otherDuties = (duties ?? []).filter((d) => !d.isCurrentUser);
 
   return (
     <>
@@ -297,7 +266,7 @@ export default function DutiesPage() {
             <section className="duties-section schedule-section">
               <h2 className="section-title">
                 <span className="section-icon">🗓️</span>
-                2-Week Duty Schedule{schedule.length > 0 ? ` (Starting ${new Date(schedule[0].date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })})` : ''}
+                2-Week Duty Schedule{(schedule ?? []).length > 0 ? ` (Starting ${new Date((schedule ?? [])[0].date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })})` : ''}
               </h2>
 
               {scheduleLoading ? (
@@ -305,11 +274,11 @@ export default function DutiesPage() {
                   <div className="loading-spinner"></div>
                   <p className="loading-text">Loading schedule...</p>
                 </div>
-              ) : schedule.length > 0 ? (
+              ) : (schedule ?? []).length > 0 ? (
                 (() => {
                   // Get all unique duty names for column headers
                   const allDuties = new Set<string>();
-                  schedule.forEach(day => {
+                  (schedule ?? []).forEach(day => {
                     if (day.duties && Array.isArray(day.duties)) {
                       day.duties.forEach(duty => {
                         if (duty && duty.duty_name && typeof duty.duty_name === 'string') {
@@ -332,7 +301,7 @@ export default function DutiesPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {schedule.map((day, index) => {
+                          {(schedule ?? []).map((day, index) => {
                             const dateOnly = new Date(day.date).toISOString().split("T")[0];
                             if (dateOnly === "2026-07-11") {
                               return (

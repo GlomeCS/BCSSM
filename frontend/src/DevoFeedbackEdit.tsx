@@ -1,8 +1,9 @@
-import React, { useState, useEffect, FormEvent } from 'react';
+import React, { useState, FormEvent } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-import { apiGet, apiPost } from '../api';
+import { apiPost } from '../api';
 import { useRequireAuth } from './hooks/useRequireAuth';
+import { useApiGet } from './hooks/useApiGet';
 import "./DevoFeedbackEdit.css";
 
 const DevoFeedbackEdit: React.FC = () => {
@@ -12,56 +13,34 @@ const DevoFeedbackEdit: React.FC = () => {
   const navigate = useNavigate();
 
   const { currentUser, loading: authLoading } = useRequireAuth();
-  const [feedback, setFeedback] = useState<string>('');
-  const [dataLoading, setDataLoading] = useState<boolean>(true);
   const canEditAll = localStorage.getItem('can_edit_all') === 'true';
   const userSection = localStorage.getItem('user_section') ?? '';
   const canEdit = canEditAll || userSection === section;
   const [saving, setSaving] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const missingParams = !dateStr || !section;
+
+  const { data: loadedFeedback, loading: dataLoading, error: loadError } = useApiGet<string>(
+    `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`,
+    {
+      skip: !currentUser || missingParams,
+      transform: (raw) => (raw as { feedback?: Record<string, string> }).feedback?.[section] ?? '',
+    }
+  );
+
+  const [feedback, setFeedback] = useState<string>('');
   const [characterCount, setCharacterCount] = useState<number>(0);
 
-  useEffect(() => {
-    if (!currentUser) return;
-    setDataLoading(true);
-    setError(null);
-    setFeedback('');
-    setCharacterCount(0);
-
-    if (!dateStr || !section) {
-      setError('Missing date or section parameters');
-      setDataLoading(false);
-      return;
+  // Sync feedback state from loaded data
+  React.useEffect(() => {
+    if (loadedFeedback !== null) {
+      setFeedback(loadedFeedback);
+      setCharacterCount(loadedFeedback.length);
     }
+  }, [loadedFeedback]);
 
-    const controller = new AbortController();
-
-    const loadFeedback = async () => {
-      try {
-        const res = await apiGet(
-          `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`,
-          { signal: controller.signal }
-        );
-        if (!res.ok) throw new Error(`Failed to load feedback: ${res.statusText}`);
-
-        const data = await res.json();
-        console.log('Fetched feedback response:', data);
-
-        const existingFeedback = data.feedback?.[section] ?? '';
-        setFeedback(existingFeedback);
-        setCharacterCount(existingFeedback.length);
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        console.error('Error loading feedback:', err);
-        setError((err as Error).message);
-      } finally {
-        if (!controller.signal.aborted) setDataLoading(false);
-      }
-    };
-
-    loadFeedback();
-    return () => controller.abort();
-  }, [currentUser, dateStr, section]);
+  const error = missingParams ? 'Missing date or section parameters' : loadError ?? submitError;
 
   const MAX_CHARS = 140;
 
@@ -69,24 +48,24 @@ const DevoFeedbackEdit: React.FC = () => {
     const value = e.target.value;
     setFeedback(value);
     setCharacterCount(value.length);
-    if (error) setError(null);
+    if (submitError) setSubmitError(null);
   };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
     if (!feedback.trim()) {
-      setError('Please enter some feedback before saving');
+      setSubmitError('Please enter some feedback before saving');
       return;
     }
 
     if (feedback.length > MAX_CHARS) {
-      setError(`Feedback must be ${MAX_CHARS} characters or fewer`);
+      setSubmitError(`Feedback must be ${MAX_CHARS} characters or fewer`);
       return;
     }
 
     setSaving(true);
-    setError(null);
+    setSubmitError(null);
 
     try {
       const res = await apiPost(
@@ -101,7 +80,7 @@ const DevoFeedbackEdit: React.FC = () => {
       navigate(`/react/devos-feedback?date=${encodeURIComponent(dateStr)}`, { replace: true });
     } catch (err) {
       console.error('Error saving feedback:', err);
-      setError((err as Error).message);
+      setSubmitError((err as Error).message);
     } finally {
       setSaving(false);
     }
