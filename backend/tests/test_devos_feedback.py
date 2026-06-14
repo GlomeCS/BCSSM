@@ -243,6 +243,18 @@ def test_edit_editor_id_comes_from_session(client, mock_write):
     upsert_call = next(call for call in calls if "INSERT INTO feedback" in call[0])
     assert upsert_call[1]['editor_id'] == 7
 
+def test_edit_feedback_not_a_string(client):
+    """Non-string feedback value → 400."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": 123})
+    assert resp.status_code == 400
+    assert "Feedback must be a string" in resp.get_json()["error"]
+
+
 def test_edit_missing_params(client):
     """Edit with missing section param → 400."""
     with client.session_transaction() as sess:
@@ -403,11 +415,16 @@ def test_edit_non_string_feedback_returns_400(client):
     assert resp.get_json()["error"] == "Feedback must be a string"
 
 
-def test_edit_no_user_id_in_session(client, mock_write, patch_helpers):
-    """user_id absent from session → editor_id is None; route proceeds (DB enforces NOT NULL)."""
+def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypatch):
+    """user_id absent from session → @require_auth resolves it from DB; route succeeds."""
     _, fake_ui = patch_helpers
     fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
     mock_write.return_value = [(5,)]
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 42,
+    )
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"  # user_id intentionally omitted
@@ -415,6 +432,26 @@ def test_edit_no_user_id_in_session(client, mock_write, patch_helpers):
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
     assert resp.status_code == 200
+    # Verify the write was called with the resolved user_id (42), not None
+    write_call_params = mock_write.call_args[0][1]
+    assert write_call_params.get("editor_id") == 42
+
+
+def test_edit_user_id_db_lookup_returns_none(client, mock_write, patch_helpers, monkeypatch):
+    """user_id absent from session and DB lookup returns None → @require_auth returns 401."""
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: None,
+    )
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"  # user_id intentionally omitted
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "X"})
+    assert resp.status_code == 401
+    assert "error" in resp.get_json()
+    mock_write.assert_not_called()
 
 
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):

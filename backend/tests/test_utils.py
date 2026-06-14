@@ -53,10 +53,17 @@ def mock_db_session():
         yield sess
 
 # ─── 3) Utility to control "today" in date‐sensitive code ─────────────────────
+_FAKE_DATE = datetime(2025, 6, 16).date()
+
 class FakeDatetime:
+    today_date = _FAKE_DATE
+
     @classmethod
     def now(cls):
-        return SimpleNamespace(weekday=lambda: cls.today_weekday)
+        return SimpleNamespace(
+            weekday=lambda: cls.today_weekday,
+            date=lambda: cls.today_date,
+        )
 
 # ─── 4) Tests for get_all_users() ────────────────────────────────────────────
 def test_get_all_users_happy_path(mock_readonly, mock_cache):
@@ -142,14 +149,14 @@ def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, 
         "duty": "Lunch Duty"
     }
     
-    # Verify cache operations - day is now 3 instead of 2
-    cache_key_pattern = 'user:duty:Ivy:day3:cycle0'
+    # Verify cache operations — key is now date-based
+    cache_key_pattern = f'user:duty:Ivy:{_FAKE_DATE}'
     mock_cache.get.assert_called_once_with(cache_key_pattern)
     mock_cache.set.assert_called_once()
     cache_set_args = mock_cache.set.call_args
     assert cache_set_args[0][0] == cache_key_pattern
     assert cache_set_args[1]['timeout'] == 600
-    
+
     mock_readonly.assert_called_once()
     sql, params = mock_readonly.call_args[0]
     assert isinstance(params['day'], int)
@@ -178,8 +185,8 @@ def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     # Assert
     assert result == cached_duty
     
-    # Verify cache was checked - day is now 3 instead of 2
-    mock_cache.get.assert_called_once_with('user:duty:Ivy:day3:cycle0')
+    # Verify cache was checked — key is now date-based
+    mock_cache.get.assert_called_once_with(f'user:duty:Ivy:{_FAKE_DATE}')
     # Verify DB was NOT queried
     mock_readonly.assert_not_called()
     # Verify cache was NOT set (already had data)

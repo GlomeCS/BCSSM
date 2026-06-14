@@ -1,5 +1,7 @@
 import copy
+from dataclasses import dataclass, field
 from functools import wraps
+from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 
@@ -13,15 +15,60 @@ def get_ttl_registry():
     return dict(_ttl_registry)
 
 
-def cached_result(key_fn, ttl, error_ttl=None, on_error=_RAISE, cache=None):
+@dataclass
+class CacheEntry:
+    ttl: int
+    group: str
+    error_ttl: int | None = None
+    on_error: Any = field(default_factory=lambda: _RAISE)
+
+
+# Single source of truth for cache key templates, TTLs, and invalidation groups.
+# Used by cached_result (TTL lookup) and clear_group (bulk invalidation in #165).
+CACHE_REGISTRY: dict[str, CacheEntry] = {
+    "users:all:list":                    CacheEntry(ttl=900,  group="users",    on_error=[]),
+    "user:duty:{name}:{date}":           CacheEntry(ttl=600,  group="duties"),
+    "duties:today:day{day}:cycle{cycle}:user{name}": CacheEntry(ttl=1800, group="duties",   error_ttl=60, on_error=[]),
+    "duties:schedule:14day:{date}":      CacheEntry(ttl=7200, group="duties",   error_ttl=60, on_error=[]),
+    "sections:all:list":                 CacheEntry(ttl=3600, group="sections", error_ttl=60),
+    "users:section:{name}":              CacheEntry(ttl=1800, group="users",    error_ttl=60),
+    "users:section:{name}:detailed":     CacheEntry(ttl=1800, group="users",    error_ttl=60),
+    "feedback:dates:all":                CacheEntry(ttl=7200, group="feedback", error_ttl=60),
+    "sections:with_users:all_v6":        CacheEntry(ttl=1800, group="sections", error_ttl=60),
+    "sections:statistics:summary":       CacheEntry(ttl=3600, group="sections", error_ttl=60),
+}
+
+
+def cached_result(key_fn, ttl=None, error_ttl=None, on_error=_RAISE, cache=None,
+                  registry_key=None):
     """
     key_fn: str for static keys, or callable(*args, **kwargs) -> str for dynamic keys
-    ttl: success cache TTL (seconds)
-    error_ttl: error cache TTL (seconds); None = don't cache on error
+    ttl: success cache TTL (seconds); if None, looked up from CACHE_REGISTRY
+    error_ttl: error cache TTL (seconds); if None, looked up from CACHE_REGISTRY
     on_error: value or callable(exc)->value returned on SQLAlchemyError;
               default _RAISE re-raises the exception
     cache: injectable cache instance for testing; defaults to backend.globals.cache
+    registry_key: CACHE_REGISTRY template to use for TTL lookup when key_fn is callable
     """
+    # Resolve TTL and error_ttl from registry when not explicitly provided
+    _registry_key = registry_key if registry_key is not None else (
+        key_fn if isinstance(key_fn, str) else None
+    )
+    if _registry_key is not None:
+        entry = CACHE_REGISTRY.get(_registry_key)
+        if entry is not None:
+            if ttl is None:
+                ttl = entry.ttl
+            if error_ttl is None:
+                error_ttl = entry.error_ttl
+            if on_error is _RAISE and entry.on_error is not _RAISE:
+                on_error = entry.on_error
+
+    if ttl is None:
+        raise ValueError(
+            f"No TTL found for '{_registry_key}' — add it to CACHE_REGISTRY or pass ttl= explicitly"
+        )
+
     def decorator(func):
         _ttl_registry[func.__name__] = ttl
 

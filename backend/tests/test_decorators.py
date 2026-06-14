@@ -155,6 +155,27 @@ def test_stacked_decorators_errors_caught_when_authenticated(app):
     with app.test_client() as client:
         with client.session_transaction() as sess:
             sess['user_name'] = 'Alice'
+            sess['user_id'] = 1
         response = client.get('/test-stacked-auth')
     assert response.status_code == 400
     assert response.get_json() == {"error": "field required"}
+
+
+def test_require_auth_user_id_db_lookup_returns_none_returns_401(app, monkeypatch):
+    """Session has user_name but get_user_id_by_name returns None → 401."""
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: None,
+    )
+
+    @app.route('/test-require-auth-no-id')
+    @require_auth
+    def protected_route():
+        return jsonify({"ok": True}), 200
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Alice'
+        response = client.get('/test-require-auth-no-id')
+    assert response.status_code == 401
+    assert response.get_json() == {"error": "Authentication required"}

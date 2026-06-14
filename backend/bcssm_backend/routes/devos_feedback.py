@@ -61,6 +61,9 @@ def init_feedback_routes(app):
                 {'error': 'Feedback must be 140 characters or fewer'}
             ), 400
 
+        if not isinstance(new_feedback, str):
+            return jsonify({'error': 'Feedback must be a string'}), 400
+
         editor_id = g.user_id
         editor_name = g.user_name
         logger.debug("edit_devos_feedback - editor_id: %s", editor_id)

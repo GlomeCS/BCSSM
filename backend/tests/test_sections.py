@@ -40,7 +40,12 @@ def mock_utils(monkeypatch):
         except (AttributeError, ImportError):
             # If the import path doesn't exist, that's fine
             pass
-    
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
+
     return mock_sections, mock_users
 
 # ─── Tests for /api/users/by-section endpoint ────────────────────────────────
