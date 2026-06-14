@@ -132,10 +132,18 @@ def _scan_delete(cache_instance, pattern: str) -> int:
         )
         return 0
     try:
-        keys = list(redis_client.scan_iter(match=pattern, count=100))
-        if keys:
-            redis_client.delete(*keys)
-        return len(keys)
+        total = 0
+        batch: list = []
+        for key in redis_client.scan_iter(match=pattern, count=100):
+            batch.append(key)
+            if len(batch) >= 100:
+                redis_client.delete(*batch)
+                total += len(batch)
+                batch = []
+        if batch:
+            redis_client.delete(*batch)
+            total += len(batch)
+        return total
     except Exception as e:
         logger.warning("Pattern delete failed for %s: %s", pattern, e)
         return 0

@@ -312,6 +312,23 @@ def test_scan_delete_returns_zero_when_no_redis_client():
     assert count == 0
 
 
+def test_scan_delete_batches_large_key_sets():
+    """Keys exceeding batch size (100) are deleted in multiple calls."""
+    mock_redis = MagicMock()
+    keys_batch1 = [f'key:{i}' for i in range(100)]
+    keys_batch2 = [f'key:{i}' for i in range(100, 150)]
+    mock_redis.scan_iter.return_value = keys_batch1 + keys_batch2
+    fake_cache = MagicMock()
+    fake_cache.cache._write_client = mock_redis
+
+    count = _scan_delete(fake_cache, 'key:*')
+
+    assert count == 150
+    assert mock_redis.delete.call_count == 2
+    mock_redis.delete.assert_any_call(*keys_batch1)
+    mock_redis.delete.assert_any_call(*keys_batch2)
+
+
 def test_scan_delete_swallows_exception_and_returns_zero():
     mock_redis = MagicMock()
     mock_redis.scan_iter.side_effect = Exception("connection refused")
