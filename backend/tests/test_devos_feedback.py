@@ -244,6 +244,18 @@ def test_edit_editor_id_comes_from_session(client, mock_write):
     upsert_call = next(call for call in calls if "INSERT INTO feedback" in call[0])
     assert upsert_call[1]['editor_id'] == 7
 
+def test_edit_feedback_not_a_string(client):
+    """Non-string feedback value → 400."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": 123})
+    assert resp.status_code == 400
+    assert "Feedback must be a string" in resp.get_json()["error"]
+
+
 def test_edit_missing_params(client):
     """Edit with missing section param → 400."""
     with client.session_transaction() as sess:
