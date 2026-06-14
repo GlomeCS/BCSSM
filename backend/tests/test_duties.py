@@ -32,6 +32,10 @@ def patch_duties_helpers(monkeypatch):
         "backend.bcssm_backend.routes.duties.get_duty_schedule",
         fake_get_duty_schedule
     )
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
     return {
         "todays_duties": fake_get_todays_duties,
         "duty_schedule": fake_get_duty_schedule
@@ -63,33 +67,25 @@ def test_get_duties_today_success_with_session(client, patch_duties_helpers):
 
 
 def test_get_duties_today_query_param_rejected(client, patch_duties_helpers):
-    """Query param user_name is no longer trusted — must return 400."""
-    ph = patch_duties_helpers
-    ph["todays_duties"].return_value = []
-
+    """Query param user_name is not trusted — session required."""
     resp = client.get("/api/duties/today?user_name=Alice")
-    assert resp.status_code == 400
-    ph["todays_duties"].assert_not_called()
+    assert resp.status_code == 401
+    patch_duties_helpers["todays_duties"].assert_not_called()
 
 
 def test_get_duties_today_header_rejected(client, patch_duties_helpers):
-    """X-Current-User header is no longer trusted — must return 400."""
-    ph = patch_duties_helpers
-    ph["todays_duties"].return_value = []
-
+    """X-Current-User header is not trusted — session required."""
     resp = client.get("/api/duties/today", headers={"X-Current-User": "Bob"})
-    assert resp.status_code == 400
-    ph["todays_duties"].assert_not_called()
+    assert resp.status_code == 401
+    patch_duties_helpers["todays_duties"].assert_not_called()
 
 
 def test_get_duties_today_no_username(client, patch_duties_helpers):
-    """No session → 400."""
+    """No session → 401."""
     resp = client.get("/api/duties/today")
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "Username required" in data["error"]
-    ph = patch_duties_helpers
-    ph["todays_duties"].assert_not_called()
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
+    patch_duties_helpers["todays_duties"].assert_not_called()
 
 
 def test_get_duties_today_session_takes_priority_over_other_sources(client, patch_duties_helpers):
@@ -220,32 +216,25 @@ def test_get_duty_schedule_success_with_session(client, patch_duties_helpers):
 
 
 def test_get_duty_schedule_query_param_rejected(client, patch_duties_helpers):
-    """Query param is no longer trusted for auth."""
-    ph = patch_duties_helpers
-    ph["duty_schedule"].return_value = []
-
+    """Query param is not trusted for auth — session required."""
     resp = client.get("/api/duties/schedule?user_name=Alice")
-    assert resp.status_code == 400
-    ph["duty_schedule"].assert_not_called()
+    assert resp.status_code == 401
+    patch_duties_helpers["duty_schedule"].assert_not_called()
 
 
 def test_get_duty_schedule_header_rejected(client, patch_duties_helpers):
-    """Header is no longer trusted for auth."""
-    ph = patch_duties_helpers
-    ph["duty_schedule"].return_value = []
-
+    """Header is not trusted for auth — session required."""
     resp = client.get("/api/duties/schedule", headers={"X-Current-User": "Bob"})
-    assert resp.status_code == 400
-    ph["duty_schedule"].assert_not_called()
+    assert resp.status_code == 401
+    patch_duties_helpers["duty_schedule"].assert_not_called()
 
 
 def test_get_duty_schedule_no_username(client, patch_duties_helpers):
+    """No session → 401."""
     resp = client.get("/api/duties/schedule")
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "Username required" in data["error"]
-    ph = patch_duties_helpers
-    ph["duty_schedule"].assert_not_called()
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
+    patch_duties_helpers["duty_schedule"].assert_not_called()
 
 
 def test_get_duty_schedule_exception_handling(client, patch_duties_helpers):
@@ -371,11 +360,10 @@ def test_username_with_spaces_via_session(client, patch_duties_helpers):
 
 
 def test_empty_username_in_query_param(client, patch_duties_helpers):
-    """Empty query param → still no session → 400."""
+    """Empty query param → still no session → 401."""
     resp = client.get("/api/duties/today?user_name=")
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "Username required" in data["error"]
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
 
 
 # ─── 6) Tests for logging behavior ────────────────────────────────────────────
@@ -394,11 +382,9 @@ def test_logging_on_successful_request(client, patch_duties_helpers, caplog):
 
 
 def test_logging_on_missing_username(client, patch_duties_helpers, caplog):
-    with caplog.at_level(logging.WARNING):
-        resp = client.get("/api/duties/today")
-
-    assert resp.status_code == 400
-    assert "No username found in request for /api/duties/today" in caplog.text
+    """No session → 401; no route-level log since decorator handles it."""
+    resp = client.get("/api/duties/today")
+    assert resp.status_code == 401
 
 
 def test_logging_on_exception(client, patch_duties_helpers, caplog):
@@ -438,9 +424,9 @@ def test_both_endpoints_with_same_user(client, patch_duties_helpers):
 
 
 def test_both_endpoints_require_session(client, patch_duties_helpers):
-    """Without a session, both endpoints return 400."""
+    """Without a session, both endpoints return 401."""
     resp1 = client.get("/api/duties/today")
-    assert resp1.status_code == 400
+    assert resp1.status_code == 401
 
     resp2 = client.get("/api/duties/schedule")
-    assert resp2.status_code == 400
+    assert resp2.status_code == 401

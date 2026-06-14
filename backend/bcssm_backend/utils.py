@@ -345,6 +345,20 @@ def get_user_info(user_name):
     return _fetch_user_info("u.name = :user_name", {"user_name": user_name}, user_name)
 
 
+def get_user_id_by_name(user_name):
+    """Return the DB id for user_name, or None if not found."""
+    try:
+        rows = execute_readonly_query(
+            "SELECT id FROM users WHERE name = :user_name;",
+            {"user_name": user_name},
+            silent=True,
+        )
+        return rows[0][0] if rows else None
+    except (SQLAlchemyError, RuntimeError) as e:
+        logger.warning("Could not resolve user_id for %s: %s", user_name, e)
+        return None
+
+
 def get_user_info_by_id(user_id):
     return _fetch_user_info("u.id = :user_id", {"user_id": user_id}, f"id {user_id}")
 

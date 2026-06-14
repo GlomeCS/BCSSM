@@ -147,10 +147,14 @@ describe('validateAuth', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('returns false immediately when no currentUser', async () => {
+  it('returns false when server returns 401 (no localStorage)', async () => {
+    // localStorage is empty — server is still queried (cookie-based auth)
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: 'Unauthorized' }), { status: 401 })
+    );
     const result = await validateAuth();
     expect(result).toBe(false);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('returns true and updates localStorage on valid response', async () => {

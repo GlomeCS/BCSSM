@@ -1,11 +1,17 @@
 // utils/api.ts
 
+export const LS_CURRENT_USER = "currentUser";
+export const LS_IS_LOGGED_IN = "is_logged_in";
+export const LS_USER_ROLE = "user_role";
+export const LS_USER_SECTION = "user_section";
+export const LS_CAN_EDIT_ALL = "can_edit_all";
+
 export const getCurrentUser = (): string | null => {
-    return localStorage.getItem("currentUser");
+    return localStorage.getItem(LS_CURRENT_USER);
   };
-  
+
   export const isLoggedIn = (): boolean => {
-    return localStorage.getItem("is_logged_in") === "true" && !!getCurrentUser();
+    return localStorage.getItem(LS_IS_LOGGED_IN) === "true" && !!getCurrentUser();
   };
   
   export const apiCall = async (
@@ -45,11 +51,11 @@ export const getCurrentUser = (): string | null => {
     try {
       await apiPost('/api/auth/logout', {});
     } finally {
-      localStorage.removeItem('currentUser');
-      localStorage.removeItem('is_logged_in');
-      localStorage.removeItem('user_role');
-      localStorage.removeItem('user_section');
-      localStorage.removeItem('can_edit_all');
+      localStorage.removeItem(LS_CURRENT_USER);
+      localStorage.removeItem(LS_IS_LOGGED_IN);
+      localStorage.removeItem(LS_USER_ROLE);
+      localStorage.removeItem(LS_USER_SECTION);
+      localStorage.removeItem(LS_CAN_EDIT_ALL);
     }
   };
 
@@ -58,12 +64,6 @@ export const getCurrentUser = (): string | null => {
   // Returns false if the server explicitly says the session is invalid.
   // Throws on network/transport errors so callers can distinguish transient failures.
   export const validateAuth = async (): Promise<boolean> => {
-    const currentUser = getCurrentUser();
-
-    if (!currentUser) {
-      return false;
-    }
-
     const response = await apiGet('/api/auth/validate');
     if (!response.ok) {
       // 400 = no session / not authenticated; 401/403 = explicitly rejected.
@@ -74,11 +74,11 @@ export const getCurrentUser = (): string | null => {
     const data = await response.json();
 
     if (data.is_valid) {
-      localStorage.setItem("is_logged_in", "true");
-      if (data.user_name) localStorage.setItem("currentUser", data.user_name);
-      if (data.role) localStorage.setItem("user_role", data.role);
-      if (data.section) localStorage.setItem("user_section", data.section);
-      localStorage.setItem("can_edit_all", data.can_edit_all ? "true" : "false");
+      localStorage.setItem(LS_IS_LOGGED_IN, "true");
+      if (data.user_name) localStorage.setItem(LS_CURRENT_USER, data.user_name);
+      if (data.role) localStorage.setItem(LS_USER_ROLE, data.role);
+      if (data.section) localStorage.setItem(LS_USER_SECTION, data.section);
+      localStorage.setItem(LS_CAN_EDIT_ALL, data.can_edit_all ? "true" : "false");
       return true;
     }
 

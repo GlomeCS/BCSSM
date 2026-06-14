@@ -136,6 +136,11 @@ def patch_utils_helpers(monkeypatch):
     except (ImportError, AttributeError):
         pass
 
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
+
     return fake_users, fake_assign, fake_duty
 
 
@@ -190,12 +195,10 @@ def test_login_get_redirects_to_index(client):
 
 # ─── 5) Tests for "/duty-teams" ─────────────────────────────────────────────────
 def test_duty_team_redirects_if_not_logged_in(client):
-    """Without username, should respond with 400 Bad Request"""
+    """Without session, should respond with 401."""
     resp = client.get("/duty-teams", follow_redirects=False)
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "error" in data
-    assert "Username required" in data["error"]
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
 
 
 def test_duty_team_shows_no_duty_message(client, patch_utils_helpers, env_and_deny_db):
@@ -272,16 +275,10 @@ def test_duty_team_with_session(client, patch_utils_helpers, env_and_deny_db):
 
 
 def test_duty_team_header_rejected(client, patch_utils_helpers, env_and_deny_db):
-    """X-Current-User header is no longer trusted — must return 400."""
-    _, _, fake_duty = patch_utils_helpers
-    fake_duty.return_value = {"duty": "Header duty", "role": "Leader"}
-
-    setup_db_response(env_and_deny_db, user_data=[(1, 'HeaderUser', 'Leader')])
-
+    """X-Current-User header is not trusted — session required."""
     resp = client.get("/duty-teams", headers={"X-Current-User": "HeaderUser"})
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "Username required" in data["error"]
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
 
 
 @pytest.mark.parametrize("duty_response", [

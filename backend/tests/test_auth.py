@@ -1,11 +1,8 @@
 import pytest
-from unittest.mock import MagicMock
-from sqlalchemy.exc import SQLAlchemyError
-
-from flask import session
+from flask import g, session
 
 from backend.bcssm_backend import create_app
-from backend.bcssm_backend.auth import get_username_from_request, get_user_id_from_request
+from backend.bcssm_backend.decorators import require_auth
 
 
 @pytest.fixture
@@ -14,78 +11,61 @@ def app(monkeypatch):
     return create_app()
 
 
-@pytest.fixture
-def mock_execute_query(monkeypatch):
-    mock = MagicMock()
-    monkeypatch.setattr("backend.bcssm_backend.auth.execute_query", mock)
-    return mock
+def _make_protected_route(app):
+    """Register a test route protected by @require_auth."""
+    @app.route('/test-auth')
+    @require_auth
+    def protected():
+        return {'user_name': g.user_name, 'user_id': g.user_id}, 200
 
 
-# ─── get_username_from_request ────────────────────────────────────────────────
-# Only the session is trusted; all client-supplied values are ignored.
+# ─── require_auth ────────────────────────────────────────────────────────────
 
-def test_username_from_session(app):
-    with app.test_request_context('/test'):
-        session['user_name'] = 'Eve'
-        assert get_username_from_request() == 'Eve'
-
-
-def test_username_none_when_missing(app):
-    with app.test_request_context('/test'):
-        assert get_username_from_request() is None
-
-
-def test_post_body_not_trusted(app):
-    """POST body user_name is ignored — session is the only trusted source."""
-    with app.test_request_context('/test', method='POST', json={'user_name': 'Alice'}):
-        assert get_username_from_request() is None
+def test_require_auth_sets_g_from_session(app):
+    _make_protected_route(app)
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Alice'
+            sess['user_id'] = 42
+        response = client.get('/test-auth')
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data['user_name'] == 'Alice'
+        assert data['user_id'] == 42
 
 
-def test_query_param_not_trusted(app):
-    """Query-param user_name is ignored to prevent impersonation."""
-    with app.test_request_context('/test?user_name=Bob'):
-        assert get_username_from_request() is None
+def test_require_auth_returns_401_when_no_session(app):
+    _make_protected_route(app)
+    with app.test_client() as client:
+        response = client.get('/test-auth')
+        assert response.status_code == 401
+        assert 'error' in response.get_json()
 
 
-def test_header_not_trusted(app):
-    """X-Current-User header is ignored to prevent impersonation."""
-    with app.test_request_context('/test', headers={'X-Current-User': 'Dave'}):
-        assert get_username_from_request() is None
+def test_require_auth_user_id_none_when_not_in_session(app, monkeypatch):
+    """user_id absent from session and DB lookup returns None → 401."""
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: None,
+    )
+    _make_protected_route(app)
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Bob'
+        response = client.get('/test-auth')
+        assert response.status_code == 401
+        assert 'error' in response.get_json()
 
 
-# ─── get_user_id_from_request ─────────────────────────────────────────────────
-
-def test_user_id_found_via_session(app, mock_execute_query):
-    mock_execute_query.return_value = [(42,)]
-    with app.test_request_context('/test'):
-        session['user_name'] = 'Alice'
-        assert get_user_id_from_request() == 42
+def test_require_auth_ignores_query_param(app):
+    _make_protected_route(app)
+    with app.test_client() as client:
+        response = client.get('/test-auth?user_name=Eve')
+        assert response.status_code == 401
 
 
-def test_user_id_not_found_via_session(app, mock_execute_query):
-    mock_execute_query.return_value = []
-    with app.test_request_context('/test'):
-        session['user_name'] = 'Alice'
-        assert get_user_id_from_request() is None
-
-
-def test_user_id_db_error_reraised(app, mock_execute_query):
-    mock_execute_query.side_effect = SQLAlchemyError("db down")
-    with app.test_request_context('/test'):
-        session['user_name'] = 'Alice'
-        with pytest.raises(SQLAlchemyError):
-            get_user_id_from_request()
-
-
-def test_user_id_no_username_returns_none(app, mock_execute_query):
-    with app.test_request_context('/test'):
-        assert get_user_id_from_request() is None
-    mock_execute_query.assert_not_called()
-
-
-def test_user_id_falls_back_to_session_user_id(app, mock_execute_query):
-    """When no user_name in session, fall back to session user_id."""
-    with app.test_request_context('/test'):
-        session['user_id'] = 99
-        assert get_user_id_from_request() == 99
-    mock_execute_query.assert_not_called()
+def test_require_auth_ignores_header(app):
+    _make_protected_route(app)
+    with app.test_client() as client:
+        response = client.get('/test-auth', headers={'X-Current-User': 'Dave'})
+        assert response.status_code == 401

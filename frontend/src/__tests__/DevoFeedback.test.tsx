@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import DevoFeedback from '../DevoFeedback';
+import { AuthProvider } from '../AuthContext';
 
 const SECTIONS = ['Seniors', 'Juniors', 'Minis'];
 
@@ -54,7 +55,9 @@ function setupMockFetch(isLeader = true) {
 function renderDevoFeedback(initialPath = '/react/devos-feedback') {
   return render(
     <MemoryRouter initialEntries={[initialPath]}>
-      <DevoFeedback />
+      <AuthProvider>
+        <DevoFeedback />
+      </AuthProvider>
     </MemoryRouter>
   );
 }
