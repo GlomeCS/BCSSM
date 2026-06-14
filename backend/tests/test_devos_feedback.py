@@ -409,6 +409,23 @@ def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypat
     assert write_call_params.get("editor_id") == 42
 
 
+def test_edit_user_id_db_lookup_returns_none(client, mock_write, patch_helpers, monkeypatch):
+    """user_id absent from session and DB lookup returns None → @require_auth returns 401."""
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: None,
+    )
+
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"  # user_id intentionally omitted
+
+    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+                       json={"feedback": "X"})
+    assert resp.status_code == 401
+    assert "error" in resp.get_json()
+    mock_write.assert_not_called()
+
+
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):
     """get_user_info raises SQLAlchemyError → 500."""
     _, fake_ui = patch_helpers

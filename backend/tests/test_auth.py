@@ -43,7 +43,7 @@ def test_require_auth_returns_401_when_no_session(app):
 
 
 def test_require_auth_user_id_none_when_not_in_session(app, monkeypatch):
-    """user_id absent from session → decorator tries DB lookup; None returned if user not found."""
+    """user_id absent from session and DB lookup returns None → 401."""
     monkeypatch.setattr(
         "backend.bcssm_backend.utils.get_user_id_by_name",
         lambda name: None,
@@ -53,8 +53,8 @@ def test_require_auth_user_id_none_when_not_in_session(app, monkeypatch):
         with client.session_transaction() as sess:
             sess['user_name'] = 'Bob'
         response = client.get('/test-auth')
-        assert response.status_code == 200
-        assert response.get_json()['user_id'] is None
+        assert response.status_code == 401
+        assert 'error' in response.get_json()
 
 
 def test_require_auth_ignores_query_param(app):
