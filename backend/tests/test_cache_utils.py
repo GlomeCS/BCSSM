@@ -1,7 +1,8 @@
 import pytest
-from unittest.mock import MagicMock
+from datetime import date
+from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import SQLAlchemyError
-from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
+from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry, CACHE_REGISTRY
 
 
 def _make_cache():
@@ -188,3 +189,66 @@ def test_ttl_registry_records_decorated_functions():
     registry = get_ttl_registry()
     assert 'my_registered_fn' in registry
     assert registry['my_registered_fn'] == 999
+
+
+# ─── CACHE_REGISTRY ───────────────────────────────────────────────────────────
+
+def test_registry_lookup_sets_ttl_for_static_key():
+    fake_cache = _make_cache()
+
+    @cached_result('users:all:list', cache=fake_cache)
+    def fn():
+        return ['a']
+
+    fn()
+    fake_cache.set.assert_called_once_with('users:all:list', ['a'], timeout=900)
+
+
+def test_registry_lookup_via_registry_key_for_dynamic_key():
+    fake_cache = _make_cache()
+
+    @cached_result(lambda name: f'user:duty:{name}:2025-01-01',
+                   registry_key='user:duty:{name}:{date}', cache=fake_cache)
+    def fn(name):
+        return {'user': name}
+
+    fn('Alice')
+    _, kwargs = fake_cache.set.call_args
+    assert kwargs['timeout'] == 600
+
+
+def test_registry_missing_key_with_no_explicit_ttl_raises():
+    with pytest.raises(ValueError, match="CACHE_REGISTRY"):
+        @cached_result(lambda x: f'unknown:{x}', registry_key='unknown:{x}')
+        def fn(x):  # pragma: no cover
+            return x
+
+
+def test_all_registry_entries_have_valid_group():
+    valid_groups = {"users", "duties", "sections", "feedback"}
+    for key, entry in CACHE_REGISTRY.items():
+        assert entry.group in valid_groups, (
+            f"Registry entry '{key}' has unknown group '{entry.group}'"
+        )
+
+
+def test_all_registry_entries_have_positive_ttl():
+    for key, entry in CACHE_REGISTRY.items():
+        assert entry.ttl > 0, f"Registry entry '{key}' has non-positive ttl {entry.ttl}"
+        if entry.error_ttl is not None:
+            assert entry.error_ttl > 0, (
+                f"Registry entry '{key}' has non-positive error_ttl {entry.error_ttl}"
+            )
+
+
+# ─── Duty key design ──────────────────────────────────────────────────────────
+
+def test_user_duty_key_is_date_based():
+    from backend.bcssm_backend.utils import _user_duty_key
+    fixed_date = date(2025, 6, 16)
+    with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
+        mock_dt.now.return_value.date.return_value = fixed_date
+        key = _user_duty_key('Alice')
+    assert key == f'user:duty:Alice:{fixed_date}'
+    assert 'day' not in key
+    assert 'cycle' not in key

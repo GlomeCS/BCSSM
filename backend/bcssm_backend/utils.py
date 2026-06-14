@@ -76,7 +76,7 @@ def execute_query(query, params=None, silent=False):
         )
         raise
 
-@cached_result('users:all:list', 900, on_error=[])
+@cached_result('users:all:list', on_error=[])
 def get_all_users():
     query = """
     SELECT
@@ -99,12 +99,10 @@ def get_all_users():
     return [row[0] for row in rows]
 
 def _user_duty_key(user_name):
-    day = (datetime.now().weekday() + 1) % 7
-    cycle = get_current_cycle_week()
-    return f'user:duty:{user_name}:day{day}:cycle{cycle}'
+    return f'user:duty:{user_name}:{datetime.now().date()}'
 
 
-@cached_result(_user_duty_key, 600)
+@cached_result(_user_duty_key, registry_key='user:duty:{name}:{date}')
 def get_user_duty(user_name):
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
@@ -149,7 +147,7 @@ def _todays_duties_key(user_name):
     return f'duties:today:day{day}:cycle{cycle}:user{user_name}'
 
 
-@cached_result(_todays_duties_key, 1800, error_ttl=60, on_error=[])
+@cached_result(_todays_duties_key, registry_key='duties:today:day{day}:cycle{cycle}:user{name}', on_error=[])
 def get_todays_duties(user_name):
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
@@ -203,7 +201,7 @@ def _duty_schedule_key():
     return f'duties:schedule:14day:{datetime.now().date()}'
 
 
-@cached_result(_duty_schedule_key, 7200, error_ttl=60, on_error=[])
+@cached_result(_duty_schedule_key, registry_key='duties:schedule:14day:{date}', on_error=[])
 def get_duty_schedule():
     start_date = CYCLE_ANCHOR
 
@@ -287,7 +285,7 @@ def get_duty_schedule():
     return schedule
 
 
-@cached_result('sections:all:list', 3600, error_ttl=60,
+@cached_result('sections:all:list',
                on_error=lambda e: {"error": f"Failed to fetch sections: {e}"})
 def get_all_sections():
     query = """
@@ -298,7 +296,7 @@ def get_all_sections():
     result = execute_readonly_query(query)
     return [row[0] for row in result]
 
-@cached_result('feedback:dates:all', 7200, error_ttl=60,
+@cached_result('feedback:dates:all',
                on_error=lambda e: {"error": f"Failed to fetch feedback dates: {e}"})
 def get_all_feedback_dates():
     query = """
@@ -416,7 +414,7 @@ def clear_all_cache():
     except RedisError as e:
         logger.warning("Failed to clear all caches: %s", e)
 
-@cached_result('sections:with_users:all_v6', 1800, error_ttl=60,
+@cached_result('sections:with_users:all_v6',
                on_error=lambda e: {"error": f"Failed to fetch sections with users: {e}"})
 def get_all_sections_with_users():
     # Optimized query using proper JOINs and leveraging indexes
@@ -476,7 +474,7 @@ def get_all_sections_with_users():
     sections_list.sort(key=lambda x: (x["display_order"], x["name"]))
     return sections_list
     
-@cached_result('sections:statistics:summary', 3600, error_ttl=60,
+@cached_result('sections:statistics:summary',
                on_error=lambda e: {"error": f"Failed to fetch section statistics: {e}"})
 def get_section_statistics():
     query = """
@@ -505,7 +503,8 @@ def get_section_statistics():
         for row in rows
     ]
 
-@cached_result(lambda section_name: f'users:section:{section_name}', 1800, error_ttl=60,
+@cached_result(lambda section_name: f'users:section:{section_name}',
+               registry_key='users:section:{name}',
                on_error=lambda e: {"error": f"Failed to fetch users by section: {e}"})
 def get_users_by_section(section_name):
     if section_name == "Unassigned":
