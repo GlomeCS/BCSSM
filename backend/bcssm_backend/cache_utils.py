@@ -28,7 +28,7 @@ class CacheEntry:
 CACHE_REGISTRY: dict[str, CacheEntry] = {
     "users:all:list":                    CacheEntry(ttl=900,  group="users",    on_error=[]),
     "user:duty:{name}:{date}":           CacheEntry(ttl=600,  group="duties"),
-    "duties:today:day{day}:cycle{cycle}:user{name}": CacheEntry(ttl=1800, group="duties",   error_ttl=60, on_error=[]),
+    "duties:today:{day}:{cycle}:{name}":              CacheEntry(ttl=1800, group="duties",   error_ttl=60, on_error=[]),
     "duties:schedule:14day:{date}":      CacheEntry(ttl=7200, group="duties",   error_ttl=60, on_error=[]),
     "sections:all:list":                 CacheEntry(ttl=3600, group="sections", error_ttl=60),
     "users:section:{name}":              CacheEntry(ttl=1800, group="users",    error_ttl=60),
@@ -112,3 +112,76 @@ def cached_result(key_fn, ttl=None, error_ttl=None, on_error=_RAISE, cache=None,
 
         return wrapper
     return decorator
+
+
+def _template_to_glob(template: str) -> str:
+    """Convert 'foo:{bar}:{baz}' to 'foo:*' for Redis SCAN pattern matching."""
+    idx = template.find('{')
+    return template[:idx] + '*' if idx != -1 else template
+
+
+def _scan_delete(cache_instance, pattern: str) -> int:
+    """Delete all Redis keys matching a glob pattern via SCAN."""
+    redis_client = getattr(
+        getattr(cache_instance, 'cache', None), '_write_client', None
+    )
+    if redis_client is None:
+        logger.debug(
+            "Redis client not accessible; skipping pattern delete for %s",
+            pattern,
+        )
+        return 0
+    try:
+        total = 0
+        batch: list = []
+        for key in redis_client.scan_iter(match=pattern, count=100):
+            batch.append(key)
+            if len(batch) >= 100:
+                redis_client.delete(*batch)
+                total += len(batch)
+                batch = []
+        if batch:
+            redis_client.delete(*batch)
+            total += len(batch)
+        return total
+    except Exception as e:
+        logger.warning("Pattern delete failed for %s: %s", pattern, e)
+        return 0
+
+
+def clear_group(group_name: str, cache=None) -> bool:
+    """Delete all cached keys belonging to group_name.
+
+    Static keys are deleted directly. Template keys (containing {}) are
+    converted to glob patterns and deleted via Redis SCAN.
+    """
+    if cache is None:
+        from backend.globals import cache as _global_cache
+        cache = _global_cache
+
+    static_keys: list[str] = []
+    glob_patterns: set[str] = set()
+
+    for template, entry in CACHE_REGISTRY.items():
+        if entry.group != group_name:
+            continue
+        if '{' not in template:
+            static_keys.append(template)
+        else:
+            glob_patterns.add(_template_to_glob(template))
+
+    try:
+        for key in static_keys:
+            cache.delete(key)
+        for pattern in glob_patterns:
+            _scan_delete(cache, pattern)
+        logger.info(
+            "Cleared cache group '%s': %d static key(s), %d pattern(s)",
+            group_name, len(static_keys), len(glob_patterns),
+        )
+        return True
+    except Exception as e:
+        logger.warning(
+            "clear_group(%s) encountered an error: %s", group_name, e
+        )
+        return False

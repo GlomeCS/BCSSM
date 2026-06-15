@@ -13,7 +13,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 
 from backend.globals import db, cache
-from backend.bcssm_backend.cache_utils import cached_result, get_ttl_registry
+from backend.bcssm_backend.cache_utils import (
+    cached_result, get_ttl_registry, clear_group,
+)
 from backend.bcssm_backend.exceptions import ValidationError, CacheError, AuthenticationError, DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -147,7 +149,7 @@ def _todays_duties_key(user_name):
     return f'duties:today:day{day}:cycle{cycle}:user{user_name}'
 
 
-@cached_result(_todays_duties_key, registry_key='duties:today:day{day}:cycle{cycle}:user{name}', on_error=[])
+@cached_result(_todays_duties_key, registry_key='duties:today:{day}:{cycle}:{name}', on_error=[])
 def get_todays_duties(user_name):
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
@@ -345,7 +347,7 @@ def get_user_id_by_name(user_name):
             silent=True,
         )
         return rows[0][0] if rows else None
-    except (SQLAlchemyError, RuntimeError) as e:
+    except DatabaseError as e:
         logger.warning("Could not resolve user_id for %s: %s", user_name, e)
         return None
 
@@ -379,23 +381,19 @@ def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, edi
 
 
 def clear_duty_cache():
-    """Clear duty-related caches after duty data changes"""
-    try:
-        today = datetime.now().date()
-        cache.delete(f'duties:schedule:14day:{today}')
-        # Clear today's duties (harder to clear all variations, so clear all)
-        cache.clear()  # Nuclear option for duties
+    """Clear duty-related caches after duty data changes."""
+    if clear_group("duties"):
         logger.info("Cleared duty-related caches")
-    except RedisError as e:
-        logger.warning("Failed to clear duty caches: %s", e)
+    else:
+        logger.warning("Failed to clear duty caches")
+
 
 def clear_feedback_cache():
-    """Clear feedback caches after feedback data changes"""
-    try:
-        cache.delete('feedback:dates:all')
+    """Clear feedback caches after feedback data changes."""
+    if clear_group("feedback"):
         logger.info("Cleared feedback caches")
-    except RedisError as e:
-        logger.warning("Failed to clear feedback caches: %s", e)
+    else:
+        logger.warning("Failed to clear feedback caches")
 
 def clear_all_cache():
     """Nuclear option - clear everything"""
@@ -529,22 +527,13 @@ def get_users_by_section(section_name):
 
 
 def clear_user_cache():
-    """Clear user-related caches after user data changes"""
-    try:
-        cache.delete('users:all:list')
-        cache.delete('sections:all:list')
-        cache.delete('sections:with_users:all_v6')
-        cache.delete('sections:statistics:summary')
-
-        sections = get_all_sections()
-        if isinstance(sections, list):
-            for section in sections:
-                cache.delete(f'users:section:{section}')
-        cache.delete('users:section:Unassigned')
-
+    """Clear user-related caches after user data changes."""
+    users_ok = clear_group("users")
+    sections_ok = clear_group("sections")
+    if users_ok and sections_ok:
         logger.info("Cleared user-related caches")
-    except RedisError as e:
-        logger.warning("Failed to clear user caches: %s", e)
+    else:
+        logger.warning("Failed to clear user caches")
 
 
 def _fmt_ttl(ttl: int) -> str:
