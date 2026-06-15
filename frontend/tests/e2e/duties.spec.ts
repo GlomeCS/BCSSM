@@ -121,7 +121,7 @@ test('shows team members on duty card', async ({ page }) => {
 
 test('shows other duties section', async ({ page }) => {
   await setupDutiesPage(page);
-  await expect(page.getByText('Other Duties')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '👥Other Duties' })).toBeVisible();
   await expect(page.getByText('Teardown')).toBeVisible();
   await expect(page.getByText('Carol')).toBeVisible();
 });

@@ -16,7 +16,7 @@ from backend.globals import db, cache
 from backend.bcssm_backend.cache_utils import (
     cached_result, get_ttl_registry, clear_group,
 )
-from backend.bcssm_backend.exceptions import ValidationError, CacheError, AuthenticationError
+from backend.bcssm_backend.exceptions import ValidationError, CacheError, AuthenticationError, DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def execute_readonly_query(query, params=None, silent=False):
         logger.error(
             "Read-only query failed. Query: %s, Error: %s", query, e
         )
-        raise
+        raise DatabaseError("Database error") from e
 
 user_assignments = {}
 
@@ -76,7 +76,7 @@ def execute_query(query, params=None, silent=False):
             "<redacted>" if silent else params,
             e,
         )
-        raise
+        raise DatabaseError("Database error") from e
 
 @cached_result('users:all:list', on_error=[])
 def get_all_users():
@@ -149,7 +149,7 @@ def _todays_duties_key(user_name):
     return f'duties:today:day{day}:cycle{cycle}:user{user_name}'
 
 
-@cached_result(_todays_duties_key, registry_key='duties:today:{day}:{cycle}:{name}', on_error=[])
+@cached_result(_todays_duties_key, registry_key='duties:today:day{day}:cycle{cycle}:user{name}', on_error=[])
 def get_todays_duties(user_name):
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
@@ -315,13 +315,8 @@ def get_feedback_by_date(date_str):
     FROM sections s
     LEFT JOIN feedback f ON s.id = f.section_id AND f.date = :date;
     """
-    try:
-        feedback_rows = execute_readonly_query(query, {"date": date_str})
-        daily_feedback = {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
-        return daily_feedback, None
-    except SQLAlchemyError as e:
-        logger.error("Error in get_feedback_by_date for date %s: %s", date_str, e)
-        return None, "An error occurred while fetching feedback"
+    feedback_rows = execute_readonly_query(query, {"date": date_str})
+    return {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
 
 
 def _fetch_user_info(where_clause, params, log_identifier):
@@ -333,18 +328,28 @@ def _fetch_user_info(where_clause, params, log_identifier):
         "LEFT JOIN sections s ON u.section_id = s.id "
         f"WHERE {where_clause};"
     )
-    try:
-        rows = execute_readonly_query(query, params)
-        if rows:
-            return {"name": rows[0][0], "role": rows[0][1], "section": rows[0][2]}
-        return None
-    except SQLAlchemyError as e:
-        logger.error("Failed to fetch user info for %s: %s", log_identifier, e)
-        raise
+    rows = execute_readonly_query(query, params)
+    if rows:
+        return {"name": rows[0][0], "role": rows[0][1], "section": rows[0][2]}
+    return None
 
 
 def get_user_info(user_name):
     return _fetch_user_info("u.name = :user_name", {"user_name": user_name}, user_name)
+
+
+def get_user_id_by_name(user_name):
+    """Return the DB id for user_name, or None if not found."""
+    try:
+        rows = execute_readonly_query(
+            "SELECT id FROM users WHERE name = :user_name;",
+            {"user_name": user_name},
+            silent=True,
+        )
+        return rows[0][0] if rows else None
+    except (SQLAlchemyError, RuntimeError) as e:
+        logger.warning("Could not resolve user_id for %s: %s", user_name, e)
+        return None
 
 
 def get_user_info_by_id(user_id):

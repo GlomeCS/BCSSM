@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
 import { useRequireAuth } from '../hooks/useRequireAuth';
+import { AuthProvider } from '../AuthContext';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -11,7 +12,11 @@ vi.mock('react-router-dom', async () => {
 });
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <MemoryRouter>{children}</MemoryRouter>;
+  return (
+    <MemoryRouter>
+      <AuthProvider>{children}</AuthProvider>
+    </MemoryRouter>
+  );
 }
 
 beforeEach(() => {

@@ -24,40 +24,61 @@ def env_and_deny_db(monkeypatch):
     # Mock the database session and related components
     mock_sess = MagicMock()
     mock_result = MagicMock()
-    
+
     # Mock the context manager for session.begin()
     mock_sess.begin.return_value.__enter__ = MagicMock(return_value=mock_sess)
     mock_sess.begin.return_value.__exit__ = MagicMock(return_value=None)
-    
+
     # Mock the execute result
     mock_result.returns_rows = True  # Assume SELECT queries return rows
     mock_result.fetchall.return_value = []  # Default to empty (no users)
-    
+
     mock_sess.execute.return_value = mock_result
     mock_sess.rollback = MagicMock()
-    
+
+    # Mock execute_readonly_query directly (avoids needing an app context for db.engine)
+    mock_readonly = MagicMock(return_value=[])
+
+    # Mock get_user_info in routes module so tests can configure it with (id, name, role) tuples
+    mock_get_user_info = MagicMock(return_value=None)
+    monkeypatch.setattr(
+        'backend.bcssm_backend.routes.routes.get_user_info', mock_get_user_info
+    )
+
     # Mock the text() function from SQLAlchemy
     mock_text = MagicMock(side_effect=lambda x: x)  # Just return the query string
-    
+
     # Patch all the components
     monkeypatch.setattr('backend.bcssm_backend.db.session', mock_sess)
+    monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
     monkeypatch.setattr('backend.bcssm_backend.utils.text', mock_text)
-    
-    return mock_sess, mock_result
+
+    return mock_sess, mock_result, mock_readonly, mock_get_user_info
 
 
 # Helper function to setup database responses
 def setup_db_response(env_and_deny_db, user_data=None):
     """
-    Helper to setup what the database should return
-    user_data: List of tuples like [(1, 'Username', 'Role')] or None/[] for no users
+    Helper to setup what the database should return.
+    user_data: List of tuples like [(id, 'Username', 'Role')] or None/[] for no users.
+    Configures mock_get_user_info to return {"name": name, "role": role, "section": None}.
     """
-    mock_sess, mock_result = env_and_deny_db
-    
+    mock_sess, mock_result, mock_readonly, mock_get_user_info = env_and_deny_db
+
     if user_data is None:
         user_data = []
-    
+
     mock_result.fetchall.return_value = user_data
+    mock_readonly.return_value = user_data
+
+    if user_data:
+        row = user_data[0]
+        name = row[1] if len(row) > 1 else None
+        role = row[2] if len(row) > 2 else None
+        mock_get_user_info.return_value = {"name": name, "role": role, "section": None}
+    else:
+        mock_get_user_info.return_value = None
+
     return mock_sess, mock_result
 
 
@@ -136,6 +157,11 @@ def patch_utils_helpers(monkeypatch):
     except (ImportError, AttributeError):
         pass
 
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
+
     return fake_users, fake_assign, fake_duty
 
 
@@ -190,12 +216,10 @@ def test_login_get_redirects_to_index(client):
 
 # ─── 5) Tests for "/duty-teams" ─────────────────────────────────────────────────
 def test_duty_team_redirects_if_not_logged_in(client):
-    """Without username, should respond with 400 Bad Request"""
+    """Without session, should respond with 401."""
     resp = client.get("/duty-teams", follow_redirects=False)
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "error" in data
-    assert "Username required" in data["error"]
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
 
 
 def test_duty_team_shows_no_duty_message(client, patch_utils_helpers, env_and_deny_db):
@@ -272,16 +296,10 @@ def test_duty_team_with_session(client, patch_utils_helpers, env_and_deny_db):
 
 
 def test_duty_team_header_rejected(client, patch_utils_helpers, env_and_deny_db):
-    """X-Current-User header is no longer trusted — must return 400."""
-    _, _, fake_duty = patch_utils_helpers
-    fake_duty.return_value = {"duty": "Header duty", "role": "Leader"}
-
-    setup_db_response(env_and_deny_db, user_data=[(1, 'HeaderUser', 'Leader')])
-
+    """X-Current-User header is not trusted — session required."""
     resp = client.get("/duty-teams", headers={"X-Current-User": "HeaderUser"})
-    assert resp.status_code == 400
-    data = resp.get_json()
-    assert "Username required" in data["error"]
+    assert resp.status_code == 401
+    assert "Authentication required" in resp.get_json()["error"]
 
 
 @pytest.mark.parametrize("duty_response", [
@@ -328,7 +346,7 @@ def test_duty_team_helper_raises_causes_internal_error(client, patch_utils_helpe
     assert resp.status_code == 500
     data = resp.get_json()
     assert "error" in data
-    assert "Failed to get duty information" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_db):
@@ -344,7 +362,7 @@ def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_
     resp = client.get("/duty-teams")
     assert resp.status_code == 500
     data = resp.get_json()
-    assert "Failed to get duty information" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 # ─── 6) Testing static‐file or React SPA fallback ──────────────────────────────

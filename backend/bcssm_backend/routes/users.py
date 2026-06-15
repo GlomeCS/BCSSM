@@ -1,14 +1,14 @@
-from flask import jsonify, request, session
+from flask import g, jsonify, request, session
 from functools import wraps
 
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.globals import cache
+from backend.bcssm_backend.decorators import require_auth, handle_route_errors
 from backend.bcssm_backend.utils import (
     get_all_users, get_user_duty, get_users_by_section, execute_query,
     clear_user_cache, authenticate_user, cache_user_login, evict_user_login_cache,
 )
-from backend.bcssm_backend.auth import get_username_from_request
 from backend.bcssm_backend.exceptions import AuthenticationError
 
 
@@ -59,55 +59,34 @@ def init_users_routes(app):
             return jsonify({"error": "An internal error has occurred."}), 500
 
     @app.route('/user-duty')
+    @require_auth
+    @handle_route_errors
     def user_duty():
-        """Get user duty - now accepts username from multiple sources"""
-        try:
-            # Get username from request (query param, body, header, or session)
-            user_name = get_username_from_request()
-            
-            if not user_name:
-                return jsonify({"error": "Username required"}), 400
-            
-            # Use utils function which already has smart caching with day/cycle keys
-            duty_data = get_user_duty(user_name)
-            
-            return jsonify(duty_data), 200
-        except SQLAlchemyError as e:
-            app.logger.error("Failed to fetch duty for user: %s", e)
-            return jsonify({"error": "An internal error has occurred."}), 500
+        """Get user duty."""
+        duty_data = get_user_duty(g.user_name)
+        return jsonify(duty_data), 200
 
     @app.route('/get-selected-user')
+    @require_auth
     def get_selected_user():
-        """Get selected user with cached data - now supports multiple auth methods"""
-        # Try to get username from multiple sources
-        user_name = get_username_from_request()
-        
-        if not user_name:
-            return jsonify({"user": None})
-        
-        # Try to get additional user data from cache with error handling
+        """Get selected user with cached data."""
+        user_name = g.user_name
         try:
             user_cache_key = f'user:data:{user_name}'
             user_data = cache.get(user_cache_key)
-            
             if user_data:
                 return jsonify({
                     "user": user_name,
                     "user_data": user_data
                 })
         except RedisError as cache_error:
-            # Log cache error but continue with basic response
             app.logger.warning("Failed to retrieve cached user data for %s: %s", user_name, cache_error)
-        
         return jsonify({"user": user_name})
 
     @app.route('/logout', methods=['POST'])
     def logout():
         """Logout user and clear caches"""
-        # Get username from multiple sources
-        user_name = get_username_from_request()
-        
-        # Clear user-specific cache entries on logout with error handling
+        user_name = session.get('user_name')
         if user_name:
             try:
                 cache_keys_to_delete = [
@@ -182,12 +161,10 @@ def init_users_routes(app):
         session.clear()
         return jsonify({'ok': True}), 200
 
-    # Add username validation endpoint for persistent auth
     @app.route('/api/auth/validate')
     def validate_user():
         """Validate if a username is still valid - for persistent auth"""
-        user_name = get_username_from_request()
-        
+        user_name = session.get('user_name')
         if not user_name:
             return jsonify({"is_valid": False, "error": "No username provided"}), 400
         
@@ -311,7 +288,7 @@ def init_users_routes(app):
     @app.context_processor
     def inject_user_state():
         """Inject user state into templates"""
-        user_name = get_username_from_request()
+        user_name = session.get('user_name')
         if user_name:
             # Try to get cached user data
             try:

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Home from '../Home';
+import { AuthProvider } from '../AuthContext';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -12,7 +13,9 @@ vi.mock('react-router-dom', async () => {
 function renderHome() {
   return render(
     <MemoryRouter>
-      <Home />
+      <AuthProvider>
+        <Home />
+      </AuthProvider>
     </MemoryRouter>
   );
 }

@@ -28,7 +28,7 @@ class CacheEntry:
 CACHE_REGISTRY: dict[str, CacheEntry] = {
     "users:all:list":                    CacheEntry(ttl=900,  group="users",    on_error=[]),
     "user:duty:{name}:{date}":           CacheEntry(ttl=600,  group="duties"),
-    "duties:today:{day}:{cycle}:{name}": CacheEntry(ttl=1800, group="duties",   error_ttl=60, on_error=[]),
+    "duties:today:day{day}:cycle{cycle}:user{name}": CacheEntry(ttl=1800, group="duties",   error_ttl=60, on_error=[]),
     "duties:schedule:14day:{date}":      CacheEntry(ttl=7200, group="duties",   error_ttl=60, on_error=[]),
     "sections:all:list":                 CacheEntry(ttl=3600, group="sections", error_ttl=60),
     "users:section:{name}":              CacheEntry(ttl=1800, group="users",    error_ttl=60),

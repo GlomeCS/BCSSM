@@ -4,6 +4,7 @@ import logging
 from unittest.mock import patch, MagicMock
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
+from backend.bcssm_backend.exceptions import DatabaseError
 
 # ─── 0) Fixture: use TestingConfig and register routes ──────────────────────────
 @pytest.fixture
@@ -39,7 +40,12 @@ def mock_utils(monkeypatch):
         except (AttributeError, ImportError):
             # If the import path doesn't exist, that's fine
             pass
-    
+
+    monkeypatch.setattr(
+        "backend.bcssm_backend.utils.get_user_id_by_name",
+        lambda name: 1,
+    )
+
     return mock_sections, mock_users
 
 # ─── Tests for /api/users/by-section endpoint ────────────────────────────────
@@ -119,30 +125,24 @@ def test_get_users_by_section_route_unauthenticated(client):
     
     assert response.status_code == 401
     data = json.loads(response.data)
-    assert data["error"] == "User not authenticated"
+    assert "Authentication required" in data["error"]
 
 def test_get_users_by_section_route_utility_error(client, mock_utils):
-    """Test endpoint handles utility function errors"""
+    """Test endpoint returns 500 when utility function raises a database error"""
     mock_sections, _ = mock_utils
-    
-    # Arrange
-    error_response = {"error": "Database connection failed"}
-    mock_sections.return_value = error_response
-    
-    # Set up authenticated session
+    mock_sections.side_effect = DatabaseError("Database connection failed")
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
-    # Act
+
     response = client.get('/api/users/by-section')
-    
-    # Assert
+
     if response.status_code == 404:
         pytest.skip("Route not implemented yet")
-    
+
     assert response.status_code == 500
     data = json.loads(response.data)
-    assert data["error"] == "Database connection failed"
+    assert data["error"] == "Internal server error"
 
 def test_get_users_by_section_route_empty_data(client, mock_utils):
     """Test endpoint with empty sections data"""
@@ -171,21 +171,18 @@ def test_get_users_by_section_route_exception_handling(client, mock_utils):
     """Test endpoint handles unexpected exceptions"""
     mock_sections, _ = mock_utils
     mock_sections.side_effect = SQLAlchemyError("Unexpected error")
-    
-    # Set up authenticated session
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
-    # Act
+
     response = client.get('/api/users/by-section')
-    
-    # Assert
+
     if response.status_code == 404:
         pytest.skip("Route not implemented yet")
-    
+
     assert response.status_code == 500
     data = json.loads(response.data)
-    assert data["error"] == "Failed to fetch users by section"
+    assert data["error"] == "Internal server error"
 
 def test_get_users_by_section_route_logging(client, mock_utils, caplog):
     """Test that appropriate log messages are generated"""
@@ -209,22 +206,17 @@ def test_get_users_by_section_route_logging(client, mock_utils, caplog):
             assert len(caplog.records) > 0
 
 def test_get_users_by_section_route_error_logging(client, mock_utils, caplog):
-    """Test error logging when utility function returns error"""
+    """Test error logging when utility function raises a database error"""
     mock_sections, _ = mock_utils
-    error_response = {"error": "Test error message"}
-    mock_sections.return_value = error_response
-    
-    # Set up authenticated session
+    mock_sections.side_effect = DatabaseError("Test error message")
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
+
     with caplog.at_level(logging.ERROR):
-        # Act
         response = client.get('/api/users/by-section')
-        
-        # Assert
+
         if response.status_code == 500:
-            # Check that error logging occurred
             assert any("error" in record.message.lower() for record in caplog.records)
 
 # ─── Tests for /api/users/section/<section_name> endpoint ────────────────────
@@ -279,32 +271,24 @@ def test_get_section_users_route_unauthenticated(client):
     
     assert response.status_code == 401
     data = json.loads(response.data)
-    assert data["error"] == "User not authenticated"
+    assert "Authentication required" in data["error"]
 
 def test_get_section_users_route_utility_error(client, mock_utils):
-    """Test endpoint handles utility function errors"""
+    """Test endpoint returns 500 when utility function raises a database error"""
     _, mock_users = mock_utils
-    
-    # Arrange
-    error_response = {"error": "Section not found"}
-    mock_users.return_value = error_response
-    
-    # Set up authenticated session
+    mock_users.side_effect = DatabaseError("Section not found")
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
-    # Act
+
     response = client.get('/api/users/section/NonexistentSection')
-    
-    # Assert
+
     if response.status_code == 404:
         pytest.skip("Route not implemented yet")
-    
+
     assert response.status_code == 500
     data = json.loads(response.data)
-    assert data["error"] == "Section not found"
-    
-    mock_users.assert_called_once_with("NonexistentSection")
+    assert data["error"] == "Internal server error"
 
 def test_get_section_users_route_empty_section(client, mock_utils):
     """Test endpoint with empty section (no users)"""
@@ -364,21 +348,18 @@ def test_get_section_users_route_exception_handling(client, mock_utils):
     """Test endpoint handles unexpected exceptions"""
     _, mock_users = mock_utils
     mock_users.side_effect = SQLAlchemyError("Unexpected database error")
-    
-    # Set up authenticated session
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
-    # Act
+
     response = client.get('/api/users/section/TestSection')
-    
-    # Assert
+
     if response.status_code == 404:
         pytest.skip("Route not implemented yet")
-    
+
     assert response.status_code == 500
     data = json.loads(response.data)
-    assert data["error"] == "Failed to fetch users for section TestSection"
+    assert data["error"] == "Internal server error"
 
 def test_get_section_users_route_special_characters_in_section_name(client, mock_utils):
     """Test endpoint with special characters in section name"""
@@ -430,22 +411,17 @@ def test_get_section_users_route_logging(client, mock_utils, caplog):
             assert len(caplog.records) > 0
 
 def test_get_section_users_route_error_logging(client, mock_utils, caplog):
-    """Test error logging when utility function returns error"""
+    """Test error logging when utility function raises a database error"""
     _, mock_users = mock_utils
-    error_response = {"error": "Section query failed"}
-    mock_users.return_value = error_response
-    
-    # Set up authenticated session
+    mock_users.side_effect = DatabaseError("Section query failed")
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
+
     with caplog.at_level(logging.ERROR):
-        # Act
         response = client.get('/api/users/section/TestSection')
-        
-        # Assert
+
         if response.status_code == 500:
-            # Check that error logging occurred
             assert any("error" in record.message.lower() for record in caplog.records)
 
 def test_get_section_users_route_exception_logging(client, mock_utils, caplog):
@@ -477,14 +453,14 @@ def test_both_endpoints_authentication_consistency(client):
     if response1.status_code != 404:  # Skip if route not implemented
         assert response1.status_code == 401
         data1 = json.loads(response1.data)
-        assert data1["error"] == "User not authenticated"
-    
+        assert "Authentication required" in data1["error"]
+
     # Act & Assert for second endpoint
     response2 = client.get('/api/users/section/TestSection')
     if response2.status_code != 404:  # Skip if route not implemented
         assert response2.status_code == 401
         data2 = json.loads(response2.data)
-        assert data2["error"] == "User not authenticated"
+        assert "Authentication required" in data2["error"]
 
 def test_get_users_by_section_auth_via_query_param_rejected(client, mock_utils):
     """Query-param user_name is no longer trusted — must return 401."""
@@ -595,23 +571,21 @@ def test_json_response_format_consistency(client, mock_utils):
 def test_error_response_format_consistency(client, mock_utils):
     """Test that error responses have consistent format"""
     mock_sections, mock_users = mock_utils
-    
-    # Set up authenticated session
+
     with client.session_transaction() as sess:
         sess['user_name'] = 'test_user'
-    
-    # Test first endpoint error
-    mock_sections.return_value = {"error": "Test error 1"}
-    
+
+    mock_sections.side_effect = DatabaseError("Test error 1")
+
     response1 = client.get('/api/users/by-section')
     if response1.status_code == 500:
         data1 = json.loads(response1.data)
         assert "error" in data1
         assert isinstance(data1["error"], str)
-    
-    # Test second endpoint error
-    mock_users.return_value = {"error": "Test error 2"}
-    
+
+    mock_sections.side_effect = None
+    mock_users.side_effect = DatabaseError("Test error 2")
+
     response2 = client.get('/api/users/section/TestSection')
     if response2.status_code == 500:
         data2 = json.loads(response2.data)
