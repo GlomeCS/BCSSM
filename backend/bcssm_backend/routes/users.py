@@ -4,7 +4,7 @@ from functools import wraps
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.globals import cache
-from backend.bcssm_backend.decorators import require_auth
+from backend.bcssm_backend.decorators import require_auth, handle_route_errors
 from backend.bcssm_backend.utils import (
     get_all_users, get_user_duty, get_users_by_section, execute_query,
     clear_user_cache, authenticate_user, cache_user_login, evict_user_login_cache,
@@ -60,14 +60,11 @@ def init_users_routes(app):
 
     @app.route('/user-duty')
     @require_auth
+    @handle_route_errors
     def user_duty():
         """Get user duty."""
-        try:
-            duty_data = get_user_duty(g.user_name)
-            return jsonify(duty_data), 200
-        except SQLAlchemyError as e:
-            app.logger.error("Failed to fetch duty for user: %s", e)
-            return jsonify({"error": "An internal error has occurred."}), 500
+        duty_data = get_user_duty(g.user_name)
+        return jsonify(duty_data), 200
 
     @app.route('/get-selected-user')
     @require_auth

@@ -113,7 +113,7 @@ def test_get_duties_today_exception_handling(client, patch_duties_helpers):
     resp = client.get("/api/duties/today")
     assert resp.status_code == 500
     data = resp.get_json()
-    assert "Failed to fetch today's duties" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 def test_get_duties_today_unexpected_exception(client, patch_duties_helpers):
@@ -126,7 +126,7 @@ def test_get_duties_today_unexpected_exception(client, patch_duties_helpers):
     resp = client.get("/api/duties/today")
     assert resp.status_code == 500
     data = resp.get_json()
-    assert "Failed to fetch today's duties" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 def test_get_duties_today_empty_result(client, patch_duties_helpers):
@@ -247,7 +247,7 @@ def test_get_duty_schedule_exception_handling(client, patch_duties_helpers):
     resp = client.get("/api/duties/schedule")
     assert resp.status_code == 500
     data = resp.get_json()
-    assert "Failed to fetch duty schedule" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 def test_get_duty_schedule_unexpected_exception(client, patch_duties_helpers):
@@ -260,7 +260,7 @@ def test_get_duty_schedule_unexpected_exception(client, patch_duties_helpers):
     resp = client.get("/api/duties/schedule")
     assert resp.status_code == 500
     data = resp.get_json()
-    assert "Failed to fetch duty schedule" in data["error"]
+    assert data["error"] == "Internal server error"
 
 
 def test_get_duty_schedule_complex_schedule_data(client, patch_duties_helpers):
@@ -398,7 +398,7 @@ def test_logging_on_exception(client, patch_duties_helpers, caplog):
         resp = client.get("/api/duties/today")
 
     assert resp.status_code == 500
-    assert "Error fetching today's duties for user Alice" in caplog.text
+    assert "Database error in get_duties_today" in caplog.text
     assert "Test error" in caplog.text
 
 

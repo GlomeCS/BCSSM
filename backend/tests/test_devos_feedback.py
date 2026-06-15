@@ -1,6 +1,7 @@
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
+from backend.bcssm_backend.exceptions import DatabaseError
 from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info
 from urllib.parse import quote
 from unittest.mock import MagicMock
@@ -39,8 +40,7 @@ def mock_execute_query(mock_write, mock_read):
 # ─── 3) Unit tests for get_feedback_by_date ──────────────────────────────────────
 def test_get_feedback_by_date_success(mock_read):
     mock_read.return_value = [("Minis", "Great job"), ("Majors", None)]
-    result, error = get_feedback_by_date("2025-06-07")
-    assert error is None
+    result = get_feedback_by_date("2025-06-07")
     assert result == {
         "Minis": "Great job",
         "Majors": "No feedback available"
@@ -48,9 +48,8 @@ def test_get_feedback_by_date_success(mock_read):
 
 def test_get_feedback_by_date_exception(mock_read):
     mock_read.side_effect = SQLAlchemyError("DB fail")
-    result, error = get_feedback_by_date("2025-06-07")
-    assert result is None
-    assert error == "An error occurred while fetching feedback"
+    with pytest.raises(SQLAlchemyError):
+        get_feedback_by_date("2025-06-07")
 
 # ─── 4) Unit tests for get_user_info ────────────────────────────────────────────
 def test_get_user_info_found(mock_read):
@@ -71,7 +70,7 @@ def test_get_user_info_exception(mock_read):
 # ─── 5) Integration tests for GET /api/devos-feedback ───────────────────────────
 @pytest.fixture(autouse=True)
 def patch_helpers(monkeypatch):
-    fake_fb = MagicMock(return_value=({}, None))
+    fake_fb = MagicMock(return_value={})
     monkeypatch.setattr(
         "backend.bcssm_backend.routes.devos_feedback.get_feedback_by_date",
         fake_fb
@@ -115,7 +114,7 @@ def test_route_query_param_rejected(client, patch_helpers):
 def test_route_with_date_and_leader_via_session(client, patch_helpers):
     """Test route with username via session (backward compatibility)"""
     fake_fb, fake_ui = patch_helpers
-    fake_fb.return_value = ({"X": "Y"}, None)
+    fake_fb.return_value = {"X": "Y"}
     fake_ui.return_value = {"name": "A", "role": "Section Leader", "section": "S"}
 
     with client.session_transaction() as sess:
@@ -147,7 +146,7 @@ def test_route_invalid_user(client, patch_helpers):
 def test_route_feedback_error(client, patch_helpers):
     """Feedback fetch failure → 500."""
     fake_fb, fake_ui = patch_helpers
-    fake_fb.return_value = (None, "err")
+    fake_fb.side_effect = DatabaseError("err")
     fake_ui.return_value = {"name": "TestUser", "role": "Team Member", "section": "TestSection"}
 
     with client.session_transaction() as sess:
@@ -244,14 +243,15 @@ def test_edit_editor_id_comes_from_session(client, mock_write):
     upsert_call = next(call for call in calls if "INSERT INTO feedback" in call[0])
     assert upsert_call[1]['editor_id'] == 7
 
-def test_edit_feedback_not_a_string(client):
+@pytest.mark.parametrize("value", [123, 42])
+def test_edit_feedback_not_a_string(client, value):
     """Non-string feedback value → 400."""
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-                       json={"feedback": 123})
+                       json={"feedback": value})
     assert resp.status_code == 400
     assert "Feedback must be a string" in resp.get_json()["error"]
 
@@ -385,6 +385,21 @@ def test_edit_allowed_cross_section_for_section_leader(client, mock_write, patch
                        json={"feedback": "Test"})
     assert resp.status_code == 200
     assert resp.get_json() == {"success": True}
+
+
+def test_edit_non_dict_body_returns_400(client):
+    """JSON array body (truthy but not a dict) → 400."""
+    with client.session_transaction() as sess:
+        sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+
+    resp = client.post(
+        "/api/devos-feedback/edit?date=2025-06-07&section=Minis",
+        data='[1, 2, 3]',
+        content_type='application/json',
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "Request body must be a JSON object"
 
 
 def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypatch):
