@@ -149,7 +149,7 @@ def _todays_duties_key(user_name):
     return f'duties:today:day{day}:cycle{cycle}:user{user_name}'
 
 
-@cached_result(_todays_duties_key, registry_key='duties:today:day{day}:cycle{cycle}:user{name}', on_error=[])
+@cached_result(_todays_duties_key, registry_key='duties:today:{day}:{cycle}:{name}', on_error=[])
 def get_todays_duties(user_name):
     current_day = (datetime.now().weekday() + 1) % 7
     current_cycle = get_current_cycle_week()
