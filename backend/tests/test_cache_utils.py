@@ -401,7 +401,7 @@ def test_clear_group_unknown_group_is_noop():
     mock_redis.scan_iter.assert_not_called()
 
 
-def test_clear_group_deletes_found_dynamic_keys():
+def test_clear_group_deletes_static_key_feedback():
     fake_cache, mock_redis = _make_cache_with_redis()
     mock_redis.scan_iter.return_value = ['feedback:dates:all']
 

@@ -382,20 +382,18 @@ def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, edi
 
 def clear_duty_cache():
     """Clear duty-related caches after duty data changes."""
-    try:
-        clear_group("duties")
+    if clear_group("duties"):
         logger.info("Cleared duty-related caches")
-    except RedisError as e:
-        logger.warning("Failed to clear duty caches: %s", e)
+    else:
+        logger.warning("Failed to clear duty caches")
 
 
 def clear_feedback_cache():
     """Clear feedback caches after feedback data changes."""
-    try:
-        clear_group("feedback")
+    if clear_group("feedback"):
         logger.info("Cleared feedback caches")
-    except RedisError as e:
-        logger.warning("Failed to clear feedback caches: %s", e)
+    else:
+        logger.warning("Failed to clear feedback caches")
 
 def clear_all_cache():
     """Nuclear option - clear everything"""
@@ -530,12 +528,12 @@ def get_users_by_section(section_name):
 
 def clear_user_cache():
     """Clear user-related caches after user data changes."""
-    try:
-        clear_group("users")
-        clear_group("sections")
+    users_ok = clear_group("users")
+    sections_ok = clear_group("sections")
+    if users_ok and sections_ok:
         logger.info("Cleared user-related caches")
-    except RedisError as e:
-        logger.warning("Failed to clear user caches: %s", e)
+    else:
+        logger.warning("Failed to clear user caches")
 
 
 def _fmt_ttl(ttl: int) -> str:

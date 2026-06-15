@@ -149,7 +149,7 @@ def _scan_delete(cache_instance, pattern: str) -> int:
         return 0
 
 
-def clear_group(group_name: str, cache=None) -> None:
+def clear_group(group_name: str, cache=None) -> bool:
     """Delete all cached keys belonging to group_name.
 
     Static keys are deleted directly. Template keys (containing {}) are
@@ -179,7 +179,9 @@ def clear_group(group_name: str, cache=None) -> None:
             "Cleared cache group '%s': %d static key(s), %d pattern(s)",
             group_name, len(static_keys), len(glob_patterns),
         )
+        return True
     except Exception as e:
         logger.warning(
             "clear_group(%s) encountered an error: %s", group_name, e
         )
+        return False
