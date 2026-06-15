@@ -241,6 +241,23 @@ def test_execute_readonly_query_db_error():
         with pytest.raises(DatabaseError, match="Database error"):
             _real_execute_readonly_query("SELECT 1")
 
+
+def test_execute_readonly_query_success(caplog):
+    """Test execute_readonly_query returns rows and logs when silent=False"""
+    mock_conn = MagicMock()
+    mock_result = MagicMock()
+    mock_result.fetchall.return_value = [("row1",)]
+    mock_conn.execute.return_value = mock_result
+
+    with patch('backend.bcssm_backend.utils.db') as mock_db:
+        mock_db.engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_db.engine.connect.return_value.__exit__ = MagicMock(return_value=False)
+        with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.utils"):
+            rows = _real_execute_readonly_query("SELECT 1", silent=False)
+
+    assert rows == [("row1",)]
+    assert any("Rows fetched" in r.message for r in caplog.records)
+
 # ─── 6) Tests for get_users_by_section() ───────────────────────────────────
 def test_get_users_by_section_db_error_returns_error(mock_readonly, mock_cache):
     mock_readonly.side_effect = SQLAlchemyError("DB error on section query")
@@ -1292,6 +1309,25 @@ def test_get_user_info_by_id_found(monkeypatch):
     monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
     info = utils.get_user_info_by_id(42)
     assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
+
+
+def test_get_user_id_by_name_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[(7,)])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    assert utils.get_user_id_by_name("Alice") == 7
+
+
+def test_get_user_id_by_name_not_found(monkeypatch):
+    mock_exec = MagicMock(return_value=[])
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    assert utils.get_user_id_by_name("Ghost") is None
+
+
+def test_get_user_id_by_name_db_error(monkeypatch):
+    from backend.bcssm_backend.exceptions import DatabaseError
+    mock_exec = MagicMock(side_effect=DatabaseError("DB error"))
+    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", mock_exec)
+    assert utils.get_user_id_by_name("Alice") is None
 
 
 # ─── Tests for save_devos_feedback ───────────────────────────────────────────
