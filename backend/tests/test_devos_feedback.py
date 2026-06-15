@@ -243,14 +243,15 @@ def test_edit_editor_id_comes_from_session(client, mock_write):
     upsert_call = next(call for call in calls if "INSERT INTO feedback" in call[0])
     assert upsert_call[1]['editor_id'] == 7
 
-def test_edit_feedback_not_a_string(client):
+@pytest.mark.parametrize("value", [123, 42])
+def test_edit_feedback_not_a_string(client, value):
     """Non-string feedback value → 400."""
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-                       json={"feedback": 123})
+                       json={"feedback": value})
     assert resp.status_code == 400
     assert "Feedback must be a string" in resp.get_json()["error"]
 
@@ -399,20 +400,6 @@ def test_edit_non_dict_body_returns_400(client):
     )
     assert resp.status_code == 400
     assert resp.get_json()["error"] == "Request body must be a JSON object"
-
-
-def test_edit_non_string_feedback_returns_400(client):
-    """Numeric feedback value → 400."""
-    with client.session_transaction() as sess:
-        sess["user_name"] = "TestUser"
-        sess["user_id"] = 1
-
-    resp = client.post(
-        "/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-        json={"feedback": 42},
-    )
-    assert resp.status_code == 400
-    assert resp.get_json()["error"] == "Feedback must be a string"
 
 
 def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypatch):

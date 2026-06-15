@@ -128,7 +128,7 @@ def test_stacked_decorators_auth_checked_before_error_handler(app):
     @require_auth
     @handle_route_errors
     def stacked_route():
-        raise DatabaseError("should not reach here")
+        raise DatabaseError("should not reach here")  # pragma: no cover
 
     with app.test_client() as client:
         response = client.get('/test-stacked')
@@ -171,7 +171,7 @@ def test_require_auth_user_id_db_lookup_returns_none_returns_401(app, monkeypatc
     @app.route('/test-require-auth-no-id')
     @require_auth
     def protected_route():
-        return jsonify({"ok": True}), 200
+        return jsonify({"ok": True}), 200  # pragma: no cover
 
     with app.test_client() as client:
         with client.session_transaction() as sess:
