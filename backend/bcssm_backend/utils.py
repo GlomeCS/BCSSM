@@ -347,7 +347,7 @@ def get_user_id_by_name(user_name):
             silent=True,
         )
         return rows[0][0] if rows else None
-    except (SQLAlchemyError, RuntimeError) as e:
+    except DatabaseError as e:
         logger.warning("Could not resolve user_id for %s: %s", user_name, e)
         return None
 

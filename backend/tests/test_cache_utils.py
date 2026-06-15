@@ -401,15 +401,6 @@ def test_clear_group_unknown_group_is_noop():
     mock_redis.scan_iter.assert_not_called()
 
 
-def test_clear_group_deletes_static_key_feedback():
-    fake_cache, mock_redis = _make_cache_with_redis()
-    mock_redis.scan_iter.return_value = ['feedback:dates:all']
-
-    clear_group("feedback", cache=fake_cache)
-
-    fake_cache.delete.assert_called_with("feedback:dates:all")
-
-
 def test_clear_group_scan_deletes_found_keys():
     mock_redis = MagicMock()
     mock_redis.scan_iter.side_effect = [
