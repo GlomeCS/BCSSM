@@ -9,11 +9,11 @@ from werkzeug.exceptions import HTTPException
 
 from backend.bcssm_backend.decorators import require_admin
 from backend.bcssm_backend.exceptions import BaseError, CacheError
-from backend.bcssm_backend.utils import (
+from backend.bcssm_backend.auth_queries import get_all_users_password_status, set_user_password
+from backend.bcssm_backend.cache_utils import (
     clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
-    get_cache_status, get_cache_info, _redact_redis_url,
-    get_all_users_password_status, set_user_password,
 )
+from backend.bcssm_backend.health import get_cache_status, get_cache_info, _redact_redis_url
 
 logger = logging.getLogger(__name__)
 

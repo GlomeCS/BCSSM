@@ -40,7 +40,7 @@ def patch_helpers(monkeypatch):
     )
     fake_exec = MagicMock()
     monkeypatch.setattr(
-        "backend.bcssm_backend.routes.users.execute_query",
+        "backend.bcssm_backend.routes.users.execute_readonly_query",
         fake_exec
     )
     fake_cache = MagicMock()
@@ -69,7 +69,7 @@ def patch_helpers(monkeypatch):
         fake_evict_user_login_cache
     )
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: 1,
     )
     return {

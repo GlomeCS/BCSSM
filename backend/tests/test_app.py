@@ -14,7 +14,7 @@ from backend.bcssm_backend.exceptions import (
     BaseError, DatabaseError, CacheError, ValidationError,
     AuthenticationError, NotFoundError,
 )
-from backend.bcssm_backend.utils import _fmt_ttl
+from backend.bcssm_backend.health import _fmt_ttl
 
 
 @pytest.fixture(scope="function")
@@ -39,7 +39,8 @@ def mock_db_cache():
 
     with patch('backend.bcssm_backend.db') as mock_db, \
          patch('backend.bcssm_backend.cache', fake_cache), \
-         patch('backend.bcssm_backend.utils.cache', fake_cache):
+         patch('backend.globals.cache', fake_cache), \
+         patch('backend.bcssm_backend.health.cache', fake_cache):
         mock_db.init_app = MagicMock()
         yield mock_db, fake_cache
 

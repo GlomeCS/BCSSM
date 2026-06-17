@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from functools import wraps
 from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ CACHE_REGISTRY: dict[str, CacheEntry] = {
     "users:all:list":                    CacheEntry(ttl=900,  group="users",    on_error=[]),
     "user:duty:{name}:{date}":           CacheEntry(ttl=600,  group="duties"),
     "duties:today:{day}:{cycle}:{name}":              CacheEntry(ttl=1800, group="duties",   error_ttl=60, on_error=[]),
-    "duties:schedule:14day:{date}":      CacheEntry(ttl=7200, group="duties",   error_ttl=60, on_error=[]),
+    "duties:schedule:14day:anchor":       CacheEntry(ttl=7200, group="duties",   error_ttl=60, on_error=[]),
     "sections:all:list":                 CacheEntry(ttl=3600, group="sections", error_ttl=60),
     "users:section:{name}":              CacheEntry(ttl=1800, group="users",    error_ttl=60),
     "users:section:{name}:detailed":     CacheEntry(ttl=1800, group="users",    error_ttl=60),
@@ -185,3 +186,39 @@ def clear_group(group_name: str, cache=None) -> bool:
             "clear_group(%s) encountered an error: %s", group_name, e
         )
         return False
+
+
+def clear_duty_cache():
+    """Clear duty-related caches after duty data changes."""
+    if clear_group("duties"):
+        logger.info("Cleared duty-related caches")
+    else:
+        logger.warning("Failed to clear duty caches")
+
+
+def clear_feedback_cache():
+    """Clear feedback caches after feedback data changes."""
+    if clear_group("feedback"):
+        logger.info("Cleared feedback caches")
+    else:
+        logger.warning("Failed to clear feedback caches")
+
+
+def clear_user_cache():
+    """Clear user-related caches after user data changes."""
+    users_ok = clear_group("users")
+    sections_ok = clear_group("sections")
+    if users_ok and sections_ok:
+        logger.info("Cleared user-related caches")
+    else:
+        logger.warning("Failed to clear user caches")
+
+
+def clear_all_cache():
+    """Nuclear option — clear everything."""
+    try:
+        from backend.globals import cache
+        cache.clear()
+        logger.info("Cleared all caches")
+    except RedisError as e:
+        logger.warning("Failed to clear all caches: %s", e)

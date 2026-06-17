@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from sqlalchemy.exc import SQLAlchemyError
 
-from backend.bcssm_backend.utils import _fmt_ttl, _redact_redis_url
+from backend.bcssm_backend.health import _fmt_ttl, _redact_redis_url
 from backend.bcssm_backend import create_app
 
 
@@ -33,7 +33,8 @@ def mock_cache(monkeypatch):
     fake.set.return_value = True
     fake.delete.return_value = True
     fake.clear.return_value = True
-    monkeypatch.setattr("backend.bcssm_backend.utils.cache", fake)
+    monkeypatch.setattr("backend.globals.cache", fake)
+    monkeypatch.setattr("backend.bcssm_backend.health.cache", fake)
     return fake
 
 

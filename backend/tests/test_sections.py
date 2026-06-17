@@ -28,8 +28,6 @@ def mock_utils(monkeypatch):
     
     # Try multiple possible import paths where the routes might import from
     import_paths = [
-        ("backend.bcssm_backend.utils.get_all_sections_with_users", mock_sections),
-        ("backend.bcssm_backend.utils.get_users_by_section", mock_users),
         ("backend.bcssm_backend.routes.sections.get_all_sections_with_users", mock_sections),
         ("backend.bcssm_backend.routes.sections.get_users_by_section", mock_users),
     ]
@@ -42,7 +40,7 @@ def mock_utils(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: 1,
     )
 

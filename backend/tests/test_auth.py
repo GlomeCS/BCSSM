@@ -45,7 +45,7 @@ def test_require_auth_returns_401_when_no_session(app):
 def test_require_auth_user_id_none_when_not_in_session(app, monkeypatch):
     """user_id absent from session and DB lookup returns None → 401."""
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: None,
     )
     _make_protected_route(app)

@@ -3,9 +3,8 @@ from flask import g, request, jsonify
 
 from backend.bcssm_backend.constants import ELEVATED_ROLES
 from backend.bcssm_backend.decorators import require_auth, require_feedback_edit_permission, handle_route_errors
-from backend.bcssm_backend.utils import (
-    get_feedback_by_date, get_user_info, save_devos_feedback
-)
+from backend.bcssm_backend.feedback_queries import get_feedback_by_date, save_devos_feedback
+from backend.bcssm_backend.user_queries import get_user_info
 
 import logging
 logger = logging.getLogger(__name__)

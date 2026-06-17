@@ -170,7 +170,7 @@ def test_stacked_decorators_errors_caught_when_authenticated(app):
 def test_require_auth_user_id_db_lookup_returns_none_returns_401(app, monkeypatch):
     """Session has user_name + role/section but get_user_id_by_name returns None → 401."""
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: None,
     )
 

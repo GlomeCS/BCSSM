@@ -247,9 +247,9 @@ def test_all_registry_entries_have_positive_ttl():
 # ─── Duty key design ──────────────────────────────────────────────────────────
 
 def test_user_duty_key_is_date_based():
-    from backend.bcssm_backend.utils import _user_duty_key
+    from backend.bcssm_backend.duty_queries import _user_duty_key
     fixed_date = date(2025, 6, 16)
-    with patch('backend.bcssm_backend.utils.datetime') as mock_dt:
+    with patch('backend.bcssm_backend.duty_queries.datetime') as mock_dt:
         mock_dt.now.return_value.date.return_value = fixed_date
         key = _user_duty_key('Alice')
     assert key == f'user:duty:Alice:{fixed_date}'
@@ -379,11 +379,12 @@ def test_clear_group_users_deletes_static_and_scans_dynamic(caplog):
     assert "users:section:*" in patterns_scanned
 
 
-def test_clear_group_duties_scans_all_three_patterns():
+def test_clear_group_duties_scans_dynamic_and_deletes_static():
     fake_cache, mock_redis = _make_cache_with_redis()
     clear_group("duties", cache=fake_cache)
 
-    fake_cache.delete.assert_not_called()
+    # duties:schedule:14day:anchor is a static key — deleted directly
+    fake_cache.delete.assert_called_once_with("duties:schedule:14day:anchor")
 
     patterns_scanned = {
         c.kwargs.get('match') or c.args[0]
@@ -391,7 +392,7 @@ def test_clear_group_duties_scans_all_three_patterns():
     }
     assert "user:duty:*" in patterns_scanned
     assert "duties:today:*" in patterns_scanned
-    assert "duties:schedule:14day:*" in patterns_scanned
+    assert "duties:schedule:14day:*" not in patterns_scanned
 
 
 def test_clear_group_unknown_group_is_noop():
@@ -406,18 +407,19 @@ def test_clear_group_scan_deletes_found_keys():
     mock_redis.scan_iter.side_effect = [
         ['user:duty:Alice:2026-01-01'],
         ['duties:today:3:0:Alice'],
-        ['duties:schedule:14day:2026-01-01'],
     ]
     fake_cache = MagicMock()
     fake_cache.cache._write_client = mock_redis
 
     clear_group("duties", cache=fake_cache)
 
-    assert mock_redis.delete.call_count == 3
-    deleted_keys = {c.args[0] for c in mock_redis.delete.call_args_list}
-    assert 'user:duty:Alice:2026-01-01' in deleted_keys
-    assert 'duties:today:3:0:Alice' in deleted_keys
-    assert 'duties:schedule:14day:2026-01-01' in deleted_keys
+    # Static anchor key deleted directly via cache.delete
+    fake_cache.delete.assert_called_once_with("duties:schedule:14day:anchor")
+    # Dynamic keys deleted via redis SCAN
+    assert mock_redis.delete.call_count == 2
+    deleted_redis_keys = {c.args[0] for c in mock_redis.delete.call_args_list}
+    assert 'user:duty:Alice:2026-01-01' in deleted_redis_keys
+    assert 'duties:today:3:0:Alice' in deleted_redis_keys
 
 
 def test_clear_group_logs_cleared_group(caplog):
@@ -439,31 +441,31 @@ def test_clear_group_exception_is_swallowed():
 def test_clear_duty_cache_delegates_to_clear_group(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        'backend.bcssm_backend.utils.clear_group',
+        'backend.bcssm_backend.cache_utils.clear_group',
         lambda group, **kw: calls.append(group),
     )
-    from backend.bcssm_backend import utils
-    utils.clear_duty_cache()
+    from backend.bcssm_backend.cache_utils import clear_duty_cache
+    clear_duty_cache()
     assert calls == ["duties"]
 
 
 def test_clear_feedback_cache_delegates_to_clear_group(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        'backend.bcssm_backend.utils.clear_group',
+        'backend.bcssm_backend.cache_utils.clear_group',
         lambda group, **kw: calls.append(group),
     )
-    from backend.bcssm_backend import utils
-    utils.clear_feedback_cache()
+    from backend.bcssm_backend.cache_utils import clear_feedback_cache
+    clear_feedback_cache()
     assert calls == ["feedback"]
 
 
 def test_clear_user_cache_delegates_to_both_groups(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        'backend.bcssm_backend.utils.clear_group',
+        'backend.bcssm_backend.cache_utils.clear_group',
         lambda group, **kw: calls.append(group),
     )
-    from backend.bcssm_backend import utils
-    utils.clear_user_cache()
+    from backend.bcssm_backend.cache_utils import clear_user_cache
+    clear_user_cache()
     assert set(calls) == {"users", "sections"}

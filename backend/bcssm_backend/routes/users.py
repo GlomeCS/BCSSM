@@ -4,12 +4,14 @@ from functools import wraps
 from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 from backend.globals import cache
+from backend.bcssm_backend.auth_queries import authenticate_user, cache_user_login, evict_user_login_cache
+from backend.bcssm_backend.cache_utils import clear_user_cache
+from backend.bcssm_backend.db import execute_readonly_query
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
-from backend.bcssm_backend.utils import (
-    get_all_users, get_user_duty, get_users_by_section, execute_query,
-    clear_user_cache, authenticate_user, cache_user_login, evict_user_login_cache,
-)
+from backend.bcssm_backend.duty_queries import get_user_duty
 from backend.bcssm_backend.exceptions import AuthenticationError
+from backend.bcssm_backend.section_queries import get_users_by_section
+from backend.bcssm_backend.user_queries import get_all_users
 
 
 def validate_params(*required_params):
@@ -170,7 +172,7 @@ def init_users_routes(app):
         
         try:
             # Check if user exists in database
-            user_rows = execute_query(
+            user_rows = execute_readonly_query(
                 "SELECT u.id, u.name, u.role, s.name AS section_name "
                 "FROM users u "
                 "LEFT JOIN sections s ON u.section_id = s.id "
