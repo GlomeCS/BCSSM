@@ -199,31 +199,60 @@ def get_todays_duties(user_name):
         }
         for row in rows
     ]
-def _duty_schedule_key():
-    return f'duties:schedule:14day:{datetime.now().date()}'
+DUTY_SCHEDULE_CACHE_KEY = 'duties:schedule:14day:anchor'
 
 
-@cached_result(_duty_schedule_key, registry_key='duties:schedule:14day:{date}', on_error=[])
-def get_duty_schedule():
-    start_date = CYCLE_ANCHOR
+def _build_schedule(start_date: datetime, rows: list) -> list[dict]:
+    """Pure: builds the 14-day schedule response from an anchor date and raw DB rows.
 
-    # Pre-calculate all day/cycle combinations we need
-    day_cycle_combinations = []
+    start_date is always CYCLE_ANCHOR in production. Accepts it as a parameter
+    so tests can pass any anchor without patching the module global.
+    """
     date_to_info = {}
-
     for i in range(14):
         current_date = start_date + timedelta(days=i)
-        db_day = (current_date.weekday() + 1) % 7  # Adjust to Sunday=0
+        db_day = (current_date.weekday() + 1) % 7
         cycle_week = _cycle_week_for_date(current_date.date())
-        
-        day_cycle_combinations.append((db_day, cycle_week))
         date_to_info[current_date.date()] = {
-            "day": db_day, 
+            "day": db_day,
             "cycle_week": cycle_week,
-            "week_name": "Week A" if cycle_week == 0 else "Week B"
+            "week_name": "Week A" if cycle_week == 0 else "Week B",
         }
 
-    # Use a more efficient parameterized query
+    duty_lookup = defaultdict(list)
+    for row in rows:
+        day, cycle_week, duty_name, duty_description, team_name, team_members = row
+        duty_lookup[(day, cycle_week)].append({
+            "duty_name": duty_name,
+            "duty_description": duty_description,
+            "team_name": team_name,
+            "team_members": team_members or [],
+        })
+
+    schedule = []
+    for dt in sorted(date_to_info.keys()):
+        info = date_to_info[dt]
+        schedule.append({
+            "date": dt.strftime("%Y-%m-%d"),
+            "day_name": dt.strftime("%A"),
+            "week": info["week_name"],
+            "duties": duty_lookup.get((info["day"], info["cycle_week"]), []),
+        })
+    return schedule
+
+
+@cached_result(DUTY_SCHEDULE_CACHE_KEY, on_error=[])
+def get_duty_schedule():
+    combinations = [
+        (
+            ((CYCLE_ANCHOR + timedelta(days=i)).weekday() + 1) % 7,
+            _cycle_week_for_date((CYCLE_ANCHOR + timedelta(days=i)).date()),
+        )
+        for i in range(14)
+    ]
+    days = list({c[0] for c in combinations})
+    cycles = list({c[1] for c in combinations})
+
     query = '''
     SELECT
         ds.day,
@@ -249,42 +278,14 @@ def get_duty_schedule():
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
     LEFT JOIN users u ON u.duty_team_id = dt.id
-    WHERE ds.day = ANY(:days) 
+    WHERE ds.day = ANY(:days)
         AND ds.cycle_week = ANY(:cycles)
     GROUP BY ds.day, ds.cycle_week, d.name, d.duty_description, dt.name, d.id
     ORDER BY ds.day, d.name;
     '''
 
-    days = list(set(combo[0] for combo in day_cycle_combinations))
-    cycles = list(set(combo[1] for combo in day_cycle_combinations))
     rows = execute_readonly_query(query, {"days": days, "cycles": cycles})
-
-    # Group duties by (day, cycle_week) combination
-    duty_lookup = defaultdict(list)
-    for row in rows:
-        day, cycle_week, duty_name, duty_description, team_name, team_members = row
-        duty = {
-            "duty_name": duty_name,
-            "duty_description": duty_description,
-            "team_name": team_name,
-            "team_members": team_members or []
-        }
-        duty_lookup[(day, cycle_week)].append(duty)
-
-    # Assemble final schedule
-    schedule = []
-    for dt in sorted(date_to_info.keys()):
-        info = date_to_info[dt]
-        duties_for_date = duty_lookup.get((info["day"], info["cycle_week"]), [])
-        
-        schedule.append({
-            "date": dt.strftime("%Y-%m-%d"),
-            "day_name": dt.strftime("%A"),
-            "week": info["week_name"],
-            "duties": duties_for_date
-        })
-
-    return schedule
+    return _build_schedule(CYCLE_ANCHOR, rows)
 
 
 @cached_result('sections:all:list',
