@@ -1,18 +1,18 @@
-import hmac
-import os
 import logging
+import os
 
 import bcrypt
-from flask import request, jsonify, session
+from flask import request, jsonify
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
+from backend.bcssm_backend.decorators import require_admin
 from backend.bcssm_backend.exceptions import BaseError, CacheError
 from backend.bcssm_backend.utils import (
     clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
     get_cache_status, get_cache_info, _redact_redis_url,
-    get_user_role, get_all_users_password_status, set_user_password,
+    get_all_users_password_status, set_user_password,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,42 +65,9 @@ def init_admin_routes(app):
     def cache_info():
         return jsonify(get_cache_info())
 
-    def _is_authorized_admin():
-        """Returns True if the request carries a valid admin credential.
-
-        Accepts either:
-        - a logged-in session whose user has role 'Admin' (fast path), or
-        - a session with a user_name whose DB role is 'Admin' (handles stale sessions
-          created before user_role was added to the session), or
-        - a matching X-Admin-Secret header (bootstrap / out-of-band access).
-        """
-        if session.get('user_role') == 'Admin':
-            return True
-        user_name = session.get('user_name')
-        if user_name:
-            try:
-                if get_user_role(user_name) == 'Admin':
-                    session['user_role'] = 'Admin'
-                    return True
-            except SQLAlchemyError:
-                pass
-        admin_secret = os.getenv('ADMIN_SECRET', '').strip()
-        provided = request.headers.get('X-Admin-Secret', '').strip()
-        if not admin_secret:
-            logger.warning("Admin endpoint called but ADMIN_SECRET env var is not set")
-            return False
-        if not provided:
-            logger.warning("Admin endpoint called with no X-Admin-Secret header")
-            return False
-        result = hmac.compare_digest(provided, admin_secret)
-        if not result:
-            logger.warning("Admin endpoint called with incorrect X-Admin-Secret header")
-        return result
-
     @app.route("/api/admin/passwords-status", methods=['GET'])
+    @require_admin
     def passwords_status():
-        if not _is_authorized_admin():
-            return jsonify({'error': 'Unauthorized'}), 403
         try:
             return jsonify({'users': get_all_users_password_status()}), 200
         except SQLAlchemyError as e:
@@ -108,9 +75,8 @@ def init_admin_routes(app):
             return jsonify({'error': 'Database error'}), 500
 
     @app.route("/api/admin/set-password", methods=['POST'])
+    @require_admin
     def admin_set_password():
-        if not _is_authorized_admin():
-            return jsonify({'error': 'Unauthorized'}), 403
         data = request.json or {}
         user_name = (data.get('user_name') or '').strip()
         password = data.get('password') or ''
