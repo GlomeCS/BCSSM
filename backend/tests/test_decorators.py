@@ -1,10 +1,14 @@
 import logging
+import os
 import pytest
-from flask import jsonify
+from flask import jsonify, g
 from sqlalchemy.exc import SQLAlchemyError
 
 from backend.bcssm_backend import create_app
-from backend.bcssm_backend.decorators import handle_route_errors, require_auth
+from backend.bcssm_backend.decorators import (
+    handle_route_errors, require_auth, require_role,
+    require_feedback_edit_permission, require_admin,
+)
 from backend.bcssm_backend.exceptions import (
     AuthenticationError, DatabaseError, NotFoundError, ValidationError
 )
@@ -156,13 +160,15 @@ def test_stacked_decorators_errors_caught_when_authenticated(app):
         with client.session_transaction() as sess:
             sess['user_name'] = 'Alice'
             sess['user_id'] = 1
+            sess['user_role'] = 'Leader'
+            sess['user_section'] = 'Minis'
         response = client.get('/test-stacked-auth')
     assert response.status_code == 400
     assert response.get_json() == {"error": "field required"}
 
 
 def test_require_auth_user_id_db_lookup_returns_none_returns_401(app, monkeypatch):
-    """Session has user_name but get_user_id_by_name returns None → 401."""
+    """Session has user_name + role/section but get_user_id_by_name returns None → 401."""
     monkeypatch.setattr(
         "backend.bcssm_backend.utils.get_user_id_by_name",
         lambda name: None,
@@ -176,6 +182,180 @@ def test_require_auth_user_id_db_lookup_returns_none_returns_401(app, monkeypatc
     with app.test_client() as client:
         with client.session_transaction() as sess:
             sess['user_name'] = 'Alice'
+            sess['user_role'] = 'Leader'
+            sess['user_section'] = 'Minis'
         response = client.get('/test-require-auth-no-id')
     assert response.status_code == 401
     assert response.get_json() == {"error": "Authentication required"}
+
+
+
+# ─── require_role ─────────────────────────────────────────────────────────────
+
+def test_require_role_allowed_role_passes(app):
+    """User with an allowed role gets through require_role."""
+    @app.route('/test-require-role-pass')
+    @require_auth
+    @require_role("Admin", "Section Leader")
+    def protected():
+        return jsonify({"ok": True}), 200
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Alice'
+            sess['user_id'] = 1
+            sess['user_role'] = 'Admin'
+            sess['user_section'] = 'Minis'
+        response = client.get('/test-require-role-pass')
+    assert response.status_code == 200
+
+
+def test_require_role_disallowed_role_returns_403(app):
+    """User without an allowed role is rejected by require_role."""
+    @app.route('/test-require-role-block')
+    @require_auth
+    @require_role("Admin", "Section Leader")
+    def protected():
+        return jsonify({"ok": True}), 200  # pragma: no cover
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Bob'
+            sess['user_id'] = 2
+            sess['user_role'] = 'Leader'
+            sess['user_section'] = 'Minis'
+        response = client.get('/test-require-role-block')
+    assert response.status_code == 403
+    assert response.get_json() == {"error": "Forbidden"}
+
+
+# ─── require_feedback_edit_permission ─────────────────────────────────────────
+
+def test_require_feedback_edit_elevated_role_any_section_passes(app):
+    """Elevated role (Section Leader) can edit any section."""
+    @app.route('/test-feedback-edit')
+    @require_auth
+    @require_feedback_edit_permission
+    def protected():
+        return jsonify({"ok": True}), 200
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Alice'
+            sess['user_id'] = 1
+            sess['user_role'] = 'Section Leader'
+            sess['user_section'] = 'Minis'
+        response = client.get('/test-feedback-edit?section=Majors')
+    assert response.status_code == 200
+
+
+def test_require_feedback_edit_matching_section_passes(app):
+    """Non-elevated role can edit their own section."""
+    @app.route('/test-feedback-edit-own')
+    @require_auth
+    @require_feedback_edit_permission
+    def protected():
+        return jsonify({"ok": True}), 200
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Bob'
+            sess['user_id'] = 2
+            sess['user_role'] = 'Leader'
+            sess['user_section'] = 'Minis'
+        response = client.get('/test-feedback-edit-own?section=Minis')
+    assert response.status_code == 200
+
+
+def test_require_feedback_edit_wrong_role_wrong_section_returns_403(app):
+    """Non-elevated role trying to edit a different section is rejected."""
+    @app.route('/test-feedback-edit-forbidden')
+    @require_auth
+    @require_feedback_edit_permission
+    def protected():
+        return jsonify({"ok": True}), 200  # pragma: no cover
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_name'] = 'Bob'
+            sess['user_id'] = 2
+            sess['user_role'] = 'Leader'
+            sess['user_section'] = 'Minis'
+        response = client.get('/test-feedback-edit-forbidden?section=Majors')
+    assert response.status_code == 403
+    assert response.get_json() == {"error": "Forbidden"}
+
+
+# ─── require_admin ─────────────────────────────────────────────────────────────
+
+def test_require_admin_session_admin_role_passes(app):
+    """Session with user_role=Admin grants access."""
+    @app.route('/test-admin-session')
+    @require_admin
+    def protected():
+        return jsonify({"ok": True}), 200
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_role'] = 'Admin'
+        response = client.get('/test-admin-session')
+    assert response.status_code == 200
+
+
+def test_require_admin_valid_hmac_passes(app, monkeypatch):
+    """Valid X-Admin-Secret HMAC header grants access."""
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+
+    @app.route('/test-admin-hmac')
+    @require_admin
+    def protected():
+        return jsonify({"ok": True}), 200
+
+    with app.test_client() as client:
+        response = client.get('/test-admin-hmac', headers={"X-Admin-Secret": "correct-secret"})
+    assert response.status_code == 200
+
+
+def test_require_admin_neither_session_nor_hmac_returns_403(app, monkeypatch):
+    """Neither Admin session nor valid HMAC → 403."""
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+
+    @app.route('/test-admin-blocked')
+    @require_admin
+    def protected():
+        return jsonify({"ok": True}), 200  # pragma: no cover
+
+    with app.test_client() as client:
+        response = client.get('/test-admin-blocked')
+    assert response.status_code == 403
+    assert response.get_json() == {"error": "Unauthorized"}
+
+
+def test_require_admin_wrong_hmac_returns_403(app, monkeypatch):
+    """Wrong X-Admin-Secret value → 403."""
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+
+    @app.route('/test-admin-wrong-hmac')
+    @require_admin
+    def protected():
+        return jsonify({"ok": True}), 200  # pragma: no cover
+
+    with app.test_client() as client:
+        response = client.get('/test-admin-wrong-hmac', headers={"X-Admin-Secret": "wrong"})
+    assert response.status_code == 403
+
+
+def test_require_admin_non_admin_session_role_returns_403(app, monkeypatch):
+    """Session with user_role != Admin is rejected without a valid HMAC."""
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+
+    @app.route('/test-admin-non-admin-role')
+    @require_admin
+    def protected():
+        return jsonify({"ok": True}), 200  # pragma: no cover
+
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_role'] = 'Leader'
+        response = client.get('/test-admin-non-admin-role')
+    assert response.status_code == 403
