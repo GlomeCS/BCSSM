@@ -3,12 +3,29 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Login from '../Login';
+import type { AuthUser } from '../../api';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return { ...actual, useNavigate: () => mockNavigate };
 });
+
+const mockSetUser = vi.fn();
+const mockAuth = vi.hoisted(() => ({
+  currentUser: null as string | null,
+  loading: false,
+  setUser: vi.fn<[AuthUser], void>(),
+  logout: vi.fn(),
+  refresh: vi.fn(),
+  userRole: null as string | null,
+  userSection: null as string | null,
+  canEditAll: false,
+}));
+
+vi.mock('../AuthContext', () => ({
+  useAuth: () => mockAuth,
+}));
 
 function renderLogin() {
   return render(
@@ -48,13 +65,16 @@ describe('Login', () => {
   beforeEach(() => {
     localStorage.clear();
     mockNavigate.mockClear();
+    mockSetUser.mockClear();
+    mockAuth.currentUser = null;
+    mockAuth.loading = false;
+    mockAuth.setUser = mockSetUser;
     vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => vi.unstubAllGlobals());
 
   it('redirects to / when already logged in', async () => {
-    localStorage.setItem('is_logged_in', 'true');
-    localStorage.setItem('currentUser', 'Alice');
+    mockAuth.currentUser = 'Alice';
     renderLogin();
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
   });
@@ -119,7 +139,7 @@ describe('Login', () => {
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
 
-  it('stores auth data and navigates to / on successful login', async () => {
+  it('calls setUser with auth data and navigates to / on successful login', async () => {
     mockFetchUsers();
     renderLogin();
     await waitFor(() => screen.getByRole('combobox'));
@@ -130,11 +150,12 @@ describe('Login', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
-    expect(localStorage.getItem('currentUser')).toBe('Bob');
-    expect(localStorage.getItem('is_logged_in')).toBe('true');
-    expect(localStorage.getItem('user_role')).toBe('Team Member');
-    expect(localStorage.getItem('user_section')).toBe('Seniors');
-    expect(localStorage.getItem('can_edit_all')).toBe('false');
+    expect(mockSetUser).toHaveBeenCalledWith({
+      user_name: 'Bob',
+      role: 'Team Member',
+      section: 'Seniors',
+      can_edit_all: false,
+    });
   });
 
   it('shows an error message on failed login request', async () => {

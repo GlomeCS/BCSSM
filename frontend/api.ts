@@ -6,6 +6,13 @@ export const LS_USER_ROLE = "user_role";
 export const LS_USER_SECTION = "user_section";
 export const LS_CAN_EDIT_ALL = "can_edit_all";
 
+export type AuthUser = {
+  user_name: string;
+  role: string | null;
+  section: string | null;
+  can_edit_all: boolean;
+};
+
 export const getCurrentUser = (): string | null => {
     return localStorage.getItem(LS_CURRENT_USER);
   };

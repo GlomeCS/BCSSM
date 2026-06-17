@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, login, getCurrentUser, isLoggedIn } from "../api";
+import { apiGet, login } from "../api";
+import { useAuth } from "./AuthContext";
 import "./Login.css";
 
 function Login() {
+  const { currentUser, loading, setUser } = useAuth();
   const [users, setUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -13,10 +15,9 @@ function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if user is already logged in
-    if (isLoggedIn()) {
-      const currentUser = getCurrentUser();
-      console.log("User already logged in:", currentUser);
+    if (loading) return;
+
+    if (currentUser) {
       navigate("/");
       return;
     }
@@ -26,18 +27,16 @@ function Login() {
     apiGet("/get-users")
       .then((response) => response.json())
       .then((data: { users: string[] }) => {
-        console.log("Fetched users:", data.users);
         setUsers(data.users || []);
         setError("");
       })
-      .catch((error) => {
-        console.error("Error fetching users:", error);
+      .catch(() => {
         setError("Failed to load users. Please refresh the page.");
       })
       .finally(() => {
         setIsLoadingUsers(false);
       });
-  }, [navigate]);
+  }, [navigate, currentUser, loading]);
 
   const handleLogin = async () => {
     if (!selectedUser) {
@@ -60,31 +59,16 @@ function Login() {
       }
 
       const data = await response.json();
-      console.log("Login response:", data);
 
-      // Store user state in localStorage for persistent auth
-      localStorage.setItem("is_logged_in", "true");
-      localStorage.setItem("currentUser", data.user_name ?? selectedUser);
+      setUser({
+        user_name: data.user_name ?? selectedUser,
+        role: data.role ?? null,
+        section: data.section ?? null,
+        can_edit_all: !!data.can_edit_all,
+      });
 
-      if (data.section) {
-        localStorage.setItem("user_section", data.section);
-      } else {
-        localStorage.removeItem("user_section");
-      }
-
-      if (data.role) {
-        localStorage.setItem("user_role", data.role);
-      } else {
-        localStorage.removeItem("user_role");
-      }
-
-      localStorage.setItem("can_edit_all", data.can_edit_all ? "true" : "false");
-
-      // Navigate to home page
-      console.log("Login successful, navigating to home");
       navigate("/");
-    } catch (error) {
-      console.error("Error selecting user:", error);
+    } catch {
       setError("Failed to select user. Please try again.");
     } finally {
       setIsLoading(false);
