@@ -61,10 +61,7 @@ def setup_db_response(env_and_deny_db, user_data=None):
     """
     mock_sess, mock_result, mock_readonly, mock_get_user_info = env_and_deny_db
 
-    if user_data is None:
-        user_data = []
-
-    mock_result.fetchall.return_value = user_data
+    mock_result.fetchall.return_value = user_data or []
     mock_readonly.return_value = user_data
 
     if user_data:
@@ -338,15 +335,19 @@ def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_
 
 
 # ─── 6) Testing static‐file or React SPA fallback ──────────────────────────────
-def test_serve_react_index_or_static(client):
-    resp_static = client.get("/static/some-file.js")
-    assert resp_static.status_code in (200, 404)
+def test_serve_react_index_or_static(app, tmp_path, monkeypatch):
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<!doctype html><html></html>")
+    monkeypatch.setattr(app, "static_folder", str(static_dir))
 
-    resp_fallback = client.get("/foo/bar")
-    assert resp_fallback.status_code in (200, 404)
-    text = resp_fallback.data.decode().lower()
-    if resp_fallback.status_code == 200:
-        assert "<!doctype html>" in text
+    with app.test_client() as c:
+        resp_static = c.get("/static/some-file.js")
+        assert resp_static.status_code in (200, 404)
+
+        resp_fallback = c.get("/foo/bar")
+        assert resp_fallback.status_code == 200
+        assert "<!doctype html>" in resp_fallback.data.decode().lower()
 
 
 # ─── 7) Ensure invalid target logging ──────────────────────────────────────────

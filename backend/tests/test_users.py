@@ -555,7 +555,7 @@ def test_validate_params_post_missing_param(app):
 
     @validate_params('required_field')
     def dummy():
-        return jsonify({"ok": True}), 200
+        return jsonify({"ok": True}), 200  # pragma: no cover
 
     with app.test_request_context('/test', method='POST', json={}):
         resp = dummy()

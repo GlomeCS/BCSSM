@@ -60,11 +60,7 @@ def test_create_app_with_valid_env_vars(clean_env, mock_db_cache):
     assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql://test_user:test_password@localhost:6543/test_db'
     assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is False
 
-    # ✅ Only check init_app if NOT in testing mode
-    if not app.config.get("TESTING"):
-        mock_db.init_app.assert_called_once_with(app)
-    else:
-        mock_db.init_app.assert_not_called()  # ✅ Ensure it's not called in testing mode
+    mock_db.init_app.assert_not_called()
 
 
 @patch.dict(os.environ, {}, clear=True)
