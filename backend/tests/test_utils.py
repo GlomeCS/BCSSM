@@ -484,6 +484,15 @@ def test_build_schedule_empty_rows_returns_all_dates_with_no_duties():
     assert all(d["duties"] == [] for d in result)
 
 
+def test_build_schedule_week_labels_relative_to_custom_anchor():
+    """Week labels are computed relative to the passed-in anchor, not the global CYCLE_ANCHOR."""
+    utils._cycle_week_for_date.cache_clear()
+    anchor = datetime(2026, 9, 1)  # deliberately not utils.CYCLE_ANCHOR
+    result = utils._build_schedule(anchor, rows=[])
+    assert [e["week"] for e in result[:7]] == ["Week A"] * 7
+    assert [e["week"] for e in result[7:]] == ["Week B"] * 7
+
+
 def test_get_current_cycle_week_calculation():
     """Verify the cycle week calculation matches the camp schedule"""
     from datetime import timedelta

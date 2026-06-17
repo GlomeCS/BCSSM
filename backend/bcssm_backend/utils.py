@@ -23,8 +23,8 @@ logger = logging.getLogger(__name__)
 CYCLE_ANCHOR = datetime(2026, 7, 4)
 
 @lru_cache(maxsize=2)
-def _cycle_week_for_date(target_date):
-    days_since_cycle_start = (target_date - CYCLE_ANCHOR.date()).days
+def _cycle_week_for_date(target_date, anchor=CYCLE_ANCHOR.date()):
+    days_since_cycle_start = (target_date - anchor).days
     return (days_since_cycle_start // 7) % 2
 
 def get_current_cycle_week():
@@ -212,7 +212,7 @@ def _build_schedule(start_date: datetime, rows: list) -> list[dict]:
     for i in range(14):
         current_date = start_date + timedelta(days=i)
         db_day = (current_date.weekday() + 1) % 7
-        cycle_week = _cycle_week_for_date(current_date.date())
+        cycle_week = _cycle_week_for_date(current_date.date(), anchor=start_date.date())
         date_to_info[current_date.date()] = {
             "day": db_day,
             "cycle_week": cycle_week,
