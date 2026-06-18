@@ -32,7 +32,13 @@ afterEach(() => {
 function mockValidateAuth(isValid: boolean) {
   vi.mocked(fetch).mockResolvedValueOnce(
     new Response(
-      JSON.stringify({ is_valid: isValid, role: 'Team Member', section: 'Seniors', can_edit_all: false }),
+      JSON.stringify({
+        is_valid: isValid,
+        user_name: 'Alice',
+        role: 'Team Member',
+        section: 'Seniors',
+        can_edit_all: false,
+      }),
       { headers: { 'Content-Type': 'application/json' } }
     )
   );

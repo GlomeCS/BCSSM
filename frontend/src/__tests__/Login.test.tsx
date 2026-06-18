@@ -11,7 +11,6 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-const mockSetUser = vi.fn();
 const mockAuth = vi.hoisted(() => ({
   currentUser: null as string | null,
   loading: false,
@@ -65,10 +64,9 @@ describe('Login', () => {
   beforeEach(() => {
     localStorage.clear();
     mockNavigate.mockClear();
-    mockSetUser.mockClear();
+    mockAuth.setUser.mockClear();
     mockAuth.currentUser = null;
     mockAuth.loading = false;
-    mockAuth.setUser = mockSetUser;
     vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => vi.unstubAllGlobals());
@@ -150,7 +148,7 @@ describe('Login', () => {
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/'));
-    expect(mockSetUser).toHaveBeenCalledWith({
+    expect(mockAuth.setUser).toHaveBeenCalledWith({
       user_name: 'Bob',
       role: 'Team Member',
       section: 'Seniors',

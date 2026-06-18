@@ -10,7 +10,6 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-const mockLogout = vi.fn();
 const mockNavAuth = vi.hoisted(() => ({
   currentUser: null as string | null,
   logout: vi.fn(),
@@ -41,9 +40,8 @@ describe('Navbar', () => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     mockNavigate.mockClear();
-    mockLogout.mockClear();
+    mockNavAuth.logout.mockClear();
     mockNavAuth.currentUser = null;
-    mockNavAuth.logout = mockLogout;
   });
 
   it('renders nothing when no currentUser in localStorage', () => {
@@ -67,7 +65,7 @@ describe('Navbar', () => {
     renderNavbar();
     fireEvent.click(screen.getAllByRole('button', { name: /logout/i })[0]);
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
-    expect(mockLogout).toHaveBeenCalledTimes(1);
+    expect(mockNavAuth.logout).toHaveBeenCalledTimes(1);
   });
 
   it('mobile menu button toggles aria-expanded', () => {

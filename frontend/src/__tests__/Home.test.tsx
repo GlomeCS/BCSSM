@@ -35,7 +35,7 @@ function setupLoggedInUser(overrides: Record<string, string> = {}) {
 function mockValidateAuthSuccess(role = 'Team Member', isLeader = false) {
   vi.mocked(fetch).mockResolvedValueOnce(
     new Response(
-      JSON.stringify({ is_valid: true, role, section: 'Seniors', can_edit_all: isLeader }),
+      JSON.stringify({ is_valid: true, user_name: 'Alice', role, section: 'Seniors', can_edit_all: isLeader }),
       { headers: { 'Content-Type': 'application/json' } }
     )
   );

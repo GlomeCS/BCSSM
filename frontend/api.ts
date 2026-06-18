@@ -55,39 +55,32 @@ export const getCurrentUser = (): string | null => {
   };
 
   export const logout = async (): Promise<void> => {
-    try {
-      await apiPost('/api/auth/logout', {});
-    } finally {
-      localStorage.removeItem(LS_CURRENT_USER);
-      localStorage.removeItem(LS_IS_LOGGED_IN);
-      localStorage.removeItem(LS_USER_ROLE);
-      localStorage.removeItem(LS_USER_SECTION);
-      localStorage.removeItem(LS_CAN_EDIT_ALL);
-    }
+    await apiPost('/api/auth/logout', {});
   };
 
   // Auth validation function.
-  // Returns true if the server confirms the session is valid.
-  // Returns false if the server explicitly says the session is invalid.
+  // Returns the validated AuthUser if the server confirms the session is valid.
+  // Returns null if the server explicitly says the session is invalid.
   // Throws on network/transport errors so callers can distinguish transient failures.
-  export const validateAuth = async (): Promise<boolean> => {
+  // Callers are responsible for persisting (or clearing) any auth storage.
+  export const validateAuth = async (): Promise<AuthUser | null> => {
     const response = await apiGet('/api/auth/validate');
     if (!response.ok) {
       // 400 = no session / not authenticated; 401/403 = explicitly rejected.
-      // All three mean "not logged in" — return false rather than throwing.
-      if (response.status === 400 || response.status === 401 || response.status === 403) return false;
+      // All three mean "not logged in" — return null rather than throwing.
+      if (response.status === 400 || response.status === 401 || response.status === 403) return null;
       throw new Error(`Auth check failed with status ${response.status}`);
     }
     const data = await response.json();
 
     if (data.is_valid) {
-      localStorage.setItem(LS_IS_LOGGED_IN, "true");
-      if (data.user_name) localStorage.setItem(LS_CURRENT_USER, data.user_name);
-      if (data.role) localStorage.setItem(LS_USER_ROLE, data.role);
-      if (data.section) localStorage.setItem(LS_USER_SECTION, data.section);
-      localStorage.setItem(LS_CAN_EDIT_ALL, data.can_edit_all ? "true" : "false");
-      return true;
+      return {
+        user_name: data.user_name,
+        role: data.role ?? null,
+        section: data.section ?? null,
+        can_edit_all: !!data.can_edit_all,
+      };
     }
 
-    return false;
+    return null;
   };

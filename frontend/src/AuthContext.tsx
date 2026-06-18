@@ -76,25 +76,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
+    const wasLoggedIn = isLoggedIn();
+    let user: AuthUser | null;
     try {
-      const valid = await validateAuth();
-      if (!valid) {
-        clearAuthStorage();
-        setState({ currentUser: null, userRole: null, userSection: null, canEditAll: false, loading: false });
-        return;
-      }
+      user = await validateAuth();
     } catch {
       // Transient network error — fall back to localStorage
       if (!isLoggedIn() || !getCurrentUser()) {
         setState({ currentUser: null, userRole: null, userSection: null, canEditAll: false, loading: false });
         return;
       }
+      setState({
+        currentUser: getCurrentUser(),
+        userRole: localStorage.getItem(LS_USER_ROLE),
+        userSection: localStorage.getItem(LS_USER_SECTION),
+        canEditAll: localStorage.getItem(LS_CAN_EDIT_ALL) === "true",
+        loading: false,
+      });
+      return;
     }
+
+    if (!user) {
+      clearAuthStorage();
+      setState({ currentUser: null, userRole: null, userSection: null, canEditAll: false, loading: false });
+      return;
+    }
+
+    // Cross-tab race: another tab may have logged out (cleared storage) while
+    // this validateAuth request was in flight. Respect that over a server
+    // response that was already stale by the time it arrived.
+    if (wasLoggedIn && !isLoggedIn()) {
+      setState({ currentUser: null, userRole: null, userSection: null, canEditAll: false, loading: false });
+      return;
+    }
+
+    writeAuthStorage(user);
     setState({
-      currentUser: getCurrentUser(),
-      userRole: localStorage.getItem(LS_USER_ROLE),
-      userSection: localStorage.getItem(LS_USER_SECTION),
-      canEditAll: localStorage.getItem(LS_CAN_EDIT_ALL) === "true",
+      currentUser: user.user_name,
+      userRole: user.role,
+      userSection: user.section,
+      canEditAll: user.can_edit_all,
       loading: false,
     });
   }, []);
