@@ -14,7 +14,7 @@ vi.mock('react-router-dom', async () => {
 const mockAuth = vi.hoisted(() => ({
   currentUser: null as string | null,
   loading: false,
-  setUser: vi.fn<[AuthUser], void>(),
+  setUser: vi.fn<(user: AuthUser) => void>(),
   logout: vi.fn(),
   refresh: vi.fn(),
   userRole: null as string | null,
