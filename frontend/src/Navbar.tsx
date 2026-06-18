@@ -1,17 +1,18 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useTheme } from "./useTheme";
+import { useAuth } from "./AuthContext";
 import "./Navbar.css";
 
 function Navbar() {
     const navigate = useNavigate();
-    const currentUser = localStorage.getItem("currentUser");
+    const { currentUser, logout } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isScrolled, setIsScrolled] = useState(false);
     const { theme, toggleTheme } = useTheme();
 
-    const handleLogout = () => {
-        localStorage.removeItem("currentUser");
+    const handleLogout = async () => {
+        await logout();
         navigate("/login");
     };
 
@@ -91,7 +92,7 @@ function Navbar() {
                 </ul>
 
                 {/* Mobile Menu Button */}
-                <button 
+                <button
                     className={`mobile-menu-button ${isMenuOpen ? 'active' : ''}`}
                     onClick={toggleMenu}
                     aria-label="Toggle navigation menu"

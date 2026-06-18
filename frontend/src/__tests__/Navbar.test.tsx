@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Navbar from '../Navbar';
 import { ThemeProvider } from '../ThemeContext';
@@ -9,6 +9,21 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return { ...actual, useNavigate: () => mockNavigate };
 });
+
+const mockNavAuth = vi.hoisted(() => ({
+  currentUser: null as string | null,
+  logout: vi.fn(),
+  loading: false,
+  userRole: null as string | null,
+  userSection: null as string | null,
+  canEditAll: false,
+  setUser: vi.fn(),
+  refresh: vi.fn(),
+}));
+
+vi.mock('../AuthContext', () => ({
+  useAuth: () => mockNavAuth,
+}));
 
 function renderNavbar() {
   return render(
@@ -25,15 +40,18 @@ describe('Navbar', () => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     mockNavigate.mockClear();
+    mockNavAuth.logout.mockClear();
+    mockNavAuth.currentUser = null;
   });
 
   it('renders nothing when no currentUser in localStorage', () => {
+    mockNavAuth.currentUser = null;
     const { container } = renderNavbar();
     expect(container.firstChild).toBeNull();
   });
 
   it('renders nav links when user is logged in', () => {
-    localStorage.setItem('currentUser', 'Alice');
+    mockNavAuth.currentUser = 'Alice';
     renderNavbar();
     expect(screen.getByText('Ballyholme CSSM Helper')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument();
@@ -42,16 +60,16 @@ describe('Navbar', () => {
     expect(screen.getByRole('link', { name: 'Sections' })).toBeInTheDocument();
   });
 
-  it('clicking logout clears currentUser and navigates to /login', () => {
-    localStorage.setItem('currentUser', 'Alice');
+  it('clicking logout calls logout() and navigates to /login', async () => {
+    mockNavAuth.currentUser = 'Alice';
     renderNavbar();
     fireEvent.click(screen.getAllByRole('button', { name: /logout/i })[0]);
-    expect(localStorage.getItem('currentUser')).toBeNull();
-    expect(mockNavigate).toHaveBeenCalledWith('/login');
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/login'));
+    expect(mockNavAuth.logout).toHaveBeenCalledTimes(1);
   });
 
   it('mobile menu button toggles aria-expanded', () => {
-    localStorage.setItem('currentUser', 'Alice');
+    mockNavAuth.currentUser = 'Alice';
     renderNavbar();
     const menuBtn = screen.getByRole('button', { name: /toggle navigation menu/i });
     expect(menuBtn).toHaveAttribute('aria-expanded', 'false');
@@ -60,7 +78,7 @@ describe('Navbar', () => {
   });
 
   it('mobile menu closes after clicking a link', () => {
-    localStorage.setItem('currentUser', 'Alice');
+    mockNavAuth.currentUser = 'Alice';
     renderNavbar();
     const menuBtn = screen.getByRole('button', { name: /toggle navigation menu/i });
     fireEvent.click(menuBtn);
@@ -72,7 +90,7 @@ describe('Navbar', () => {
   });
 
   it('nav links point to the correct paths', () => {
-    localStorage.setItem('currentUser', 'Alice');
+    mockNavAuth.currentUser = 'Alice';
     renderNavbar();
     expect(screen.getByRole('link', { name: 'Duties' })).toHaveAttribute('href', '/duties');
     expect(screen.getByRole('link', { name: 'Sections' })).toHaveAttribute('href', '/sections');
@@ -84,21 +102,21 @@ describe('Navbar', () => {
 
   describe('theme toggle', () => {
     it('renders theme toggle buttons (desktop and mobile)', () => {
-      localStorage.setItem('currentUser', 'Alice');
+      mockNavAuth.currentUser = 'Alice';
       renderNavbar();
       const toggleBtns = screen.getAllByRole('button', { name: 'Switch to dark mode' });
       expect(toggleBtns.length).toBeGreaterThanOrEqual(1);
     });
 
     it('renders theme toggle button in mobile menu', () => {
-      localStorage.setItem('currentUser', 'Alice');
+      mockNavAuth.currentUser = 'Alice';
       renderNavbar();
       const toggleBtns = screen.getAllByRole('button', { name: /switch to dark mode/i });
       expect(toggleBtns.length).toBeGreaterThanOrEqual(2);
     });
 
     it('desktop toggle switches to dark mode', () => {
-      localStorage.setItem('currentUser', 'Alice');
+      mockNavAuth.currentUser = 'Alice';
       renderNavbar();
       const toggleBtns = screen.getAllByRole('button', { name: 'Switch to dark mode' });
       fireEvent.click(toggleBtns[0]);
@@ -107,7 +125,7 @@ describe('Navbar', () => {
     });
 
     it('toggle switches back to light mode', () => {
-      localStorage.setItem('currentUser', 'Alice');
+      mockNavAuth.currentUser = 'Alice';
       localStorage.setItem('theme', 'dark');
       renderNavbar();
       const toggleBtns = screen.getAllByRole('button', { name: 'Switch to light mode' });
@@ -116,12 +134,13 @@ describe('Navbar', () => {
     });
 
     it('theme toggle is not rendered when not logged in', () => {
+      mockNavAuth.currentUser = null;
       renderNavbar();
       expect(screen.queryByRole('button', { name: /switch to/i })).toBeNull();
     });
 
     it('persists theme choice to localStorage', () => {
-      localStorage.setItem('currentUser', 'Alice');
+      mockNavAuth.currentUser = 'Alice';
       renderNavbar();
       const toggleBtn = screen.getAllByRole('button', { name: 'Switch to dark mode' })[0];
       fireEvent.click(toggleBtn);

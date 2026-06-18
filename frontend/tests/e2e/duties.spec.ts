@@ -66,7 +66,7 @@ async function setupDutiesPage(page: Page, duties = TODAY_DUTIES) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', can_edit_all: false }),
+      body: JSON.stringify({ is_valid: true, user_name: 'Alice', role: 'Team Member', section: 'Seniors', can_edit_all: false }),
     })
   );
   await page.route('**/api/duties/today*', route =>

@@ -24,7 +24,7 @@ async function setupDevoFeedbackPage(page: Page, isLeader = true, path = '/react
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: isLeader ? 'Section Leader' : 'Leader', section: 'Seniors', can_edit_all: isLeader }),
+      body: JSON.stringify({ is_valid: true, user_name: 'Alice', role: isLeader ? 'Section Leader' : 'Leader', section: 'Seniors', can_edit_all: isLeader }),
     })
   );
   await page.route('**/api/sections*', route =>
