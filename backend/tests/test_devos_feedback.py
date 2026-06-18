@@ -95,6 +95,9 @@ def test_route_default_date_with_user_via_session(client, patch_helpers):
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+        sess["user_role"] = "Team Member"
+        sess["user_section"] = "TestSection"
 
     resp = client.get("/api/devos-feedback")
     assert resp.status_code == 200
@@ -119,6 +122,9 @@ def test_route_with_date_and_leader_via_session(client, patch_helpers):
 
     with client.session_transaction() as sess:
         sess["user_name"] = "A"
+        sess["user_id"] = 1
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "S"
 
     date_str = "2025-06-07"
     resp = client.get(f"/api/devos-feedback?date={quote(date_str)}")
@@ -136,6 +142,9 @@ def test_route_invalid_user(client, patch_helpers):
 
     with client.session_transaction() as sess:
         sess["user_name"] = "NonExistentUser"
+        sess["user_id"] = 99
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.get("/api/devos-feedback")
     assert resp.status_code == 400
@@ -151,6 +160,9 @@ def test_route_feedback_error(client, patch_helpers):
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+        sess["user_role"] = "Team Member"
+        sess["user_section"] = "TestSection"
 
     resp = client.get("/api/devos-feedback?date=2025-06-07")
     assert resp.status_code == 500
@@ -170,6 +182,8 @@ def test_edit_feedback_too_long(client):
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "x" * 141})
@@ -184,21 +198,23 @@ def test_edit_feedback_exactly_140(client, mock_write):
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "x" * 140})
     assert resp.status_code == 200
 
 
-def test_edit_authenticated_via_session_username(client, mock_write, patch_helpers):
-    """Edit with session user_name; editor_id taken from session."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+def test_edit_authenticated_via_session_username(client, mock_write):
+    """Edit with full session; editor_id taken from session."""
     mock_write.return_value = [(5,)]
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
@@ -234,6 +250,8 @@ def test_edit_editor_id_comes_from_session(client, mock_write):
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 7
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
@@ -249,6 +267,8 @@ def test_edit_feedback_not_a_string(client, value):
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": value})
@@ -257,10 +277,12 @@ def test_edit_feedback_not_a_string(client, value):
 
 
 def test_edit_missing_params(client):
-    """Edit with missing section param → 400."""
+    """Edit with missing section param → 400 (elevated role bypasses section permission check)."""
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Admin"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07",
                        json={"feedback": "Test"})
@@ -268,15 +290,15 @@ def test_edit_missing_params(client):
     assert "Missing date, section, or feedback" in resp.get_json()["error"]
 
 
-def test_edit_section_not_found(client, mock_write, patch_helpers):
+def test_edit_section_not_found(client, mock_write):
     """RETURNING [] from the combined query → 400 Section not found."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
     mock_write.return_value = []  # INSERT RETURNING [] = section not found
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
@@ -284,11 +306,8 @@ def test_edit_section_not_found(client, mock_write, patch_helpers):
     assert "Section not found" in resp.get_json()["error"]
 
 
-def test_edit_success(client, mock_write, patch_helpers):
+def test_edit_success(client, mock_write):
     """Successful edit — single atomic INSERT...SELECT...RETURNING query."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
-
     calls = []
 
     def side_effect(query, params=None):
@@ -302,6 +321,8 @@ def test_edit_success(client, mock_write, patch_helpers):
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "New"})
@@ -311,15 +332,15 @@ def test_edit_success(client, mock_write, patch_helpers):
     assert any("INSERT INTO feedback" in call[0] for call in calls)
 
 
-def test_edit_upsert_error(client, mock_write, patch_helpers):
+def test_edit_upsert_error(client, mock_write):
     """Combined INSERT...SELECT query raises → 500."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
     mock_write.side_effect = SQLAlchemyError("oops")
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
@@ -334,6 +355,8 @@ def test_edit_section_lookup_db_error(client, mock_write):
     with client.session_transaction() as sess:
         sess['user_name'] = 'TestUser'
         sess['user_id'] = 1
+        sess['user_role'] = 'Section Leader'
+        sess['user_section'] = 'Minis'
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
@@ -341,14 +364,13 @@ def test_edit_section_lookup_db_error(client, mock_write):
     assert "Internal server error" in resp.get_json()["error"]
 
 
-def test_edit_forbidden_wrong_section(client, mock_write, patch_helpers):
+def test_edit_forbidden_wrong_section(client, mock_write):
     """Non-privileged user trying to edit another section's feedback → 403."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Leader", "section": "Minis"}
-
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Majors",
                        json={"feedback": "Test"})
@@ -356,30 +378,30 @@ def test_edit_forbidden_wrong_section(client, mock_write, patch_helpers):
     assert "Forbidden" in resp.get_json()["error"]
 
 
-def test_edit_allowed_own_section(client, mock_write, patch_helpers):
+def test_edit_allowed_own_section(client, mock_write):
     """Non-privileged user editing their own section's feedback → 200."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Leader", "section": "Minis"}
     mock_write.return_value = [(5,)]
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "Test"})
     assert resp.status_code == 200
 
 
-def test_edit_allowed_cross_section_for_section_leader(client, mock_write, patch_helpers):
-    """Section Leader editing a different section's feedback → 200 (can_edit_all branch)."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+def test_edit_allowed_cross_section_for_section_leader(client, mock_write):
+    """Section Leader editing a different section's feedback → 200 (elevated role branch)."""
     mock_write.return_value = [(5,)]
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Majors",
                        json={"feedback": "Test"})
@@ -392,6 +414,8 @@ def test_edit_non_dict_body_returns_400(client):
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.post(
         "/api/devos-feedback/edit?date=2025-06-07&section=Minis",
@@ -402,10 +426,8 @@ def test_edit_non_dict_body_returns_400(client):
     assert resp.get_json()["error"] == "Request body must be a JSON object"
 
 
-def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypatch):
-    """user_id absent from session → @require_auth resolves it from DB; route succeeds."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = {"name": "TestUser", "role": "Section Leader", "section": "Minis"}
+def test_edit_no_user_id_in_session(client, mock_write, monkeypatch):
+    """user_id absent from session → @require_auth resolves it via get_user_id_by_name; route succeeds."""
     mock_write.return_value = [(5,)]
 
     monkeypatch.setattr(
@@ -414,7 +436,10 @@ def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypat
     )
 
     with client.session_transaction() as sess:
-        sess["user_name"] = "TestUser"  # user_id intentionally omitted
+        sess["user_name"] = "TestUser"
+        sess["user_role"] = "Section Leader"
+        sess["user_section"] = "Minis"
+        # user_id intentionally omitted
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
@@ -424,7 +449,7 @@ def test_edit_no_user_id_in_session(client, mock_write, patch_helpers, monkeypat
     assert write_call_params.get("editor_id") == 42
 
 
-def test_edit_user_id_db_lookup_returns_none(client, mock_write, patch_helpers, monkeypatch):
+def test_edit_user_id_db_lookup_returns_none(client, mock_write, monkeypatch):
     """user_id absent from session and DB lookup returns None → @require_auth returns 401."""
     monkeypatch.setattr(
         "backend.bcssm_backend.utils.get_user_id_by_name",
@@ -432,7 +457,10 @@ def test_edit_user_id_db_lookup_returns_none(client, mock_write, patch_helpers, 
     )
 
     with client.session_transaction() as sess:
-        sess["user_name"] = "TestUser"  # user_id intentionally omitted
+        sess["user_name"] = "TestUser"
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
+        # user_id intentionally omitted
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
                        json={"feedback": "X"})
@@ -442,43 +470,16 @@ def test_edit_user_id_db_lookup_returns_none(client, mock_write, patch_helpers, 
 
 
 def test_route_get_outer_sqlalchemy_error(client, patch_helpers):
-    """get_user_info raises SQLAlchemyError → 500."""
+    """get_user_info raises SQLAlchemyError in GET handler → 500."""
     _, fake_ui = patch_helpers
     fake_ui.side_effect = SQLAlchemyError("outer db error")
 
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
+        sess["user_id"] = 1
+        sess["user_role"] = "Leader"
+        sess["user_section"] = "Minis"
 
     resp = client.get("/api/devos-feedback")
     assert resp.status_code == 500
     assert "Internal server error" in resp.get_json()["error"]
-
-
-def test_edit_editor_info_db_error(client, mock_write, patch_helpers):
-    """get_user_info raises SQLAlchemyError during editor info lookup → 500."""
-    _, fake_ui = patch_helpers
-    fake_ui.side_effect = SQLAlchemyError("editor info lookup failed")
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "TestUser"
-        sess["user_id"] = 1
-
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-                       json={"feedback": "Test"})
-    assert resp.status_code == 500
-    assert "Internal server error" in resp.get_json()["error"]
-
-
-def test_edit_editor_info_not_found(client, mock_write, patch_helpers):
-    """get_user_info returns None for editor → 400 Invalid user."""
-    _, fake_ui = patch_helpers
-    fake_ui.return_value = None
-
-    with client.session_transaction() as sess:
-        sess["user_name"] = "TestUser"
-        sess["user_id"] = 1
-
-    resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-                       json={"feedback": "Test"})
-    assert resp.status_code == 400
-    assert "Invalid user" in resp.get_json()["error"]

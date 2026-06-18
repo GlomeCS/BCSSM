@@ -424,7 +424,7 @@ def test_get_duty_schedule_uses_parameterized_query(mock_readonly, mock_cache):
     # Verify cache operations
     mock_cache.get.assert_called_once()
     cache_key = mock_cache.get.call_args[0][0]
-    assert cache_key.startswith('duties:schedule:14day:')
+    assert cache_key == utils.DUTY_SCHEDULE_CACHE_KEY
     mock_cache.set.assert_called_once()
     
     # Check that the query uses ANY() for parameterization instead of dynamic SQL
@@ -437,6 +437,61 @@ def test_get_duty_schedule_uses_parameterized_query(mock_readonly, mock_cache):
     # Ensure no dynamic SQL concatenation
     assert isinstance(params['days'], list)
     assert isinstance(params['cycles'], list)
+
+# ─── _build_schedule: pure function tests ────────────────────────────────────
+
+def test_build_schedule_correct_date_range():
+    """_build_schedule always produces exactly 14 entries starting from the anchor."""
+    anchor = datetime(2026, 7, 4)
+    result = utils._build_schedule(anchor, rows=[])
+    assert len(result) == 14
+    assert result[0]["date"] == "2026-07-04"
+    assert result[-1]["date"] == "2026-07-17"
+
+
+def test_build_schedule_week_labels():
+    """Each entry carries a 'Week A' or 'Week B' label."""
+    utils._cycle_week_for_date.cache_clear()
+    anchor = datetime(2026, 7, 4)
+    result = utils._build_schedule(anchor, rows=[])
+    for entry in result:
+        assert entry["week"] in ("Week A", "Week B")
+
+
+def test_build_schedule_assigns_duties_to_correct_date():
+    """Duties are placed on the right date via (day, cycle_week) matching."""
+    utils._cycle_week_for_date.cache_clear()
+    anchor = datetime(2026, 7, 4)
+    result_no_duties = utils._build_schedule(anchor, rows=[])
+    # Find Saturday Week A to get its (day, cycle_week)
+    saturday_a = next(
+        e for e in result_no_duties if e["day_name"] == "Saturday" and e["week"] == "Week A"
+    )
+    # Compute expected (day, cycle_week) for that date
+    sat_dt = datetime.strptime(saturday_a["date"], "%Y-%m-%d")
+    db_day = (sat_dt.weekday() + 1) % 7
+    cw = utils._cycle_week_for_date(sat_dt.date())
+    row = (db_day, cw, "Security", "Guard duty", "Alpha Team", [{"name": "Smith", "week": "Both"}])
+    result = utils._build_schedule(anchor, rows=[row])
+    match = next(e for e in result if e["date"] == saturday_a["date"])
+    assert match["duties"][0]["duty_name"] == "Security"
+
+
+def test_build_schedule_empty_rows_returns_all_dates_with_no_duties():
+    """No DB rows → every date entry has an empty duties list."""
+    anchor = datetime(2026, 7, 4)
+    result = utils._build_schedule(anchor, rows=[])
+    assert all(d["duties"] == [] for d in result)
+
+
+def test_build_schedule_week_labels_relative_to_custom_anchor():
+    """Week labels are computed relative to the passed-in anchor, not the global CYCLE_ANCHOR."""
+    utils._cycle_week_for_date.cache_clear()
+    anchor = datetime(2026, 9, 1)  # deliberately not utils.CYCLE_ANCHOR
+    result = utils._build_schedule(anchor, rows=[])
+    assert [e["week"] for e in result[:7]] == ["Week A"] * 7
+    assert [e["week"] for e in result[7:]] == ["Week B"] * 7
+
 
 def test_get_current_cycle_week_calculation():
     """Verify the cycle week calculation matches the camp schedule"""

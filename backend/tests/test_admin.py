@@ -171,63 +171,13 @@ def test_passwords_status_session_admin_fast_path(client, monkeypatch):
     assert resp.get_json()["users"] == fake_status
 
 
-def test_passwords_status_session_username_db_admin(client, monkeypatch):
-    """Session with user_name gets DB lookup; Admin role grants access."""
-    monkeypatch.setattr(
-        "backend.bcssm_backend.routes.admin.get_user_role",
-        lambda _: "Admin",
-    )
-    monkeypatch.setattr(
-        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
-        lambda: [],
-    )
-    with client.session_transaction() as sess:
-        sess["user_name"] = "Harrison"
-
-    resp = client.get("/api/admin/passwords-status")
-    assert resp.status_code == 200
-    # Confirm session was updated with the looked-up role
-    with client.session_transaction() as sess:
-        assert sess.get("user_role") == "Admin"
-
-
-def test_passwords_status_session_username_non_admin_falls_through(client, monkeypatch):
-    """Session with user_name whose DB role is not Admin falls through to secret check."""
-    monkeypatch.setattr(
-        "backend.bcssm_backend.routes.admin.get_user_role",
-        lambda _: "Team Member",
-    )
+def test_passwords_status_hmac_with_non_admin_session_grants_access(client, monkeypatch):
+    """Session without Admin role falls through to HMAC check; correct secret grants access."""
     monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
     monkeypatch.setattr(
         "backend.bcssm_backend.routes.admin.get_all_users_password_status",
         lambda: [],
     )
-    with client.session_transaction() as sess:
-        sess["user_name"] = "Bob"
-
-    resp = client.get(
-        "/api/admin/passwords-status",
-        headers={"X-Admin-Secret": "correct-secret"},
-    )
-    assert resp.status_code == 200
-
-
-def test_passwords_status_session_username_db_error_falls_through(client, monkeypatch):
-    """SQLAlchemyError during DB role lookup falls through to secret check."""
-    def raise_db_error(_):
-        raise SQLAlchemyError("db down")
-
-    monkeypatch.setattr(
-        "backend.bcssm_backend.routes.admin.get_user_role",
-        raise_db_error,
-    )
-    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
-    monkeypatch.setattr(
-        "backend.bcssm_backend.routes.admin.get_all_users_password_status",
-        lambda: [],
-    )
-    with client.session_transaction() as sess:
-        sess["user_name"] = "Harrison"
 
     resp = client.get(
         "/api/admin/passwords-status",
