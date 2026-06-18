@@ -48,7 +48,7 @@ test('redirects to home when already logged in', async ({ page }) => {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Team Member', section: 'Seniors', can_edit_all: false }),
+      body: JSON.stringify({ is_valid: true, user_name: 'Alice', role: 'Team Member', section: 'Seniors', can_edit_all: false }),
     })
   );
   await page.route('**/duty-teams*', route =>

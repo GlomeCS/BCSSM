@@ -22,7 +22,7 @@ async function setupEditPage(page: Page, existingFeedback = 'Existing feedback t
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: true }),
+      body: JSON.stringify({ is_valid: true, user_name: 'Alice', role: 'Section Leader', section: 'Seniors', can_edit_all: true }),
     })
   );
   await page.route('**/api/devos-feedback/edit*', route => {
@@ -71,7 +71,7 @@ test('shows error when date or section params are missing', async ({ page }) => 
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: true }),
+      body: JSON.stringify({ is_valid: true, user_name: 'Alice', role: 'Section Leader', section: 'Seniors', can_edit_all: true }),
     })
   );
   await page.goto('/react/devos-feedback/edit');
