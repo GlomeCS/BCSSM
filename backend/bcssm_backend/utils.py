@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 CYCLE_ANCHOR = datetime(2026, 7, 4)
 
 @lru_cache(maxsize=2)
-def _cycle_week_for_date(target_date, anchor=CYCLE_ANCHOR.date()):
+def _cycle_week_for_date(target_date, anchor=None):
+    if anchor is None:
+        anchor = CYCLE_ANCHOR.date()
     days_since_cycle_start = (target_date - anchor).days
     return (days_since_cycle_start // 7) % 2
 
