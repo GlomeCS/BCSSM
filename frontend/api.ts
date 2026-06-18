@@ -73,12 +73,17 @@ export const getCurrentUser = (): string | null => {
     }
     const data = await response.json();
 
-    if (data.is_valid) {
+    if (data.is_valid === true) {
+      if (typeof data.user_name !== 'string' || data.user_name.length === 0) return null;
+      if (data.role !== null && typeof data.role !== 'string') return null;
+      if (data.section !== null && typeof data.section !== 'string') return null;
+      if (typeof data.can_edit_all !== 'boolean') return null;
+
       return {
         user_name: data.user_name,
-        role: data.role ?? null,
-        section: data.section ?? null,
-        can_edit_all: !!data.can_edit_all,
+        role: data.role,
+        section: data.section,
+        can_edit_all: data.can_edit_all,
       };
     }
 

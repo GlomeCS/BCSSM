@@ -229,7 +229,7 @@ describe('logout', () => {
     await logout();
     expect(fetch).toHaveBeenCalledWith(
       '/api/auth/logout',
-      expect.objectContaining({ method: 'POST' })
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
     );
   });
 
