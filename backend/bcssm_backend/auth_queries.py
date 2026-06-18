@@ -29,7 +29,7 @@ def authenticate_user(user_name: str, password: str) -> dict:
     try:
         is_valid = bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
     except (ValueError, TypeError):
-        raise AuthenticationError("Invalid credentials")
+        raise AuthenticationError("Invalid credentials") from None
     if not is_valid:
         raise AuthenticationError("Invalid credentials")
     return {

@@ -6,6 +6,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from redis.exceptions import RedisError
 import logging
 
+from backend.bcssm_backend.exceptions import DatabaseError
+
 logger = logging.getLogger(__name__)
 
 _RAISE = object()
@@ -99,7 +101,7 @@ def cached_result(key_fn, ttl=None, error_ttl=None, on_error=_RAISE, cache=None,
                 except Exception as e:
                     logger.warning("Cache write failed for %s: %s", key, e)
                 return result
-            except SQLAlchemyError as e:
+            except (SQLAlchemyError, DatabaseError) as e:
                 logger.error("Query failed, cache key %s: %s", key, e)
                 if on_error is _RAISE:
                     raise

@@ -30,7 +30,7 @@ def get_all_users():
     return [row[0] for row in rows]
 
 
-def _fetch_user_info(where_clause, params, log_identifier):
+def _fetch_user_info(where_clause, params):
     # where_clause must be a hard-coded SQL fragment (e.g. "u.name = :user_name");
     # all user input goes through params so execute_readonly_query keeps it parameterized.
     query = (
@@ -46,7 +46,7 @@ def _fetch_user_info(where_clause, params, log_identifier):
 
 
 def get_user_info(user_name):
-    return _fetch_user_info("u.name = :user_name", {"user_name": user_name}, user_name)
+    return _fetch_user_info("u.name = :user_name", {"user_name": user_name})
 
 
 def get_user_id_by_name(user_name):
@@ -64,4 +64,4 @@ def get_user_id_by_name(user_name):
 
 
 def get_user_info_by_id(user_id):
-    return _fetch_user_info("u.id = :user_id", {"user_id": user_id}, f"id {user_id}")
+    return _fetch_user_info("u.id = :user_id", {"user_id": user_id})

@@ -97,8 +97,8 @@ def get_todays_duties(user_name):
                     ELSE 3
                 END,
                 u.name
-        ) AS members,
-        bool_or(u.name = :user_name) AS is_current_user
+        ) FILTER (WHERE u.name IS NOT NULL) AS members,
+        COALESCE(bool_or(u.name = :user_name) FILTER (WHERE u.name IS NOT NULL), FALSE) AS is_current_user
     FROM duty_schedule ds
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
@@ -193,7 +193,7 @@ def get_duty_schedule():
                     ELSE 3
                 END,
                 u.name
-        ) AS team_members
+        ) FILTER (WHERE u.name IS NOT NULL) AS team_members
     FROM duty_schedule ds
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id

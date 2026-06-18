@@ -75,7 +75,8 @@ def get_health_status() -> dict:
         cache_ok = cache.get('health:test') == 'ok'
         cache.delete('health:test')
     except Exception as e:
-        raise CacheError(f"Cache probe failed: {e}") from e
+        logger.warning("Cache probe failed: %s", e)
+        cache_ok = False
     health = {
         "status": "healthy",
         "database": "connected",

@@ -45,7 +45,6 @@ def execute_query(query, params=None, silent=False):
             return None
 
     except SQLAlchemyError as e:
-        db.session.rollback()
         logger.error(
             "Query failed. Query: %s, Params: %s, Error: %s",
             query,

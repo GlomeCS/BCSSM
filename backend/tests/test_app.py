@@ -201,11 +201,11 @@ def test_health_check_endpoint_exception(mock_db_cache, clean_env):
     client = app.test_client()
 
     response = client.get("/api/health")
-    assert response.status_code == 500
+    assert response.status_code == 200
 
     data = response.get_json()
-    assert data["status"] == "unhealthy"
-    assert "Health check failed" in data["error"]
+    assert data["status"] == "degraded"
+    assert data["cache"] == "unhealthy"
 
 # NEW: Test cache management endpoints
 @patch('backend.bcssm_backend.routes.admin.clear_user_cache')

@@ -9,7 +9,7 @@ from backend.bcssm_backend.cache_utils import clear_user_cache
 from backend.bcssm_backend.db import execute_readonly_query
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
 from backend.bcssm_backend.duty_queries import get_user_duty
-from backend.bcssm_backend.exceptions import AuthenticationError
+from backend.bcssm_backend.exceptions import AuthenticationError, DatabaseError
 from backend.bcssm_backend.section_queries import get_users_by_section
 from backend.bcssm_backend.user_queries import get_all_users
 
@@ -56,7 +56,7 @@ def init_users_routes(app):
                 return jsonify({"error": "Failed to fetch users for this section."}), 500
             
             return jsonify({"users": users}), 200
-        except SQLAlchemyError as e:
+        except (SQLAlchemyError, DatabaseError) as e:
             app.logger.error("Failed to fetch users by section: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
@@ -114,7 +114,7 @@ def init_users_routes(app):
             users = get_all_users()
             
             return jsonify({"users": users}), 200
-        except SQLAlchemyError as e:
+        except (SQLAlchemyError, DatabaseError) as e:
             app.logger.error("Failed to fetch users: %s", e)
             return jsonify({"error": "An internal error has occurred."}), 500
 
@@ -134,7 +134,7 @@ def init_users_routes(app):
             user = authenticate_user(user_name, password)
         except AuthenticationError:
             return jsonify({'error': 'Invalid credentials'}), 401
-        except SQLAlchemyError as e:
+        except (SQLAlchemyError, DatabaseError) as e:
             app.logger.error("Login DB error for %s: %s", user_name, e)
             return jsonify({'error': 'An internal error has occurred.'}), 500
         session.clear()
@@ -193,8 +193,8 @@ def init_users_routes(app):
                 "section": section_name,
                 "can_edit_all": can_edit_all
             })
-            
-        except SQLAlchemyError as e:
+
+        except (SQLAlchemyError, DatabaseError) as e:
             app.logger.error("User validation failed for %s: %s", user_name, e)
             return jsonify({"is_valid": False, "error": "Validation failed"}), 500
 
