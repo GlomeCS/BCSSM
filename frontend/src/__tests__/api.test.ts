@@ -147,32 +147,30 @@ describe('validateAuth', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('returns false when server returns 401 (no localStorage)', async () => {
+  it('returns null when server returns 401 (no localStorage)', async () => {
     // localStorage is empty — server is still queried (cookie-based auth)
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: 'Unauthorized' }), { status: 401 })
     );
     const result = await validateAuth();
-    expect(result).toBe(false);
+    expect(result).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('returns true and updates localStorage on valid response', async () => {
-    localStorage.setItem('currentUser', 'Dave');
+  it('returns the AuthUser on valid response without touching localStorage', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
-      new Response(JSON.stringify({ is_valid: true, role: 'Admin', section: 'A', can_edit_all: true }), {
-        headers: { 'Content-Type': 'application/json' },
-      })
+      new Response(
+        JSON.stringify({ is_valid: true, user_name: 'Dave', role: 'Admin', section: 'A', can_edit_all: true }),
+        { headers: { 'Content-Type': 'application/json' } }
+      )
     );
     const result = await validateAuth();
-    expect(result).toBe(true);
-    expect(localStorage.getItem('user_role')).toBe('Admin');
-    expect(localStorage.getItem('user_section')).toBe('A');
-    expect(localStorage.getItem('can_edit_all')).toBe('true');
-    expect(localStorage.getItem('is_logged_in')).toBe('true');
+    expect(result).toEqual({ user_name: 'Dave', role: 'Admin', section: 'A', can_edit_all: true });
+    expect(localStorage.getItem('user_role')).toBeNull();
+    expect(localStorage.getItem('is_logged_in')).toBeNull();
   });
 
-  it('returns false when is_valid is false', async () => {
+  it('returns null when is_valid is false', async () => {
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ is_valid: false }), {
@@ -180,7 +178,7 @@ describe('validateAuth', () => {
       })
     );
     const result = await validateAuth();
-    expect(result).toBe(false);
+    expect(result).toBeNull();
   });
 
   it('throws on network/transport error', async () => {
@@ -197,52 +195,46 @@ describe('validateAuth', () => {
     await expect(validateAuth()).rejects.toThrow('Auth check failed with status 502');
   });
 
-  it('returns false when server responds with 401', async () => {
+  it('returns null when server responds with 401', async () => {
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: 'Unauthorized' }), { status: 401 })
     );
     const result = await validateAuth();
-    expect(result).toBe(false);
+    expect(result).toBeNull();
   });
 
-  it('returns false when server responds with 400 (no session)', async () => {
+  it('returns null when server responds with 400 (no session)', async () => {
     localStorage.setItem('currentUser', 'Dave');
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ is_valid: false, error: 'No username provided' }), { status: 400 })
     );
     const result = await validateAuth();
-    expect(result).toBe(false);
+    expect(result).toBeNull();
   });
 });
 
 describe('logout', () => {
   beforeEach(() => {
-    localStorage.setItem('currentUser', 'Alice');
-    localStorage.setItem('is_logged_in', 'true');
-    localStorage.setItem('user_role', 'Team Member');
-    localStorage.setItem('user_section', 'Seniors');
-    localStorage.setItem('can_edit_all', 'false');
     vi.stubGlobal('fetch', vi.fn());
   });
   afterEach(() => {
-    localStorage.clear();
     vi.unstubAllGlobals();
   });
 
-  it('clears localStorage after a successful logout API call', async () => {
+  it('POSTs to /api/auth/logout', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ ok: true }), { status: 200 })
     );
     await logout();
-    expect(localStorage.getItem('currentUser')).toBeNull();
-    expect(localStorage.getItem('is_logged_in')).toBeNull();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/auth/logout',
+      expect.objectContaining({ method: 'POST', credentials: 'include' })
+    );
   });
 
-  it('clears localStorage even when the logout API call throws', async () => {
+  it('propagates errors from the logout API call', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Network error'));
     await expect(logout()).rejects.toThrow('Network error');
-    expect(localStorage.getItem('currentUser')).toBeNull();
-    expect(localStorage.getItem('is_logged_in')).toBeNull();
   });
 });

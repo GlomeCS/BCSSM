@@ -5,7 +5,7 @@ async function loginAs(page: Page, role = 'Team Member', isLeader = false) {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ is_valid: true, role, section: 'Seniors', can_edit_all: isLeader }),
+      body: JSON.stringify({ is_valid: true, user_name: 'Alice', role, section: 'Seniors', can_edit_all: isLeader }),
     })
   );
   await page.route('**/duty-teams*', route =>

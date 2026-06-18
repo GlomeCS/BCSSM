@@ -30,7 +30,7 @@ function setupMockFetch(isLeader = true) {
     if (url.includes('/api/auth/validate')) {
       return Promise.resolve(
         new Response(
-          JSON.stringify({ is_valid: true, role: 'Section Leader', section: 'Seniors', can_edit_all: isLeader }),
+          JSON.stringify({ is_valid: true, user_name: 'Alice', role: 'Section Leader', section: 'Seniors', can_edit_all: isLeader }),
           { headers: { 'Content-Type': 'application/json' } }
         )
       );
