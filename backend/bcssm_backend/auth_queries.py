@@ -4,7 +4,7 @@ import bcrypt
 from redis.exceptions import RedisError
 
 from backend.globals import cache
-import backend.bcssm_backend.db as _db
+import backend.bcssm_backend.db_utils as _db
 from backend.bcssm_backend.constants import ELEVATED_ROLES
 from backend.bcssm_backend.exceptions import AuthenticationError
 

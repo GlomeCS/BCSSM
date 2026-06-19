@@ -8,8 +8,8 @@ from redis.exceptions import RedisError
 from backend.bcssm_backend import create_app
 from backend.bcssm_backend import duty_queries, user_queries, section_queries
 from backend.bcssm_backend import feedback_queries, auth_queries, cache_utils
-from backend.bcssm_backend.db import execute_readonly_query as _real_execute_readonly_query
-from backend.bcssm_backend.db import execute_query as _real_execute_query
+from backend.bcssm_backend.db_utils import execute_readonly_query as _real_execute_readonly_query
+from backend.bcssm_backend.db_utils import execute_query as _real_execute_query
 from backend.bcssm_backend.exceptions import ValidationError, AuthenticationError
 
 # ─── 0) Autouse fixture to push a Flask app context ─────────────────────────
@@ -25,7 +25,7 @@ def flask_app_context(monkeypatch):
 # ─── 1) Autouse fixture to stub read-only helper ────────────────────────────
 @pytest.fixture(autouse=True)
 def mock_readonly(mocker):
-    return mocker.patch('backend.bcssm_backend.db.execute_readonly_query')
+    return mocker.patch('backend.bcssm_backend.db_utils.execute_readonly_query')
 
 # ─── 1.5) Mock the cache to avoid Redis connection issues ───────────────────
 @pytest.fixture(autouse=True)
@@ -43,7 +43,7 @@ def mock_cache(monkeypatch):
 # ─── 2) Fixture to mock db.session directly (for testing execute_query) ─────
 @pytest.fixture
 def mock_db_session():
-    with patch('backend.bcssm_backend.db.db.session') as sess:
+    with patch('backend.bcssm_backend.db_utils.db.session') as sess:
         sess.begin.return_value.__enter__.return_value = sess
         sess.begin.return_value.__exit__.return_value = None
         yield sess
@@ -200,7 +200,7 @@ def test_get_user_duty_short_row(monkeypatch, mock_readonly, mock_cache):
 
 def test_execute_readonly_query_db_error():
     from backend.bcssm_backend.exceptions import DatabaseError
-    with patch('backend.bcssm_backend.db.db') as mock_db:
+    with patch('backend.bcssm_backend.db_utils.db') as mock_db:
         mock_db.engine.connect.side_effect = SQLAlchemyError("connection failed")
         with pytest.raises(DatabaseError, match="Database error"):
             _real_execute_readonly_query("SELECT 1")
@@ -212,10 +212,10 @@ def test_execute_readonly_query_success(caplog):
     mock_result.fetchall.return_value = [("row1",)]
     mock_conn.execute.return_value = mock_result
 
-    with patch('backend.bcssm_backend.db.db') as mock_db:
+    with patch('backend.bcssm_backend.db_utils.db') as mock_db:
         mock_db.engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
         mock_db.engine.connect.return_value.__exit__ = MagicMock(return_value=False)
-        with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.db"):
+        with caplog.at_level(logging.INFO, logger="backend.bcssm_backend.db_utils"):
             rows = _real_execute_readonly_query("SELECT 1", silent=False)
 
     assert rows == [("row1",)]
@@ -1114,14 +1114,14 @@ def test_get_current_cycle_week_integration_with_get_user_duty(monkeypatch, mock
 
 def test_get_feedback_by_date_success(monkeypatch):
     mock_exec = MagicMock(return_value=[("Minis", "Great job"), ("Majors", None)])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     result = feedback_queries.get_feedback_by_date("2025-06-07")
     assert result == {"Minis": "Great job", "Majors": "No feedback available"}
 
 
 def test_get_feedback_by_date_exception(monkeypatch):
     mock_exec = MagicMock(side_effect=SQLAlchemyError("DB fail"))
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     with pytest.raises(SQLAlchemyError):
         feedback_queries.get_feedback_by_date("2025-06-07")
 
@@ -1130,47 +1130,47 @@ def test_get_feedback_by_date_exception(monkeypatch):
 
 def test_get_user_info_found(monkeypatch):
     mock_exec = MagicMock(return_value=[("Alice", "Leader", "Minis")])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     info = user_queries.get_user_info("Alice")
     assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
 
 
 def test_get_user_info_not_found(monkeypatch):
     mock_exec = MagicMock(return_value=[])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     assert user_queries.get_user_info("Bob") is None
 
 
 def test_get_user_info_exception(monkeypatch):
     mock_exec = MagicMock(side_effect=SQLAlchemyError("Oops"))
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     with pytest.raises(SQLAlchemyError):
         user_queries.get_user_info("Alice")
 
 
 def test_get_user_info_by_id_found(monkeypatch):
     mock_exec = MagicMock(return_value=[("Alice", "Leader", "Minis")])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     info = user_queries.get_user_info_by_id(42)
     assert info == {"name": "Alice", "role": "Leader", "section": "Minis"}
 
 
 def test_get_user_id_by_name_found(monkeypatch):
     mock_exec = MagicMock(return_value=[(7,)])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     assert user_queries.get_user_id_by_name("Alice") == 7
 
 
 def test_get_user_id_by_name_not_found(monkeypatch):
     mock_exec = MagicMock(return_value=[])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     assert user_queries.get_user_id_by_name("Ghost") is None
 
 
 def test_get_user_id_by_name_db_error(monkeypatch):
     from backend.bcssm_backend.exceptions import DatabaseError
     mock_exec = MagicMock(side_effect=DatabaseError("DB error"))
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     assert user_queries.get_user_id_by_name("Alice") is None
 
 
@@ -1178,7 +1178,7 @@ def test_get_user_id_by_name_db_error(monkeypatch):
 
 def test_save_devos_feedback_success(monkeypatch):
     mock_exec = MagicMock(return_value=[(5,)])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", mock_exec)
     feedback_queries.save_devos_feedback("Minis", "2025-06-07", "Great session", 1)
     mock_exec.assert_called_once()
     call_params = mock_exec.call_args[0][1]
@@ -1190,21 +1190,21 @@ def test_save_devos_feedback_success(monkeypatch):
 
 def test_save_devos_feedback_section_not_found(monkeypatch):
     mock_exec = MagicMock(return_value=[])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", mock_exec)
     with pytest.raises(ValidationError, match="Section not found"):
         feedback_queries.save_devos_feedback("Unknown", "2025-06-07", "feedback", 1)
 
 
 def test_save_devos_feedback_db_error(monkeypatch):
     mock_exec = MagicMock(side_effect=SQLAlchemyError("DB error"))
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", mock_exec)
     with pytest.raises(SQLAlchemyError):
         feedback_queries.save_devos_feedback("Minis", "2025-06-07", "feedback", 1)
 
 
 def test_save_devos_feedback_uses_single_query(monkeypatch):
     mock_exec = MagicMock(return_value=[(7,)])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", mock_exec)
     feedback_queries.save_devos_feedback("Seniors", "2025-06-07", "Good work", 2)
     assert mock_exec.call_count == 1
     query_text = mock_exec.call_args[0][0]
@@ -1215,7 +1215,7 @@ def test_save_devos_feedback_uses_single_query(monkeypatch):
 
 def test_save_devos_feedback_clears_feedback_cache_on_success(monkeypatch):
     mock_exec = MagicMock(return_value=[(5,)])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", mock_exec)
     mock_clear = MagicMock()
     monkeypatch.setattr("backend.bcssm_backend.feedback_queries.clear_group", mock_clear)
     feedback_queries.save_devos_feedback("Minis", "2025-06-07", "Great session", 1)
@@ -1224,7 +1224,7 @@ def test_save_devos_feedback_clears_feedback_cache_on_success(monkeypatch):
 
 def test_save_devos_feedback_does_not_clear_cache_when_section_not_found(monkeypatch):
     mock_exec = MagicMock(return_value=[])
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", mock_exec)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", mock_exec)
     mock_clear = MagicMock()
     monkeypatch.setattr("backend.bcssm_backend.feedback_queries.clear_group", mock_clear)
     with pytest.raises(ValidationError):
@@ -1379,11 +1379,11 @@ def test_set_user_password_not_found(mock_db_session):
 
 def test_set_user_password_redacts_hash_in_error_log(caplog):
     from backend.bcssm_backend.exceptions import DatabaseError
-    with patch('backend.bcssm_backend.db.db') as mock_db:
+    with patch('backend.bcssm_backend.db_utils.db') as mock_db:
         mock_db.session.begin.return_value.__enter__ = MagicMock(return_value=mock_db.session)
         mock_db.session.begin.return_value.__exit__ = MagicMock(return_value=None)
         mock_db.session.execute.side_effect = SQLAlchemyError("db down")
-        with caplog.at_level(logging.ERROR, logger="backend.bcssm_backend.db"):
+        with caplog.at_level(logging.ERROR, logger="backend.bcssm_backend.db_utils"):
             with pytest.raises(Exception):
                 _real_execute_query(
                     "UPDATE users SET password_hash = :hash WHERE name = :name RETURNING id",
