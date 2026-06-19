@@ -71,7 +71,7 @@ function Home() {
             <h3>Receipts & Expenses</h3>
             <div className="forms-section-links">
               <a
-                href="https://forms.gle/c6gaUmwMMBEATmbc8"
+                href="https://forms.gle/ippejqdQeAxyAUwW7"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="receipt-link"
