@@ -33,7 +33,7 @@ def patch_duties_helpers(monkeypatch):
         fake_get_duty_schedule
     )
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: 1,
     )
     return {

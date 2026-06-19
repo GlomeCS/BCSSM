@@ -1,8 +1,7 @@
-from urllib.parse import urlparse
-from flask import g, redirect, request, session, jsonify
-from markupsafe import escape
+from flask import g, redirect, request, jsonify
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
-from backend.bcssm_backend.utils import get_user_duty, get_user_info, user_assignments
+from backend.bcssm_backend.duty_queries import get_user_duty
+from backend.bcssm_backend.user_queries import get_user_info
 
 
 def init_main_routes(app):
@@ -17,21 +16,6 @@ def init_main_routes(app):
         if request.method == 'GET':
             return redirect('/')
 
-        user_name = request.form.get('user_name')
-        user_name = escape(user_name)  # Escape to prevent XSS
-        app.logger.debug("Received user_name: %s", user_name)
-
-        if user_name in user_assignments:
-            session['user_name'] = user_name
-            target = request.args.get('target', '/').strip()
-            target = target.replace('\\', '')
-            app.logger.debug("Processed target: %s", target)
-            if not urlparse(target).netloc and not urlparse(target).scheme:
-                app.logger.debug("Redirecting to: %s", target)
-                return redirect(target, code=302)
-            app.logger.debug("Target invalid, redirecting to '/'")
-            return redirect('/')
-        app.logger.debug("User not found, redirecting to index")
         return redirect('/')
 
     @app.route('/duty-teams')

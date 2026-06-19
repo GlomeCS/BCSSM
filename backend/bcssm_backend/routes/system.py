@@ -4,7 +4,8 @@ from flask import jsonify, send_from_directory
 from redis.exceptions import RedisError
 
 from backend.bcssm_backend.exceptions import CacheError
-from backend.bcssm_backend.utils import get_all_sections, get_health_status
+from backend.bcssm_backend.health import get_health_status
+from backend.bcssm_backend.section_queries import get_all_sections
 
 
 def init_system_routes(app):

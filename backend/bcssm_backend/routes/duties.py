@@ -3,7 +3,7 @@ import logging
 from flask import g, jsonify
 
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
-from backend.bcssm_backend.utils import get_duty_schedule, get_todays_duties
+from backend.bcssm_backend.duty_queries import get_duty_schedule, get_todays_duties
 
 logger = logging.getLogger(__name__)
 

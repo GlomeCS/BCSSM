@@ -2,9 +2,7 @@ import logging
 from flask import g, jsonify
 
 from backend.bcssm_backend.decorators import require_auth, handle_route_errors
-from backend.bcssm_backend.utils import (
-    get_all_sections_with_users, get_users_by_section
-)
+from backend.bcssm_backend.section_queries import get_all_sections_with_users, get_users_by_section
 
 logger = logging.getLogger(__name__)
 

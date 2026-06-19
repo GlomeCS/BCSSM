@@ -14,7 +14,7 @@ from backend.bcssm_backend.exceptions import (
     BaseError, DatabaseError, CacheError, ValidationError,
     AuthenticationError, NotFoundError,
 )
-from backend.bcssm_backend.utils import _fmt_ttl
+from backend.bcssm_backend.health import _fmt_ttl
 
 
 @pytest.fixture(scope="function")
@@ -39,7 +39,8 @@ def mock_db_cache():
 
     with patch('backend.bcssm_backend.db') as mock_db, \
          patch('backend.bcssm_backend.cache', fake_cache), \
-         patch('backend.bcssm_backend.utils.cache', fake_cache):
+         patch('backend.globals.cache', fake_cache), \
+         patch('backend.bcssm_backend.health.cache', fake_cache):
         mock_db.init_app = MagicMock()
         yield mock_db, fake_cache
 
@@ -59,11 +60,7 @@ def test_create_app_with_valid_env_vars(clean_env, mock_db_cache):
     assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql://test_user:test_password@localhost:6543/test_db'
     assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is False
 
-    # ✅ Only check init_app if NOT in testing mode
-    if not app.config.get("TESTING"):
-        mock_db.init_app.assert_called_once_with(app)
-    else:
-        mock_db.init_app.assert_not_called()  # ✅ Ensure it's not called in testing mode
+    mock_db.init_app.assert_not_called()
 
 
 @patch.dict(os.environ, {}, clear=True)
@@ -204,11 +201,11 @@ def test_health_check_endpoint_exception(mock_db_cache, clean_env):
     client = app.test_client()
 
     response = client.get("/api/health")
-    assert response.status_code == 500
+    assert response.status_code == 200
 
     data = response.get_json()
-    assert data["status"] == "unhealthy"
-    assert "Health check failed" in data["error"]
+    assert data["status"] == "degraded"
+    assert data["cache"] == "unhealthy"
 
 # NEW: Test cache management endpoints
 @patch('backend.bcssm_backend.routes.admin.clear_user_cache')

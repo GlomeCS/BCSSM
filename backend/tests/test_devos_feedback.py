@@ -2,7 +2,8 @@ import pytest
 from sqlalchemy.exc import SQLAlchemyError
 from backend.bcssm_backend import create_app
 from backend.bcssm_backend.exceptions import DatabaseError
-from backend.bcssm_backend.utils import get_feedback_by_date, get_user_info
+from backend.bcssm_backend.feedback_queries import get_feedback_by_date
+from backend.bcssm_backend.user_queries import get_user_info
 from urllib.parse import quote
 from unittest.mock import MagicMock
 
@@ -24,13 +25,13 @@ def client(app):
 @pytest.fixture
 def mock_write(monkeypatch):
     m = MagicMock()
-    monkeypatch.setattr("backend.bcssm_backend.utils.execute_query", m)
+    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", m)
     return m
 
 @pytest.fixture
 def mock_read(monkeypatch):
     m = MagicMock()
-    monkeypatch.setattr("backend.bcssm_backend.utils.execute_readonly_query", m)
+    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", m)
     return m
 
 @pytest.fixture(autouse=True)
@@ -431,7 +432,7 @@ def test_edit_no_user_id_in_session(client, mock_write, monkeypatch):
     mock_write.return_value = [(5,)]
 
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: 42,
     )
 
@@ -452,7 +453,7 @@ def test_edit_no_user_id_in_session(client, mock_write, monkeypatch):
 def test_edit_user_id_db_lookup_returns_none(client, mock_write, monkeypatch):
     """user_id absent from session and DB lookup returns None → @require_auth returns 401."""
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: None,
     )
 

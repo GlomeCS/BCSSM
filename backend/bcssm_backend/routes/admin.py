@@ -8,12 +8,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.exceptions import HTTPException
 
 from backend.bcssm_backend.decorators import require_admin
-from backend.bcssm_backend.exceptions import BaseError, CacheError
-from backend.bcssm_backend.utils import (
+from backend.bcssm_backend.exceptions import BaseError, CacheError, DatabaseError
+from backend.bcssm_backend.auth_queries import get_all_users_password_status, set_user_password
+from backend.bcssm_backend.cache_utils import (
     clear_user_cache, clear_duty_cache, clear_feedback_cache, clear_all_cache,
-    get_cache_status, get_cache_info, _redact_redis_url,
-    get_all_users_password_status, set_user_password,
 )
+from backend.bcssm_backend.health import get_cache_status, get_cache_info, _redact_redis_url
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ def init_admin_routes(app):
     def passwords_status():
         try:
             return jsonify({'users': get_all_users_password_status()}), 200
-        except SQLAlchemyError as e:
+        except (SQLAlchemyError, DatabaseError) as e:
             logger.error("Failed to fetch password status: %s", e)
             return jsonify({'error': 'Database error'}), 500
 
@@ -90,7 +90,7 @@ def init_admin_routes(app):
             if not found:
                 return jsonify({'error': 'User not found'}), 404
             return jsonify({'ok': True, 'user_name': user_name}), 200
-        except SQLAlchemyError as e:
+        except (SQLAlchemyError, DatabaseError) as e:
             logger.error("Failed to set password for %s: %s", user_name, e)
             return jsonify({'error': 'Database error'}), 500
 

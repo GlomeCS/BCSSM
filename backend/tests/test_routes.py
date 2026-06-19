@@ -45,13 +45,9 @@ def env_and_deny_db(monkeypatch):
         'backend.bcssm_backend.routes.routes.get_user_info', mock_get_user_info
     )
 
-    # Mock the text() function from SQLAlchemy
-    mock_text = MagicMock(side_effect=lambda x: x)  # Just return the query string
-
-    # Patch all the components
-    monkeypatch.setattr('backend.bcssm_backend.db.session', mock_sess)
-    monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
-    monkeypatch.setattr('backend.bcssm_backend.utils.text', mock_text)
+    # Patch db session and execute_readonly_query via new module paths
+    monkeypatch.setattr('backend.bcssm_backend.db.db.session', mock_sess)
+    monkeypatch.setattr('backend.bcssm_backend.db.execute_readonly_query', mock_readonly)
 
     return mock_sess, mock_result, mock_readonly, mock_get_user_info
 
@@ -65,10 +61,7 @@ def setup_db_response(env_and_deny_db, user_data=None):
     """
     mock_sess, mock_result, mock_readonly, mock_get_user_info = env_and_deny_db
 
-    if user_data is None:
-        user_data = []
-
-    mock_result.fetchall.return_value = user_data
+    mock_result.fetchall.return_value = user_data or []
     mock_readonly.return_value = user_data
 
     if user_data:
@@ -92,7 +85,6 @@ def mock_cache(monkeypatch):
     fake_cache.delete.return_value = True
     fake_cache.clear.return_value = True
     
-    monkeypatch.setattr('backend.bcssm_backend.utils.cache', fake_cache)
     monkeypatch.setattr('backend.bcssm_backend.routes.users.cache', fake_cache)
     
     return fake_cache
@@ -103,7 +95,7 @@ def mock_cache(monkeypatch):
 def mock_db_queries(monkeypatch):
     """Mock database query functions to avoid SQLAlchemy initialization issues"""
     mock_readonly = MagicMock(side_effect=SQLAlchemyError("Database access not allowed in tests"))
-    monkeypatch.setattr('backend.bcssm_backend.utils.execute_readonly_query', mock_readonly)
+    monkeypatch.setattr('backend.bcssm_backend.db.execute_readonly_query', mock_readonly)
     
     return mock_readonly
 
@@ -128,41 +120,18 @@ def patch_utils_helpers(monkeypatch):
     Mock utility functions for controlled testing
     """
     fake_users = MagicMock(return_value=[])
-    monkeypatch.setattr("backend.bcssm_backend.utils.get_all_users", fake_users)
-
-    fake_assign = {}
-    monkeypatch.setattr("backend.bcssm_backend.utils.user_assignments", fake_assign, raising=False)
+    monkeypatch.setattr("backend.bcssm_backend.routes.users.get_all_users", fake_users)
 
     fake_duty = MagicMock(return_value=None)
-    
-    # Patch get_user_duty in all possible locations where it might be imported
-    monkeypatch.setattr("backend.bcssm_backend.utils.get_user_duty", fake_duty)
-    
-    # Patch in the main routes module where it's likely imported
-    try:
-        monkeypatch.setattr("backend.bcssm_backend.routes.routes.get_user_duty", fake_duty)
-    except AttributeError:
-        pass
-    
-    # Patch in users routes
-    try:
-        monkeypatch.setattr("backend.bcssm_backend.routes.users.get_user_duty", fake_duty)
-    except AttributeError:
-        pass
-    
-    # Patch where the app imports it directly (this is likely the one we need)
-    try:
-        from backend.bcssm_backend.routes import routes
-        monkeypatch.setattr(routes, "get_user_duty", fake_duty)
-    except (ImportError, AttributeError):
-        pass
+    monkeypatch.setattr("backend.bcssm_backend.routes.routes.get_user_duty", fake_duty)
+    monkeypatch.setattr("backend.bcssm_backend.routes.users.get_user_duty", fake_duty)
 
     monkeypatch.setattr(
-        "backend.bcssm_backend.utils.get_user_id_by_name",
+        "backend.bcssm_backend.user_queries.get_user_id_by_name",
         lambda name: 1,
     )
 
-    return fake_users, fake_assign, fake_duty
+    return fake_users, {}, fake_duty
 
 
 # ─── 3) Tests for "/" (index) ─────────────────────────────────────────────────────
@@ -366,15 +335,19 @@ def test_duty_team_index_error_caught(client, patch_utils_helpers, env_and_deny_
 
 
 # ─── 6) Testing static‐file or React SPA fallback ──────────────────────────────
-def test_serve_react_index_or_static(client):
-    resp_static = client.get("/static/some-file.js")
-    assert resp_static.status_code in (200, 404)
+def test_serve_react_index_or_static(app, tmp_path, monkeypatch):
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<!doctype html><html></html>")
+    monkeypatch.setattr(app, "static_folder", str(static_dir))
 
-    resp_fallback = client.get("/foo/bar")
-    assert resp_fallback.status_code in (200, 404)
-    text = resp_fallback.data.decode().lower()
-    if resp_fallback.status_code == 200:
-        assert "<!doctype html>" in text
+    with app.test_client() as c:
+        resp_static = c.get("/static/some-file.js")
+        assert resp_static.status_code in (200, 404)
+
+        resp_fallback = c.get("/foo/bar")
+        assert resp_fallback.status_code == 200
+        assert "<!doctype html>" in resp_fallback.data.decode().lower()
 
 
 # ─── 7) Ensure invalid target logging ──────────────────────────────────────────
@@ -388,31 +361,3 @@ def test_login_invalid_target_logs_warning(client, env_and_deny_db, caplog):
     assert urlparse(resp.headers["Location"]).path == "/"
 
 
-# ─── 8) Login POST with user in user_assignments ────────────────────────────────
-def test_login_post_valid_user_in_assignments(client):
-    """Test login POST when user IS in user_assignments (covers logger.debug lines 49-57)"""
-    from unittest.mock import patch as _patch
-    # Patch user_assignments in the routes module directly to include our test user
-    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
-        resp = client.post("/login", data={"user_name": "ValidUser"}, follow_redirects=False)
-    assert resp.status_code == 302
-    assert urlparse(resp.headers["Location"]).path == "/"
-
-
-def test_login_post_valid_user_valid_target(client):
-    """Test login POST with valid relative target redirects to that target"""
-    from unittest.mock import patch as _patch
-    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
-        resp = client.post("/login?target=/dashboard", data={"user_name": "ValidUser"}, follow_redirects=False)
-    assert resp.status_code == 302
-    # Relative target is accepted
-    assert urlparse(resp.headers["Location"]).path == "/dashboard"
-
-
-def test_login_post_valid_user_external_target(client):
-    """Test login POST with external URL target redirects to / (covers lines 56-57)"""
-    from unittest.mock import patch as _patch
-    with _patch.dict('backend.bcssm_backend.routes.routes.user_assignments', {'ValidUser': 'section'}):
-        resp = client.post("/login?target=http://evil.com", data={"user_name": "ValidUser"}, follow_redirects=False)
-    assert resp.status_code == 302
-    assert urlparse(resp.headers["Location"]).path == "/"
