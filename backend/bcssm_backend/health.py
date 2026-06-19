@@ -74,7 +74,7 @@ def get_health_status() -> dict:
         cache.set('health:test', 'ok', timeout=10)
         cache_ok = cache.get('health:test') == 'ok'
         cache.delete('health:test')
-    except Exception as e:
+    except RedisError as e:
         logger.warning("Cache probe failed: %s", e)
         cache_ok = False
     health = {
