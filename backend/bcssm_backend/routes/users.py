@@ -177,7 +177,8 @@ def init_users_routes(app):
                 "FROM users u "
                 "LEFT JOIN sections s ON u.section_id = s.id "
                 "WHERE u.name = :user_name",
-                {'user_name': user_name}
+                {'user_name': user_name},
+                silent=True
             )
             
             if not user_rows:
