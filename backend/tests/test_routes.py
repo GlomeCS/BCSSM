@@ -46,8 +46,8 @@ def env_and_deny_db(monkeypatch):
     )
 
     # Patch db session and execute_readonly_query via new module paths
-    monkeypatch.setattr('backend.bcssm_backend.db.db.session', mock_sess)
-    monkeypatch.setattr('backend.bcssm_backend.db.execute_readonly_query', mock_readonly)
+    monkeypatch.setattr('backend.bcssm_backend.db_utils.db.session', mock_sess)
+    monkeypatch.setattr('backend.bcssm_backend.db_utils.execute_readonly_query', mock_readonly)
 
     return mock_sess, mock_result, mock_readonly, mock_get_user_info
 
@@ -95,7 +95,7 @@ def mock_cache(monkeypatch):
 def mock_db_queries(monkeypatch):
     """Mock database query functions to avoid SQLAlchemy initialization issues"""
     mock_readonly = MagicMock(side_effect=SQLAlchemyError("Database access not allowed in tests"))
-    monkeypatch.setattr('backend.bcssm_backend.db.execute_readonly_query', mock_readonly)
+    monkeypatch.setattr('backend.bcssm_backend.db_utils.execute_readonly_query', mock_readonly)
     
     return mock_readonly
 

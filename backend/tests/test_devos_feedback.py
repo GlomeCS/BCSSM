@@ -25,13 +25,13 @@ def client(app):
 @pytest.fixture
 def mock_write(monkeypatch):
     m = MagicMock()
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_query", m)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_query", m)
     return m
 
 @pytest.fixture
 def mock_read(monkeypatch):
     m = MagicMock()
-    monkeypatch.setattr("backend.bcssm_backend.db.execute_readonly_query", m)
+    monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", m)
     return m
 
 @pytest.fixture(autouse=True)

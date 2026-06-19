@@ -135,6 +135,20 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Smoke test app factory in non-testing mode
+      env:
+        FLASK_ENV: production
+      run: |
+        # create_app() skips db.init_app()/cache.init_app() when TESTING=True, so the
+        # full pytest suite never exercises this path. Engine/cache creation here is
+        # lazy (no real DB/Redis connection is opened), so this just catches
+        # import-time and wiring errors (e.g. a module shadowing the `db`/`cache`
+        # globals) without making any outbound connections.
+        python -c "
+        from backend.bcssm_backend import create_app
+        create_app()
+        print('create_app() booted successfully in non-testing mode')
+        "
     - name: Test with coverage.py
       run: |
         coverage run -m pytest --junitxml=pytest-results.xml

@@ -1,6 +1,6 @@
 import logging
 
-import backend.bcssm_backend.db as _db
+import backend.bcssm_backend.db_utils as _db
 from backend.bcssm_backend.cache_utils import cached_result, clear_group
 from backend.bcssm_backend.exceptions import ValidationError
 
