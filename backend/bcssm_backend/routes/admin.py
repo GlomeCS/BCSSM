@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 def init_admin_routes(app):
     @app.route("/api/admin/cache/clear", methods=['POST'])
+    @require_admin
     def clear_cache_endpoint():
         try:
             data = request.get_json() if request.is_json else {}

@@ -164,8 +164,13 @@ def test_path_traversal_dot_dot_blocked(app, tmp_path, monkeypatch):
     ("feedback", "clear_feedback_cache", "Cleared feedback caches"),
 ])
 def test_cache_clear_success(client, monkeypatch, cache_type, fn_name, expected_message):
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
     monkeypatch.setattr(f"backend.bcssm_backend.routes.admin.{fn_name}", lambda: True)
-    resp = client.post("/api/admin/cache/clear", json={"type": cache_type})
+    resp = client.post(
+        "/api/admin/cache/clear",
+        json={"type": cache_type},
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["success"] is True
@@ -174,18 +179,34 @@ def test_cache_clear_success(client, monkeypatch, cache_type, fn_name, expected_
 
 
 def test_cache_clear_failure_returns_500(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
     monkeypatch.setattr("backend.bcssm_backend.routes.admin.clear_all_cache", lambda: False)
-    resp = client.post("/api/admin/cache/clear", json={"type": "all"})
+    resp = client.post(
+        "/api/admin/cache/clear",
+        json={"type": "all"},
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
     assert resp.status_code == 500
     data = resp.get_json()
     assert data["success"] is False
     assert "Failed to clear" in data["error"]
 
 
-def test_cache_clear_invalid_type_returns_400(client):
-    resp = client.post("/api/admin/cache/clear", json={"type": "invalid"})
+def test_cache_clear_invalid_type_returns_400(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_SECRET", "correct-secret")
+    resp = client.post(
+        "/api/admin/cache/clear",
+        json={"type": "invalid"},
+        headers={"X-Admin-Secret": "correct-secret"},
+    )
     assert resp.status_code == 400
     assert resp.get_json()["success"] is False
+
+
+def test_cache_clear_unauthenticated_returns_403(client, monkeypatch):
+    monkeypatch.delenv("ADMIN_SECRET", raising=False)
+    resp = client.post("/api/admin/cache/clear", json={"type": "all"})
+    assert resp.status_code == 403
 
 
 # ─── _is_authorized_admin: session fast path ─────────────────────────────────
