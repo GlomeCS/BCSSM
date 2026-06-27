@@ -383,8 +383,8 @@ def test_clear_group_duties_scans_dynamic_and_deletes_static():
     fake_cache, mock_redis = _make_cache_with_redis()
     clear_group("duties", cache=fake_cache)
 
-    # duties:schedule:14day:anchor is a static key — deleted directly
-    fake_cache.delete.assert_called_once_with("duties:schedule:14day:anchor")
+    # duties:schedule:14day:2026 is a static key — deleted directly
+    fake_cache.delete.assert_called_once_with("duties:schedule:14day:2026")
 
     patterns_scanned = {
         c.kwargs.get('match') or c.args[0]
@@ -413,8 +413,8 @@ def test_clear_group_scan_deletes_found_keys():
 
     clear_group("duties", cache=fake_cache)
 
-    # Static anchor key deleted directly via cache.delete
-    fake_cache.delete.assert_called_once_with("duties:schedule:14day:anchor")
+    # Static key deleted directly via cache.delete
+    fake_cache.delete.assert_called_once_with("duties:schedule:14day:2026")
     # Dynamic keys deleted via redis SCAN
     assert mock_redis.delete.call_count == 2
     deleted_redis_keys = {c.args[0] for c in mock_redis.delete.call_args_list}
