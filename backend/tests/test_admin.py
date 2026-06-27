@@ -155,6 +155,39 @@ def test_path_traversal_dot_dot_blocked(app, tmp_path, monkeypatch):
         assert b"SENSITIVE" not in resp.data
 
 
+# ─── /api/admin/cache/clear ──────────────────────────────────────────────────
+
+@pytest.mark.parametrize("cache_type,fn_name,expected_message", [
+    ("all",      "clear_all_cache",      "Cleared all caches"),
+    ("users",    "clear_user_cache",     "Cleared user-related caches"),
+    ("duties",   "clear_duty_cache",     "Cleared duty-related caches"),
+    ("feedback", "clear_feedback_cache", "Cleared feedback caches"),
+])
+def test_cache_clear_success(client, monkeypatch, cache_type, fn_name, expected_message):
+    monkeypatch.setattr(f"backend.bcssm_backend.routes.admin.{fn_name}", lambda: True)
+    resp = client.post("/api/admin/cache/clear", json={"type": cache_type})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["success"] is True
+    assert data["message"] == expected_message
+    assert data["cache_type"] == cache_type
+
+
+def test_cache_clear_failure_returns_500(client, monkeypatch):
+    monkeypatch.setattr("backend.bcssm_backend.routes.admin.clear_all_cache", lambda: False)
+    resp = client.post("/api/admin/cache/clear", json={"type": "all"})
+    assert resp.status_code == 500
+    data = resp.get_json()
+    assert data["success"] is False
+    assert "Failed to clear" in data["error"]
+
+
+def test_cache_clear_invalid_type_returns_400(client):
+    resp = client.post("/api/admin/cache/clear", json={"type": "invalid"})
+    assert resp.status_code == 400
+    assert resp.get_json()["success"] is False
+
+
 # ─── _is_authorized_admin: session fast path ─────────────────────────────────
 
 def test_passwords_status_session_admin_fast_path(client, monkeypatch):
