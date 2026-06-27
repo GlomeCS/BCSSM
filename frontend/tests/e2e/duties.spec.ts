@@ -135,12 +135,12 @@ test('shows "No Duty Today" message when user has no duties', async ({ page }) =
 test('switching to Schedule tab shows the schedule table', async ({ page }) => {
   await setupDutiesPage(page);
   await page.getByRole('button', { name: /2-week schedule/i }).click();
-  await expect(page.getByRole('table')).toBeVisible();
-  // Column headers for duty names
-  await expect(page.getByRole('columnheader', { name: 'Setup' })).toBeVisible();
-  await expect(page.getByRole('columnheader', { name: 'Teardown' })).toBeVisible();
-  // Date rows
-  await expect(page.getByText(/Sat.*4.*Jul/i)).toBeVisible();
+  await expect(page.getByRole('table').first()).toBeVisible();
+  // Duty names are now row labels
+  await expect(page.getByRole('cell', { name: 'Setup' }).first()).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Teardown' }).first()).toBeVisible();
+  // Days of the week are now column headers
+  await expect(page.getByRole('columnheader', { name: /Sat/i }).first()).toBeVisible();
 });
 
 test('duties page visual snapshot - today tab', async ({ page }) => {
@@ -153,7 +153,7 @@ test('duties page visual snapshot - today tab', async ({ page }) => {
 test('duties page visual snapshot - schedule tab', async ({ page }) => {
   await setupDutiesPage(page);
   await page.getByRole('button', { name: /2-week schedule/i }).click();
-  await expect(page.getByRole('table')).toBeVisible();
+  await expect(page.getByRole('table').first()).toBeVisible();
   await page.locator('.duties-date').evaluate(el => ((el as HTMLElement).style.visibility = 'hidden'));
   await expect(page).toHaveScreenshot('duties-schedule.png', { fullPage: true });
 });
