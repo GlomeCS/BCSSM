@@ -36,6 +36,7 @@ type ScheduleDay = {
 
 type ScheduleData = {
   schedule: ScheduleDay[];
+  duty_order: { [duty_name: string]: number };
 };
 
 function mapApiDuties(raw: unknown): Duty[] {
@@ -49,8 +50,14 @@ function mapApiDuties(raw: unknown): Duty[] {
   }));
 }
 
-function mapSchedule(raw: unknown): ScheduleDay[] {
-  return ((raw as ScheduleData).schedule) || [];
+type ScheduleResult = { days: ScheduleDay[]; dutyOrder: { [name: string]: number } };
+
+function mapSchedule(raw: unknown): ScheduleResult {
+  const data = raw as ScheduleData;
+  return {
+    days: data.schedule || [],
+    dutyOrder: data.duty_order || {},
+  };
 }
 
 export default function DutiesPage() {
@@ -63,10 +70,12 @@ export default function DutiesPage() {
     "/api/duties/today",
     { skip: !currentUser, transform: mapApiDuties }
   );
-  const { data: schedule, loading: scheduleLoading } = useApiGet<ScheduleDay[]>(
+  const { data: scheduleResult, loading: scheduleLoading } = useApiGet<ScheduleResult>(
     "/api/duties/schedule",
     { skip: !currentUser, transform: mapSchedule }
   );
+  const schedule = scheduleResult?.days ?? [];
+  const dutyOrder = scheduleResult?.dutyOrder ?? {};
 
   // Extract team number from team name (format: "Duty Team 1", "Duty Team 2", etc.)
   const getTeamNumber = (teamName?: string): string => {
@@ -268,9 +277,9 @@ export default function DutiesPage() {
                   <div className="loading-spinner"></div>
                   <p className="loading-text">Loading schedule...</p>
                 </div>
-              ) : (schedule ?? []).length > 0 ? (
+              ) : schedule.length > 0 ? (
                 (() => {
-                  const allSchedule = schedule ?? [];
+                  const allSchedule = schedule;
 
                   const week1Days = allSchedule.filter(d => getDateOnly(d.date) < '2026-07-12');
                   const week2Days = allSchedule.filter(d => getDateOnly(d.date) >= '2026-07-12');
@@ -283,7 +292,9 @@ export default function DutiesPage() {
                       });
                     }
                   });
-                  const sortedDuties = Array.from(allDuties).sort();
+                  const sortedDuties = Array.from(allDuties).sort(
+                    (a, b) => (dutyOrder[a] ?? 99) - (dutyOrder[b] ?? 99)
+                  );
 
                   const buildDutyMap = (days: ScheduleDay[]) => {
                     const map: { [duty: string]: { [date: string]: string } } = {};

@@ -111,9 +111,7 @@ def test_get_all_users_db_failure_returns_empty_list(mock_readonly, mock_cache):
 
 # ─── 5) Tests for get_user_duty() ─────────────────────────────────────────────
 def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, mock_cache):
-    FakeDatetime.today_weekday = 2
     monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 0)
 
     mock_readonly.return_value = [
         ("Ivy","Minis","Team Member","Team1","Lunch Duty")
@@ -136,9 +134,10 @@ def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, 
 
     mock_readonly.assert_called_once()
     sql, params = mock_readonly.call_args[0]
-    assert isinstance(params['day'], int)
-    assert params['day'] == 3
-    assert params['cycle_week'] == 0
+    assert params['user_name'] == 'Ivy'
+    assert 'day' not in params
+    assert 'cycle_week' not in params
+    assert 'schedule_date = CURRENT_DATE' in sql
 
 def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     cached_duty = {
@@ -150,9 +149,7 @@ def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     }
     mock_cache.get.return_value = cached_duty
 
-    FakeDatetime.today_weekday = 2
     monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 0)
 
     result = duty_queries.get_user_duty("Ivy")
 
@@ -162,9 +159,7 @@ def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     mock_cache.set.assert_not_called()
 
 def test_get_user_duty_not_assigned_returns_error(monkeypatch, mock_readonly, mock_cache):
-    FakeDatetime.today_weekday = 0
     monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 0)
 
     mock_readonly.return_value = []
     result = duty_queries.get_user_duty("NoOne")
@@ -177,9 +172,7 @@ def test_get_user_duty_not_assigned_returns_error(monkeypatch, mock_readonly, mo
     assert cache_set_args[1]['timeout'] == 600
 
 def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly, mock_cache):
-    FakeDatetime.today_weekday = 0
     monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 0)
 
     mock_readonly.side_effect = SQLAlchemyError("Something broke")
     with pytest.raises(SQLAlchemyError, match="Something broke"):
@@ -188,9 +181,7 @@ def test_get_user_duty_exception_propagates_error(monkeypatch, mock_readonly, mo
     mock_cache.set.assert_not_called()
 
 def test_get_user_duty_short_row(monkeypatch, mock_readonly, mock_cache):
-    FakeDatetime.today_weekday = 0
     monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 0)
 
     mock_readonly.return_value = [('Alice', 'Section1', 'Role1')]
     result = duty_queries.get_user_duty("Alice")
@@ -311,11 +302,9 @@ def test_execute_query_failure_triggers_rollback(mock_db_session):
     with pytest.raises(DatabaseError, match="Database error"):
         _real_execute_query("DELETE FROM users")
 
-# Test get_todays_duties to verify cycle_week usage
-def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly, mock_cache):
-    FakeDatetime.today_weekday = 1  # Tuesday
+# Test get_todays_duties to verify schedule_date usage
+def test_get_todays_duties_uses_schedule_date(monkeypatch, mock_readonly, mock_cache):
     monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 1)
 
     mock_readonly.return_value = [
         (1, "Kitchen Duty", "Clean kitchen", "Team A", [{"name": "Alice", "week": "Both"}], True)
@@ -323,18 +312,15 @@ def test_get_todays_duties_uses_cycle_week(monkeypatch, mock_readonly, mock_cach
 
     result = duty_queries.get_todays_duties("Alice")
 
-    cache_key_pattern = 'duties:today:day2:cycle1:userAlice'
+    cache_key_pattern = f'duties:today:{_FAKE_DATE}:userAlice'
     mock_cache.get.assert_called_once_with(cache_key_pattern)
     mock_cache.set.assert_called_once()
 
     sql, params = mock_readonly.call_args[0]
-    assert params['day'] == 2
-    assert params['cycle_week'] == 1
     assert params['user_name'] == "Alice"
-
-    assert "WITH computed_cycle" not in sql
-    assert "WHERE ds.day = :day" in sql
-    assert "AND ds.cycle_week = :cycle_week" in sql
+    assert 'day' not in params
+    assert 'cycle_week' not in params
+    assert "WHERE ds.schedule_date = CURRENT_DATE" in sql
 
 def test_caching_behavior(mock_readonly, mock_cache):
     mock_readonly.return_value = [('Alice Smith','SectionA','RoleA','TeamA')]
@@ -356,16 +342,18 @@ def test_caching_behavior(mock_readonly, mock_cache):
 
     assert result2 == ['Alice Smith']
 
-# Test the get_duty_schedule optimization
+# Test the get_duty_schedule query
 def test_get_duty_schedule_uses_parameterized_query(mock_readonly, mock_cache):
+    from datetime import date
     mock_readonly.return_value = [
-        (1, 0, "Kitchen Duty", "Clean kitchen", "Team A", [{"name": "Alice", "week": "Both"}])
+        (date(2026, 7, 4), "Kitchen Duty", "Clean kitchen", 1, "Team A", [{"name": "Alice", "week": "Both"}])
     ]
 
     result = duty_queries.get_duty_schedule()
 
-    assert isinstance(result, list)
-    assert len(result) == 14
+    assert isinstance(result, dict)
+    assert len(result["schedule"]) == 14
+    assert result["duty_order"] == {"Kitchen Duty": 1}
 
     mock_cache.get.assert_called_once()
     cache_key = mock_cache.get.call_args[0][0]
@@ -373,77 +361,41 @@ def test_get_duty_schedule_uses_parameterized_query(mock_readonly, mock_cache):
     mock_cache.set.assert_called_once()
 
     sql, params = mock_readonly.call_args[0]
-    assert "ANY(:days)" in sql
-    assert "ANY(:cycles)" in sql
-    assert "days" in params
-    assert "cycles" in params
-
-    assert isinstance(params['days'], list)
-    assert isinstance(params['cycles'], list)
+    assert "BETWEEN :start_date AND :end_date" in sql
+    assert params['start_date'] == duty_queries.SCHEDULE_START
+    assert params['end_date'] == duty_queries.SCHEDULE_END
 
 # ─── _build_schedule: pure function tests ────────────────────────────────────
 
 def test_build_schedule_correct_date_range():
-    """_build_schedule always produces exactly 14 entries starting from the anchor."""
-    anchor = datetime(2026, 7, 4)
-    result = duty_queries._build_schedule(anchor, rows=[])
-    assert len(result) == 14
-    assert result[0]["date"] == "2026-07-04"
-    assert result[-1]["date"] == "2026-07-17"
+    """_build_schedule always produces exactly 14 entries from SCHEDULE_START."""
+    result = duty_queries._build_schedule(rows=[])
+    assert len(result["schedule"]) == 14
+    assert result["schedule"][0]["date"] == "2026-07-04"
+    assert result["schedule"][-1]["date"] == "2026-07-17"
 
 
 def test_build_schedule_week_labels():
-    """Each entry carries a 'Week A' or 'Week B' label."""
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = datetime(2026, 7, 4)
-    result = duty_queries._build_schedule(anchor, rows=[])
-    for entry in result:
-        assert entry["week"] in ("Week A", "Week B")
+    """First 7 entries are Week A, last 7 are Week B."""
+    result = duty_queries._build_schedule(rows=[])
+    assert [e["week"] for e in result["schedule"][:7]] == ["Week A"] * 7
+    assert [e["week"] for e in result["schedule"][7:]] == ["Week B"] * 7
 
 
 def test_build_schedule_assigns_duties_to_correct_date():
-    """Duties are placed on the right date via (day, cycle_week) matching."""
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = datetime(2026, 7, 4)
-    result_no_duties = duty_queries._build_schedule(anchor, rows=[])
-    # Find Saturday Week A to get its (day, cycle_week)
-    saturday_a = next(
-        e for e in result_no_duties if e["day_name"] == "Saturday" and e["week"] == "Week A"
-    )
-    # Compute expected (day, cycle_week) for that date
-    sat_dt = datetime.strptime(saturday_a["date"], "%Y-%m-%d")
-    db_day = (sat_dt.weekday() + 1) % 7
-    cw = duty_queries._cycle_week_for_date(sat_dt.date())
-    row = (db_day, cw, "Security", "Guard duty", "Alpha Team", [{"name": "Smith", "week": "Both"}])
-    result = duty_queries._build_schedule(anchor, rows=[row])
-    match = next(e for e in result if e["date"] == saturday_a["date"])
+    """Duties are placed on the matching schedule_date."""
+    from datetime import date
+    target = date(2026, 7, 4)  # first Saturday (Week A)
+    row = (target, "Security", "Guard duty", 1, "Alpha Team", [{"name": "Smith", "week": "Both"}])
+    result = duty_queries._build_schedule(rows=[row])
+    match = next(e for e in result["schedule"] if e["date"] == "2026-07-04")
     assert match["duties"][0]["duty_name"] == "Security"
 
 
 def test_build_schedule_empty_rows_returns_all_dates_with_no_duties():
     """No DB rows → every date entry has an empty duties list."""
-    anchor = datetime(2026, 7, 4)
-    result = duty_queries._build_schedule(anchor, rows=[])
-    assert all(d["duties"] == [] for d in result)
-
-
-def test_build_schedule_week_labels_relative_to_custom_anchor():
-    """Week labels are computed relative to the passed-in anchor, not the global CYCLE_ANCHOR."""
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = datetime(2026, 9, 1)  # deliberately not duty_queries.CYCLE_ANCHOR
-    result = duty_queries._build_schedule(anchor, rows=[])
-    assert [e["week"] for e in result[:7]] == ["Week A"] * 7
-    assert [e["week"] for e in result[7:]] == ["Week B"] * 7
-
-
-def test_get_current_cycle_week_calculation():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-
-    assert duty_queries._cycle_week_for_date(anchor) == 0
-    assert duty_queries._cycle_week_for_date(anchor + timedelta(weeks=1)) == 1
-    assert duty_queries._cycle_week_for_date(anchor + timedelta(weeks=2)) == 0
+    result = duty_queries._build_schedule(rows=[])
+    assert all(d["duties"] == [] for d in result["schedule"])
 
 # ─── Tests for cache clearing methods ────────────────────────────────────────
 
@@ -554,8 +506,9 @@ def test_cache_clear_after_user_update_scenario(mock_readonly, mock_cache):
     mock_cache.delete.assert_called()
 
 def test_cache_clear_after_duty_schedule_update_scenario(mock_readonly, mock_cache):
+    from datetime import date
     mock_readonly.return_value = [
-        (1, 0, "Kitchen Duty", "Clean kitchen", "Team A", [{"name": "Alice", "week": "Both"}])
+        (date(2026, 7, 4), "Kitchen Duty", "Clean kitchen", 1, "Team A", [{"name": "Alice", "week": "Both"}])
     ]
     initial_schedule = duty_queries.get_duty_schedule()
 
@@ -565,12 +518,12 @@ def test_cache_clear_after_duty_schedule_update_scenario(mock_readonly, mock_cac
 
     mock_cache.get.return_value = None
     mock_readonly.return_value = [
-        (1, 0, "Kitchen Duty", "Clean kitchen UPDATED", "Team A", [{"name": "Bob", "week": "Both"}])
+        (date(2026, 7, 4), "Kitchen Duty", "Clean kitchen UPDATED", 1, "Team A", [{"name": "Bob", "week": "Both"}])
     ]
     updated_schedule = duty_queries.get_duty_schedule()
 
-    assert len(initial_schedule) == 14
-    assert len(updated_schedule) == 14
+    assert len(initial_schedule["schedule"]) == 14
+    assert len(updated_schedule["schedule"]) == 14
 
 # ─── Edge case tests ─────────────────────────────────────────────────────────
 
@@ -955,160 +908,6 @@ def test_error_handling_consistency_across_methods(mock_readonly, mock_cache):
         assert "error" in result
         assert expected_error_prefix in result["error"]
         assert error_message in result["error"]
-
-# ─── Tests for _cycle_week_for_date() and get_current_cycle_week() ───────────
-
-def test_cycle_week_for_date_week_a_start():
-    duty_queries._cycle_week_for_date.cache_clear()
-    assert duty_queries._cycle_week_for_date(duty_queries.CYCLE_ANCHOR.date()) == 0
-
-def test_cycle_week_for_date_week_b_start():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    assert duty_queries._cycle_week_for_date((duty_queries.CYCLE_ANCHOR + timedelta(weeks=1)).date()) == 1
-
-def test_cycle_week_for_date_full_camp_schedule():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-    for i in range(14):
-        d = anchor + timedelta(days=i)
-        expected = 0 if i < 7 else 1
-        assert duty_queries._cycle_week_for_date(d) == expected, f"Day {i} ({d}) should be cycle {expected}"
-
-def test_cycle_week_for_date_edge_cases():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-    test_cases = [
-        (anchor + timedelta(days=-1), 1, "Day before anchor"),
-        (anchor + timedelta(days=0),  0, "Anchor (Week A start)"),
-        (anchor + timedelta(days=6),  0, "Last day of Week A"),
-        (anchor + timedelta(days=7),  1, "First day of Week B"),
-        (anchor + timedelta(days=13), 1, "Last day of Week B"),
-        (anchor + timedelta(days=14), 0, "Week A again"),
-        (anchor + timedelta(days=28), 0, "Week A after month boundary"),
-        (anchor + timedelta(days=35), 1, "Week B after month boundary"),
-    ]
-    for d, expected, description in test_cases:
-        result = duty_queries._cycle_week_for_date(d)
-        assert result == expected, f"{description} ({d}): expected {expected}, got {result}"
-
-def test_cycle_week_for_date_caching_same_date():
-    duty_queries._cycle_week_for_date.cache_clear()
-    d = duty_queries.CYCLE_ANCHOR.date()
-    duty_queries._cycle_week_for_date(d)
-    duty_queries._cycle_week_for_date(d)
-    info = duty_queries._cycle_week_for_date.cache_info()
-    assert info.hits == 1
-    assert info.misses == 1
-
-def test_cycle_week_for_date_different_dates_independent():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    week_a = duty_queries.CYCLE_ANCHOR.date()
-    week_b = (duty_queries.CYCLE_ANCHOR + timedelta(weeks=1)).date()
-
-    assert duty_queries._cycle_week_for_date(week_a) == 0
-    assert duty_queries._cycle_week_for_date(week_b) == 1
-
-    info = duty_queries._cycle_week_for_date.cache_info()
-    assert info.currsize == 2
-    assert info.misses == 2
-
-    assert duty_queries._cycle_week_for_date(week_a) == 0
-    assert duty_queries._cycle_week_for_date(week_b) == 1
-    assert duty_queries._cycle_week_for_date.cache_info().hits == 2
-
-def test_cycle_week_for_date_maxsize_eviction():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-
-    duty_queries._cycle_week_for_date(anchor)
-    duty_queries._cycle_week_for_date(anchor + timedelta(weeks=1))
-    assert duty_queries._cycle_week_for_date.cache_info().currsize == 2
-
-    duty_queries._cycle_week_for_date(anchor + timedelta(weeks=2))
-    assert duty_queries._cycle_week_for_date.cache_info().currsize == 2
-
-def test_cycle_week_for_date_long_term_pattern():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-    for week_num in range(8):
-        d = anchor + timedelta(weeks=week_num)
-        expected = week_num % 2
-        assert duty_queries._cycle_week_for_date(d) == expected, f"Week {week_num} ({d}): expected {expected}"
-
-def test_cycle_week_for_date_matches_duty_schedule_calculation():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-    test_dates = [anchor + timedelta(weeks=n) for n in range(5)]
-    for d in test_dates:
-        days = (d - anchor).days
-        expected = (days // 7) % 2
-        assert duty_queries._cycle_week_for_date(d) == expected, f"Mismatch for {d}"
-
-def test_cycle_week_for_date_before_anchor():
-    from datetime import timedelta
-    duty_queries._cycle_week_for_date.cache_clear()
-    anchor = duty_queries.CYCLE_ANCHOR.date()
-    test_cases = [
-        anchor + timedelta(days=-1),
-        anchor + timedelta(days=-7),
-        anchor + timedelta(days=-14),
-    ]
-    for d in test_cases:
-        days = (d - anchor).days
-        expected = (days // 7) % 2
-        assert duty_queries._cycle_week_for_date(d) == expected, f"Before-anchor mismatch for {d}"
-
-def test_cycle_week_for_date_cache_info():
-    duty_queries._cycle_week_for_date.cache_clear()
-    info = duty_queries._cycle_week_for_date.cache_info()
-    assert info.currsize == 0
-    assert info.maxsize == 2
-
-    duty_queries._cycle_week_for_date(duty_queries.CYCLE_ANCHOR.date())
-    info = duty_queries._cycle_week_for_date.cache_info()
-    assert info.currsize == 1
-    assert info.misses == 1
-    assert info.hits == 0
-
-def test_get_current_cycle_week_delegates_to_date_helper(monkeypatch):
-    captured = []
-
-    def fake_cycle_week(d):
-        captured.append(d)
-        return 99
-
-    monkeypatch.setattr(duty_queries, '_cycle_week_for_date', fake_cycle_week)
-    result = duty_queries.get_current_cycle_week()
-
-    assert result == 99
-    assert len(captured) == 1
-    assert captured[0] == datetime.now().date()
-
-def test_get_current_cycle_week_integration_with_get_user_duty(monkeypatch, mock_readonly, mock_cache):
-    FakeDatetime.today_weekday = 0  # Monday
-    monkeypatch.setattr(duty_queries, 'datetime', FakeDatetime)
-    monkeypatch.setattr(duty_queries, 'get_current_cycle_week', lambda: 1)
-
-    mock_readonly.return_value = [
-        ("Test User", "Test Section", "Leader", "Test Team", "Test Duty")
-    ]
-
-    result = duty_queries.get_user_duty("Test User")
-
-    _sql, params = mock_readonly.call_args[0]
-    assert params['cycle_week'] == 1
-    assert params['day'] == 1  # Monday: (0 + 1) % 7 = 1
-
-    assert result['user'] == "Test User"
-    assert result['duty'] == "Test Duty"
-
 
 # ─── Tests for get_feedback_by_date ─────────────────────────────────────────
 

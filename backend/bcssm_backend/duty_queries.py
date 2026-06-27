@@ -1,27 +1,15 @@
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
-from functools import lru_cache
+from datetime import date, datetime, timedelta
 
 import backend.bcssm_backend.db_utils as _db
 from backend.bcssm_backend.cache_utils import cached_result
 
 logger = logging.getLogger(__name__)
 
-CYCLE_ANCHOR = datetime(2026, 7, 4)
-DUTY_SCHEDULE_CACHE_KEY = 'duties:schedule:14day:anchor'
-
-
-@lru_cache(maxsize=2)
-def _cycle_week_for_date(target_date, anchor=None):
-    if anchor is None:
-        anchor = CYCLE_ANCHOR.date()
-    days_since_cycle_start = (target_date - anchor).days
-    return (days_since_cycle_start // 7) % 2
-
-
-def get_current_cycle_week():
-    return _cycle_week_for_date(datetime.now().date())
+SCHEDULE_START = date(2026, 7, 4)
+SCHEDULE_END = SCHEDULE_START + timedelta(days=13)
+DUTY_SCHEDULE_CACHE_KEY = 'duties:schedule:14day:2026'
 
 
 def _user_duty_key(user_name):
@@ -30,8 +18,6 @@ def _user_duty_key(user_name):
 
 @cached_result(_user_duty_key, registry_key='user:duty:{name}:{date}')
 def get_user_duty(user_name):
-    current_day = (datetime.now().weekday() + 1) % 7
-    current_cycle = get_current_cycle_week()
     query = """
     SELECT
         u.name AS user_name,
@@ -43,16 +29,11 @@ def get_user_duty(user_name):
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
     LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id
-        AND ds.day = :day
-        AND ds.cycle_week = :cycle_week
+        AND ds.schedule_date = CURRENT_DATE
     LEFT JOIN duties d ON ds.duty_id = d.id
     WHERE u.name = :user_name;
     """
-    result = _db.execute_readonly_query(query, {
-        "user_name": user_name,
-        "day": current_day,
-        "cycle_week": current_cycle
-    })
+    result = _db.execute_readonly_query(query, {"user_name": user_name})
     if not result:
         return {"error": "User not found or no duty assigned"}
     row = result[0]
@@ -69,15 +50,11 @@ def get_user_duty(user_name):
 
 
 def _todays_duties_key(user_name):
-    day = (datetime.now().weekday() + 1) % 7
-    cycle = get_current_cycle_week()
-    return f'duties:today:day{day}:cycle{cycle}:user{user_name}'
+    return f'duties:today:{datetime.now().date()}:user{user_name}'
 
 
-@cached_result(_todays_duties_key, registry_key='duties:today:{day}:{cycle}:{name}', on_error=[])
+@cached_result(_todays_duties_key, registry_key='duties:today:{date}:{name}', on_error=[])
 def get_todays_duties(user_name):
-    current_day = (datetime.now().weekday() + 1) % 7
-    current_cycle = get_current_cycle_week()
     query = '''
     SELECT
         d.id,
@@ -103,16 +80,11 @@ def get_todays_duties(user_name):
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
     LEFT JOIN users u ON u.duty_team_id = dt.id
-    WHERE ds.day = :day
-        AND ds.cycle_week = :cycle_week
-    GROUP BY d.id, d.name, d.duty_description, dt.name
-    ORDER BY d.name;
+    WHERE ds.schedule_date = CURRENT_DATE
+    GROUP BY d.id, d.name, d.duty_description, dt.name, d.display_order
+    ORDER BY d.display_order;
     '''
-    rows = _db.execute_readonly_query(query, {
-        "day": current_day,
-        "user_name": user_name,
-        "cycle_week": current_cycle
-    })
+    rows = _db.execute_readonly_query(query, {"user_name": user_name})
     return [
         {
             "id": row[0],
@@ -126,59 +98,39 @@ def get_todays_duties(user_name):
     ]
 
 
-def _build_schedule(start_date: datetime, rows: list) -> list[dict]:
-    """Build a 14-day schedule from a fixed anchor date and raw DB rows."""
-    date_to_info = {}
-    for i in range(14):
-        current_date = start_date + timedelta(days=i)
-        db_day = (current_date.weekday() + 1) % 7
-        cycle_week = _cycle_week_for_date(current_date.date(), anchor=start_date.date())
-        date_to_info[current_date.date()] = {
-            "day": db_day,
-            "cycle_week": cycle_week,
-            "week_name": "Week A" if cycle_week == 0 else "Week B",
-        }
-
-    duty_lookup = defaultdict(list)
+def _build_schedule(rows: list) -> list[dict]:
+    duty_lookup: dict[date, list] = defaultdict(list)
+    duty_order: dict[str, int] = {}
     for row in rows:
-        day, cycle_week, duty_name, duty_description, team_name, team_members = row
-        duty_lookup[(day, cycle_week)].append({
+        schedule_date, duty_name, duty_description, display_order, team_name, team_members = row
+        duty_order[duty_name] = display_order
+        duty_lookup[schedule_date].append({
             "duty_name": duty_name,
             "duty_description": duty_description,
             "team_name": team_name,
-            "team_members": team_members or []
+            "team_members": team_members or [],
         })
 
     schedule = []
-    for dt in sorted(date_to_info.keys()):
-        info = date_to_info[dt]
+    for i in range(14):
+        current_date = SCHEDULE_START + timedelta(days=i)
         schedule.append({
-            "date": dt.strftime("%Y-%m-%d"),
-            "day_name": dt.strftime("%A"),
-            "week": info["week_name"],
-            "duties": duty_lookup.get((info["day"], info["cycle_week"]), []),
+            "date": current_date.strftime("%Y-%m-%d"),
+            "day_name": current_date.strftime("%A"),
+            "week": "Week A" if i < 7 else "Week B",
+            "duties": duty_lookup.get(current_date, []),
         })
-    return schedule
+    return {"schedule": schedule, "duty_order": duty_order}
 
 
 @cached_result(DUTY_SCHEDULE_CACHE_KEY, on_error=[])
 def get_duty_schedule():
-    combinations = [
-        (
-            ((CYCLE_ANCHOR + timedelta(days=i)).weekday() + 1) % 7,
-            _cycle_week_for_date((CYCLE_ANCHOR + timedelta(days=i)).date()),
-        )
-        for i in range(14)
-    ]
-    days = list({c[0] for c in combinations})
-    cycles = list({c[1] for c in combinations})
-
     query = '''
     SELECT
-        ds.day,
-        ds.cycle_week,
+        ds.schedule_date,
         d.name AS duty_name,
         d.duty_description,
+        d.display_order,
         dt.name AS team_name,
         array_agg(
             jsonb_build_object(
@@ -198,11 +150,12 @@ def get_duty_schedule():
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
     LEFT JOIN users u ON u.duty_team_id = dt.id
-    WHERE ds.day = ANY(:days)
-        AND ds.cycle_week = ANY(:cycles)
-    GROUP BY ds.day, ds.cycle_week, d.name, d.duty_description, dt.name, d.id
-    ORDER BY ds.day, d.name;
+    WHERE ds.schedule_date BETWEEN :start_date AND :end_date
+    GROUP BY ds.schedule_date, d.name, d.duty_description, d.display_order, dt.name, d.id
+    ORDER BY ds.schedule_date, d.display_order;
     '''
-
-    rows = _db.execute_readonly_query(query, {"days": days, "cycles": cycles})
-    return _build_schedule(CYCLE_ANCHOR, rows)
+    rows = _db.execute_readonly_query(query, {
+        "start_date": SCHEDULE_START,
+        "end_date": SCHEDULE_END,
+    })
+    return _build_schedule(rows)
