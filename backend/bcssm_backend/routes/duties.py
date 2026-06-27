@@ -23,6 +23,6 @@ def init_duties_routes(app):
     @handle_route_errors
     def get_duty_schedule_route():
         user_name = g.user_name
-        schedule = get_duty_schedule()
+        result = get_duty_schedule()
         logger.info("Retrieved duty schedule for user %s", user_name)
-        return jsonify({"schedule": schedule}), 200
+        return jsonify(result), 200

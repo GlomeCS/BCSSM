@@ -202,7 +202,7 @@ def test_get_duty_schedule_success_with_session(client, patch_duties_helpers):
             ]
         }
     ]
-    ph["duty_schedule"].return_value = mock_schedule
+    ph["duty_schedule"].return_value = {"schedule": mock_schedule, "duty_order": {}}
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
@@ -211,6 +211,7 @@ def test_get_duty_schedule_success_with_session(client, patch_duties_helpers):
     assert resp.status_code == 200
     data = resp.get_json()
     assert "schedule" in data
+    assert "duty_order" in data
     assert data["schedule"] == mock_schedule
     ph["duty_schedule"].assert_called_once()
 
@@ -305,7 +306,7 @@ def test_get_duty_schedule_complex_schedule_data(client, patch_duties_helpers):
             ]
         }
     ]
-    ph["duty_schedule"].return_value = mock_schedule
+    ph["duty_schedule"].return_value = {"schedule": mock_schedule, "duty_order": {}}
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
@@ -332,7 +333,7 @@ def test_get_duty_schedule_two_week_period(client, patch_duties_helpers):
         }
         mock_schedule.append(day_data)
 
-    ph["duty_schedule"].return_value = mock_schedule
+    ph["duty_schedule"].return_value = {"schedule": mock_schedule, "duty_order": {}}
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
@@ -406,7 +407,7 @@ def test_logging_on_exception(client, patch_duties_helpers, caplog):
 def test_both_endpoints_with_same_user(client, patch_duties_helpers):
     ph = patch_duties_helpers
     ph["todays_duties"].return_value = [{"id": "123", "name": "Today's duty"}]
-    ph["duty_schedule"].return_value = [{"date": "2026-07-04", "duties": []}]
+    ph["duty_schedule"].return_value = {"schedule": [{"date": "2026-07-04", "duties": []}], "duty_order": {}}
 
     with client.session_transaction() as sess:
         sess["user_name"] = "Alice"
