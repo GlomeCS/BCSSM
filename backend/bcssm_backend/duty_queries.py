@@ -18,6 +18,7 @@ def _user_duty_key(user_name):
 
 @cached_result(_user_duty_key, registry_key='user:duty:{name}:{date}')
 def get_user_duty(user_name):
+    today = datetime.now().date()
     query = """
     SELECT
         u.name AS user_name,
@@ -29,11 +30,11 @@ def get_user_duty(user_name):
     LEFT JOIN sections s ON u.section_id = s.id
     LEFT JOIN duty_teams dt ON u.duty_team_id = dt.id
     LEFT JOIN duty_schedule ds ON dt.id = ds.duty_team_id
-        AND ds.schedule_date = CURRENT_DATE
+        AND ds.schedule_date = :today
     LEFT JOIN duties d ON ds.duty_id = d.id
     WHERE u.name = :user_name;
     """
-    result = _db.execute_readonly_query(query, {"user_name": user_name})
+    result = _db.execute_readonly_query(query, {"user_name": user_name, "today": today})
     if not result:
         return {"error": "User not found or no duty assigned"}
     row = result[0]
@@ -55,6 +56,7 @@ def _todays_duties_key(user_name):
 
 @cached_result(_todays_duties_key, registry_key='duties:today:{date}:{name}', on_error=[])
 def get_todays_duties(user_name):
+    today = datetime.now().date()
     query = '''
     SELECT
         d.id,
@@ -80,11 +82,11 @@ def get_todays_duties(user_name):
     JOIN duties d ON ds.duty_id = d.id
     JOIN duty_teams dt ON ds.duty_team_id = dt.id
     LEFT JOIN users u ON u.duty_team_id = dt.id
-    WHERE ds.schedule_date = CURRENT_DATE
+    WHERE ds.schedule_date = :today
     GROUP BY d.id, d.name, d.duty_description, dt.name, d.display_order
     ORDER BY d.display_order;
     '''
-    rows = _db.execute_readonly_query(query, {"user_name": user_name})
+    rows = _db.execute_readonly_query(query, {"user_name": user_name, "today": today})
     return [
         {
             "id": row[0],
@@ -98,7 +100,7 @@ def get_todays_duties(user_name):
     ]
 
 
-def _build_schedule(rows: list) -> list[dict]:
+def _build_schedule(rows: list) -> dict:
     duty_lookup: dict[date, list] = defaultdict(list)
     duty_order: dict[str, int] = {}
     for row in rows:
@@ -123,7 +125,7 @@ def _build_schedule(rows: list) -> list[dict]:
     return {"schedule": schedule, "duty_order": duty_order}
 
 
-@cached_result(DUTY_SCHEDULE_CACHE_KEY, on_error=[])
+@cached_result(DUTY_SCHEDULE_CACHE_KEY, on_error={"schedule": [], "duty_order": {}})
 def get_duty_schedule():
     query = '''
     SELECT

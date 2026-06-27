@@ -141,6 +141,8 @@ test('switching to Schedule tab shows the schedule table', async ({ page }) => {
   await expect(page.getByRole('cell', { name: 'Teardown' }).first()).toBeVisible();
   // Days of the week are now column headers
   await expect(page.getByRole('columnheader', { name: /Sat/i }).first()).toBeVisible();
+  // Both week tables are rendered (mock data spans Jul 4–6 and Jul 13)
+  await expect(page.getByRole('table').nth(1)).toBeVisible();
 });
 
 test('duties page visual snapshot - today tab', async ({ page }) => {

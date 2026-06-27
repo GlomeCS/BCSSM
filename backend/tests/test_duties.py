@@ -211,6 +211,7 @@ def test_get_duty_schedule_success_with_session(client, patch_duties_helpers):
     assert resp.status_code == 200
     data = resp.get_json()
     assert "schedule" in data
+    assert "duty_order" in data
     assert data["schedule"] == mock_schedule
     ph["duty_schedule"].assert_called_once()
 

@@ -367,7 +367,7 @@ export default function DutiesPage() {
                                         <td key={dateOnly} className="duty-cell">
                                           {teamName ? (
                                             <span className="team-number">
-                                              {teamName.replace(/team\s*/i, '')}
+                                              {getTeamNumber(teamName) || teamName}
                                             </span>
                                           ) : (
                                             <span className="no-duty">—</span>

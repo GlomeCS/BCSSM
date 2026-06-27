@@ -135,9 +135,10 @@ def test_get_user_duty_valid_today_returns_expected(monkeypatch, mock_readonly, 
     mock_readonly.assert_called_once()
     sql, params = mock_readonly.call_args[0]
     assert params['user_name'] == 'Ivy'
+    assert params['today'] == _FAKE_DATE
     assert 'day' not in params
     assert 'cycle_week' not in params
-    assert 'schedule_date = CURRENT_DATE' in sql
+    assert 'schedule_date = :today' in sql
 
 def test_get_user_duty_cache_hit(monkeypatch, mock_readonly, mock_cache):
     cached_duty = {
@@ -318,9 +319,10 @@ def test_get_todays_duties_uses_schedule_date(monkeypatch, mock_readonly, mock_c
 
     sql, params = mock_readonly.call_args[0]
     assert params['user_name'] == "Alice"
+    assert params['today'] == _FAKE_DATE
     assert 'day' not in params
     assert 'cycle_week' not in params
-    assert "WHERE ds.schedule_date = CURRENT_DATE" in sql
+    assert "WHERE ds.schedule_date = :today" in sql
 
 def test_caching_behavior(mock_readonly, mock_cache):
     mock_readonly.return_value = [('Alice Smith','SectionA','RoleA','TeamA')]
