@@ -190,37 +190,45 @@ def clear_group(group_name: str, cache=None) -> bool:
         return False
 
 
-def clear_duty_cache():
+def clear_duty_cache() -> bool:
     """Clear duty-related caches after duty data changes."""
-    if clear_group("duties"):
+    ok = clear_group("duties")
+    if ok:
         logger.info("Cleared duty-related caches")
     else:
         logger.warning("Failed to clear duty caches")
+    return ok
 
 
-def clear_feedback_cache():
+def clear_feedback_cache() -> bool:
     """Clear feedback caches after feedback data changes."""
-    if clear_group("feedback"):
+    ok = clear_group("feedback")
+    if ok:
         logger.info("Cleared feedback caches")
     else:
         logger.warning("Failed to clear feedback caches")
+    return ok
 
 
-def clear_user_cache():
+def clear_user_cache() -> bool:
     """Clear user-related caches after user data changes."""
     users_ok = clear_group("users")
     sections_ok = clear_group("sections")
-    if users_ok and sections_ok:
+    ok = users_ok and sections_ok
+    if ok:
         logger.info("Cleared user-related caches")
     else:
         logger.warning("Failed to clear user caches")
+    return ok
 
 
-def clear_all_cache():
+def clear_all_cache() -> bool:
     """Nuclear option — clear everything."""
     try:
         from backend.globals import cache
         cache.clear()
         logger.info("Cleared all caches")
+        return True
     except RedisError as e:
         logger.warning("Failed to clear all caches: %s", e)
+        return False

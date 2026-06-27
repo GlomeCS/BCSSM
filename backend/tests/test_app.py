@@ -216,6 +216,7 @@ def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     app = create_app()
@@ -223,7 +224,8 @@ def test_clear_cache_users(mock_clear_user_cache, mock_db_cache, clean_env):
 
     response = client.post('/api/admin/cache/clear',
                           json={'type': 'users'},
-                          content_type='application/json')
+                          content_type='application/json',
+                          headers={'X-Admin-Secret': 'test-secret'})
 
     assert response.status_code == 200
     data = response.get_json()
@@ -241,6 +243,7 @@ def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     app = create_app()
@@ -248,7 +251,8 @@ def test_clear_cache_duties(mock_clear_duty_cache, mock_db_cache, clean_env):
 
     response = client.post('/api/admin/cache/clear',
                           json={'type': 'duties'},
-                          content_type='application/json')
+                          content_type='application/json',
+                          headers={'X-Admin-Secret': 'test-secret'})
 
     assert response.status_code == 200
     data = response.get_json()
@@ -265,6 +269,7 @@ def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_en
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     app = create_app()
@@ -272,7 +277,8 @@ def test_clear_cache_feedback(mock_clear_feedback_cache, mock_db_cache, clean_en
 
     response = client.post('/api/admin/cache/clear',
                           json={'type': 'feedback'},
-                          content_type='application/json')
+                          content_type='application/json',
+                          headers={'X-Admin-Secret': 'test-secret'})
 
     assert response.status_code == 200
     data = response.get_json()
@@ -288,6 +294,7 @@ def test_clear_cache_all(mock_clear_all_cache, mock_db_cache, clean_env):
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     app = create_app()
@@ -295,7 +302,8 @@ def test_clear_cache_all(mock_clear_all_cache, mock_db_cache, clean_env):
 
     response = client.post('/api/admin/cache/clear',
                           json={'type': 'all'},
-                          content_type='application/json')
+                          content_type='application/json',
+                          headers={'X-Admin-Secret': 'test-secret'})
 
     assert response.status_code == 200
     data = response.get_json()
@@ -310,6 +318,7 @@ def test_clear_cache_invalid_type(mock_db_cache, clean_env):
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     app = create_app()
@@ -317,7 +326,8 @@ def test_clear_cache_invalid_type(mock_db_cache, clean_env):
 
     response = client.post('/api/admin/cache/clear',
                           json={'type': 'invalid'},
-                          content_type='application/json')
+                          content_type='application/json',
+                          headers={'X-Admin-Secret': 'test-secret'})
 
     assert response.status_code == 400
     data = response.get_json()
@@ -331,13 +341,15 @@ def test_clear_cache_no_json(mock_db_cache, clean_env):
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     app = create_app()
     client = app.test_client()
 
     with patch('backend.bcssm_backend.routes.admin.clear_all_cache') as mock_clear_all:
-        response = client.post('/api/admin/cache/clear')
+        response = client.post('/api/admin/cache/clear',
+                               headers={'X-Admin-Secret': 'test-secret'})
 
         assert response.status_code == 200
         data = response.get_json()
@@ -354,6 +366,7 @@ def test_clear_cache_exception_handling(mock_clear_user_cache, mock_db_cache, cl
     os.environ['password'] = 'test_password'
     os.environ['host'] = 'localhost'
     os.environ['database'] = 'test_db'
+    os.environ['ADMIN_SECRET'] = 'test-secret'
 
     _mock_db, _mock_cache = mock_db_cache
     mock_clear_user_cache.side_effect = RedisError("Cache clearing failed")
@@ -363,7 +376,8 @@ def test_clear_cache_exception_handling(mock_clear_user_cache, mock_db_cache, cl
 
     response = client.post('/api/admin/cache/clear',
                           json={'type': 'users'},
-                          content_type='application/json')
+                          content_type='application/json',
+                          headers={'X-Admin-Secret': 'test-secret'})
 
     assert response.status_code == 500
     data = response.get_json()
