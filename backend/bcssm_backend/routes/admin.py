@@ -26,16 +26,16 @@ def init_admin_routes(app):
             cache_type = data.get('type', 'all')
 
             if cache_type == 'users':
-                clear_user_cache()
+                ok = clear_user_cache()
                 message = "Cleared user-related caches"
             elif cache_type == 'duties':
-                clear_duty_cache()
+                ok = clear_duty_cache()
                 message = "Cleared duty-related caches"
             elif cache_type == 'feedback':
-                clear_feedback_cache()
+                ok = clear_feedback_cache()
                 message = "Cleared feedback caches"
             elif cache_type == 'all':
-                clear_all_cache()
+                ok = clear_all_cache()
                 message = "Cleared all caches"
             else:
                 return jsonify({
@@ -43,6 +43,8 @@ def init_admin_routes(app):
                     "error": "Invalid cache type. Use: users, duties, feedback, or all"
                 }), 400
 
+            if not ok:
+                return jsonify({"success": False, "error": f"Failed to clear {cache_type} cache"}), 500
             return jsonify({"success": True, "message": message, "cache_type": cache_type})
 
         except RedisError as e:

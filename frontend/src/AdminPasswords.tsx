@@ -20,6 +20,8 @@ function AdminPasswords() {
   const [successMessage, setSuccessMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSetting, setIsSetting] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<{ message: string; ok: boolean } | null>(null);
+  const [isClearing, setIsClearing] = useState(false);
 
   // On mount: validate the server session before trusting localStorage
   useEffect(() => {
@@ -77,6 +79,28 @@ function AdminPasswords() {
       return;
     }
     fetchUsers(adminSecret);
+  };
+
+  const clearCache = async (type: string) => {
+    setIsClearing(true);
+    setCacheStatus(null);
+    try {
+      const response = await apiPost(
+        "/api/admin/cache/clear",
+        { type },
+        { headers: extraHeaders(adminSecret) }
+      );
+      const data = await response.json().catch(() => ({})) as { message?: string; error?: string };
+      if (response.ok) {
+        setCacheStatus({ ok: true, message: data.message ?? `Cleared ${type} cache` });
+      } else {
+        setCacheStatus({ ok: false, message: data.error ?? `Failed to clear ${type} cache` });
+      }
+    } catch {
+      setCacheStatus({ ok: false, message: "Network error." });
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   const handleSetPassword = async () => {
@@ -211,6 +235,27 @@ function AdminPasswords() {
                 >
                   {isSetting ? "Saving..." : "Set Password"}
                 </button>
+              </div>
+              {/* Cache management */}
+              <div className="admin-section">
+                <label className="admin-label">Cache</label>
+                <div className="admin-row" style={{ flexWrap: "wrap" }}>
+                  {(["all", "users", "duties", "feedback"] as const).map((type) => (
+                    <button
+                      key={type}
+                      className="admin-btn admin-btn-secondary"
+                      onClick={() => clearCache(type)}
+                      disabled={isClearing}
+                    >
+                      {isClearing ? "Clearing…" : `Clear ${type}`}
+                    </button>
+                  ))}
+                </div>
+                {cacheStatus && (
+                  <p className={cacheStatus.ok ? "admin-success" : "admin-error"}>
+                    {cacheStatus.message}
+                  </p>
+                )}
               </div>
             </>
           )}
