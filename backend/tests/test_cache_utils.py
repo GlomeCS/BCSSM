@@ -268,7 +268,7 @@ def test_template_to_glob_single_placeholder():
 
 
 def test_template_to_glob_multiple_placeholders():
-    result = _template_to_glob('duties:today:{day}:{cycle}:{name}')
+    result = _template_to_glob('duties:today:{date}:{name}')
     assert result == 'duties:today:*'
 
 
@@ -280,7 +280,7 @@ def test_template_to_glob_leading_placeholder():
 
 def test_scan_delete_finds_and_deletes_matching_keys():
     mock_redis = MagicMock()
-    found_keys = ['duties:today:3:0:Alice', 'duties:today:4:1:Bob']
+    found_keys = ['duties:today:2026-07-04:Alice', 'duties:today:2026-07-05:Bob']
     mock_redis.scan_iter.return_value = found_keys
     fake_cache = MagicMock()
     fake_cache.cache._write_client = mock_redis
@@ -406,7 +406,7 @@ def test_clear_group_scan_deletes_found_keys():
     mock_redis = MagicMock()
     mock_redis.scan_iter.side_effect = [
         ['user:duty:Alice:2026-01-01'],
-        ['duties:today:3:0:Alice'],
+        ['duties:today:2026-07-04:Alice'],
     ]
     fake_cache = MagicMock()
     fake_cache.cache._write_client = mock_redis
@@ -419,7 +419,7 @@ def test_clear_group_scan_deletes_found_keys():
     assert mock_redis.delete.call_count == 2
     deleted_redis_keys = {c.args[0] for c in mock_redis.delete.call_args_list}
     assert 'user:duty:Alice:2026-01-01' in deleted_redis_keys
-    assert 'duties:today:3:0:Alice' in deleted_redis_keys
+    assert 'duties:today:2026-07-04:Alice' in deleted_redis_keys
 
 
 def test_clear_group_logs_cleared_group(caplog):
