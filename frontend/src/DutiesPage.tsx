@@ -56,6 +56,8 @@ function mapSchedule(raw: unknown): ScheduleDay[] {
 export default function DutiesPage() {
   const { currentUser, loading: authLoading } = useRequireAuth();
   const [activeTab, setActiveTab] = useState<'today' | 'schedule'>('today');
+  const [week1Open, setWeek1Open] = useState(true);
+  const [week2Open, setWeek2Open] = useState(true);
 
   const { data: duties, loading, error } = useApiGet<Duty[]>(
     "/api/duties/today",
@@ -90,15 +92,7 @@ export default function DutiesPage() {
     });
   };
 
-  // Format date for schedule display
-  const formatScheduleDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
+  const getDateOnly = (d: string) => new Date(d).toISOString().split('T')[0];
 
   if (authLoading || (loading && scheduleLoading)) {
     return (
@@ -266,7 +260,7 @@ export default function DutiesPage() {
             <section className="duties-section schedule-section">
               <h2 className="section-title">
                 <span className="section-icon">🗓️</span>
-                2-Week Duty Schedule{(schedule ?? []).length > 0 ? ` (Starting ${new Date((schedule ?? [])[0].date).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })})` : ''}
+                2-Week Duty Schedule
               </h2>
 
               {scheduleLoading ? (
@@ -276,91 +270,114 @@ export default function DutiesPage() {
                 </div>
               ) : (schedule ?? []).length > 0 ? (
                 (() => {
-                  // Get all unique duty names for column headers
+                  const allSchedule = schedule ?? [];
+
+                  const week1Days = allSchedule.filter(d => getDateOnly(d.date) < '2026-07-12');
+                  const week2Days = allSchedule.filter(d => getDateOnly(d.date) >= '2026-07-12');
+
                   const allDuties = new Set<string>();
-                  (schedule ?? []).forEach(day => {
+                  allSchedule.forEach(day => {
                     if (day.duties && Array.isArray(day.duties)) {
                       day.duties.forEach(duty => {
-                        if (duty && duty.duty_name && typeof duty.duty_name === 'string') {
-                          allDuties.add(duty.duty_name);
-                        }
+                        if (duty?.duty_name) allDuties.add(duty.duty_name);
                       });
                     }
                   });
                   const sortedDuties = Array.from(allDuties).sort();
 
-                  return (
-                    <div className="schedule-table-container">
-                      <table className="schedule-table">
-                        <thead>
-                          <tr>
-                            <th className="date-column">Date & Day</th>
-                            {sortedDuties.map(dutyName => (
-                              <th key={dutyName} className="duty-column">{dutyName}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(schedule ?? []).map((day, index) => {
-                            const dateOnly = new Date(day.date).toISOString().split("T")[0];
-                            if (dateOnly === "2026-07-11") {
-                              return (
-                                <tr key={index}>
-                                  <td colSpan={sortedDuties.length + 1}></td>
-                                </tr>
-                              );
-                            }
-                            // Create a map of duty name to team for this day
-                            const dutyTeamMap: { [key: string]: string } = {};
-                            if (day.duties && Array.isArray(day.duties)) {
-                              day.duties.forEach(duty => {
-                                if (duty && duty.duty_name && duty.team_name &&
-                                    typeof duty.duty_name === 'string' && typeof duty.team_name === 'string') {
-                                  dutyTeamMap[duty.duty_name] = duty.team_name;
-                                }
-                              });
-                            }
+                  const buildDutyMap = (days: ScheduleDay[]) => {
+                    const map: { [duty: string]: { [date: string]: string } } = {};
+                    sortedDuties.forEach(d => { map[d] = {}; });
+                    days.forEach(day => {
+                      const dateKey = getDateOnly(day.date);
+                      if (day.duties && Array.isArray(day.duties)) {
+                        day.duties.forEach(duty => {
+                          if (duty?.duty_name && duty?.team_name) {
+                            map[duty.duty_name][dateKey] = duty.team_name;
+                          }
+                        });
+                      }
+                    });
+                    return map;
+                  };
 
-                            return (
-                              <tr key={index} className="schedule-row">
-                                <td className="date-cell">
-                                  <div className="date-with-week">
-                                    <span className="date-text">{formatScheduleDate(day.date)}</span>
-                                    {(() => {
-                                      const d = new Date(day.date);
-                                      const dateOnly = d.toISOString().split("T")[0];
-                                      if (dateOnly === "2026-07-04" || dateOnly === "2026-07-05") {
-                                        return <span className="week-badge-small prep-week">Prep Week</span>;
-                                      } else if (dateOnly === "2026-07-11") {
-                                        return <span className="week-badge-small prep-week">FREEDOM</span>;
-                                      } else if (day.week === "Week A" || day.week === "Week B") {
-                                        return (
-                                          <span className={`week-badge-small ${day.week === "Week A" ? "week-a" : "week-b"}`}>
-                                            {day.week}
+                  const renderWeekTable = (days: ScheduleDay[], weekLabel: string, isOpen: boolean, onToggle: () => void) => {
+                    if (days.length === 0) return null;
+                    const dutyMap = buildDutyMap(days);
+
+                    return (
+                      <div className="week-table-wrapper">
+                        <button className="week-table-toggle" onClick={onToggle} aria-expanded={isOpen}>
+                          <span className="week-table-title">{weekLabel}</span>
+                          <span className={`week-toggle-chevron ${isOpen ? 'open' : ''}`}>▾</span>
+                        </button>
+                        {isOpen && (
+                          <div className="schedule-table-container">
+                            <table className="schedule-table">
+                              <thead>
+                                <tr>
+                                  <th className="duty-name-column">Duty</th>
+                                  {days.map(day => {
+                                    const dateOnly = getDateOnly(day.date);
+                                    const isFreedom = dateOnly === '2026-07-11';
+                                    const isPrepWeek = dateOnly === '2026-07-04' || dateOnly === '2026-07-05';
+                                    return (
+                                      <th key={dateOnly} className="day-column">
+                                        <div className="day-header">
+                                          <span className="day-weekday">
+                                            {new Date(day.date).toLocaleDateString('en-GB', { weekday: 'short' })}
                                           </span>
-                                        );
-                                      } else {
-                                        return null;
-                                      }
-                                    })()}
-                                  </div>
-                                </td>
+                                          <span className="day-date-label">
+                                            {new Date(day.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                          </span>
+                                          {isFreedom ? (
+                                            <span className="week-badge-small prep-week">FREEDOM</span>
+                                          ) : isPrepWeek ? (
+                                            <span className="week-badge-small prep-week">Prep</span>
+                                          ) : day.week ? (
+                                            <span className={`week-badge-small ${day.week === 'Week A' ? 'week-a' : 'week-b'}`}>
+                                              {day.week}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      </th>
+                                    );
+                                  })}
+                                </tr>
+                              </thead>
+                              <tbody>
                                 {sortedDuties.map(dutyName => (
-                                  <td key={dutyName} className="duty-cell">
-                                    {dutyTeamMap[dutyName] ? (
-                                      <span className="team-number">
-                                        {dutyTeamMap[dutyName].replace(/team\s*/i, '')}
-                                      </span>
-                                    ) : (
-                                      <span className="no-duty">—</span>
-                                    )}
-                                  </td>
+                                  <tr key={dutyName} className="schedule-row">
+                                    <td className="duty-name-cell">{dutyName}</td>
+                                    {days.map(day => {
+                                      const dateOnly = getDateOnly(day.date);
+                                      const teamName = dutyMap[dutyName][dateOnly];
+                                      return (
+                                        <td key={dateOnly} className="duty-cell">
+                                          {teamName ? (
+                                            <span className="team-number">
+                                              {teamName.replace(/team\s*/i, '')}
+                                            </span>
+                                          ) : (
+                                            <span className="no-duty">—</span>
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
                                 ))}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <div className="two-week-schedule">
+                      {renderWeekTable(week1Days, 'Week 1 — Starting Sat 4 Jul', week1Open, () => setWeek1Open(o => !o))}
+                      {renderWeekTable(week2Days, 'Week 2 — Starting Sun 12 Jul', week2Open, () => setWeek2Open(o => !o))}
                     </div>
                   );
                 })()
