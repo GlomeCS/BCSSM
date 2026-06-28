@@ -120,6 +120,34 @@ export default function DutiesPage() {
   const myDuties = (duties ?? []).filter((d) => d.isCurrentUser);
   const otherDuties = (duties ?? []).filter((d) => !d.isCurrentUser);
 
+  const dutyReference = (() => {
+    const seen = new Set<string>();
+    const result: { name: string; description: string }[] = [];
+    for (const day of schedule) {
+      for (const d of day.duties) {
+        if (!seen.has(d.duty_name)) {
+          seen.add(d.duty_name);
+          result.push({ name: d.duty_name, description: d.duty_description });
+        }
+      }
+    }
+    return result.sort((a, b) => (dutyOrder[a.name] ?? 99) - (dutyOrder[b.name] ?? 99));
+  })();
+
+  const teamReference = (() => {
+    const teamMap = new Map<string, { name: string; week: string }[]>();
+    for (const day of schedule) {
+      for (const d of day.duties) {
+        if (!teamMap.has(d.team_name) && d.team_members.length > 0) {
+          teamMap.set(d.team_name, d.team_members);
+        }
+      }
+    }
+    return Array.from(teamMap.entries())
+      .map(([teamName, members]) => ({ teamName, members }))
+      .sort((a, b) => a.teamName.localeCompare(b.teamName, undefined, { numeric: true }));
+  })();
+
   return (
     <>
       <Navbar />
@@ -158,67 +186,72 @@ export default function DutiesPage() {
 
         <main className="duties-main">
           {activeTab === 'today' && (
-            <>
-              {/* Your Duties Section */}
-              <section className="duties-section your-duties">
-                <h2 className="section-title">
-                  <span className="section-icon">👤</span>
-                  Your Duties
-                </h2>
+            loading ? (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p className="loading-text">Loading duties...</p>
+              </div>
+            ) : (duties ?? []).length > 0 ? (
+              <>
+                {/* Your Duties Section */}
+                <section className="duties-section your-duties">
+                  <h2 className="section-title">
+                    <span className="section-icon">👤</span>
+                    Your Duties
+                  </h2>
 
-                {myDuties.length > 0 ? (
-                  <div className="duties-grid">
-                    {myDuties.map((duty) => {
-                      console.log('Processing my duty:', duty);
-                      const teamNumber = getTeamNumber(duty.teamName);
-                      console.log('Team number for my duty:', teamNumber);
-                      return (
-                        <div key={duty.id} className="duty-card your-duty-card">
-                          <div className="duty-card-header">
-                            <h3 className="duty-name">{duty.name}</h3>
-                            <div className="duty-badge your-duty-badge">
-                              {teamNumber ? `Team ${teamNumber} Duty` : 'Your Duty'}
+                  {myDuties.length > 0 ? (
+                    <div className="duties-grid">
+                      {myDuties.map((duty) => {
+                        console.log('Processing my duty:', duty);
+                        const teamNumber = getTeamNumber(duty.teamName);
+                        console.log('Team number for my duty:', teamNumber);
+                        return (
+                          <div key={duty.id} className="duty-card your-duty-card">
+                            <div className="duty-card-header">
+                              <h3 className="duty-name">{duty.name}</h3>
+                              <div className="duty-badge your-duty-badge">
+                                {teamNumber ? `Team ${teamNumber} Duty` : 'Your Duty'}
+                              </div>
+                            </div>
+                            <div className="duty-card-body">
+                              <p className="duty-description">{duty.description}</p>
+                              {duty.members.length > 0 && (
+                                <div className="duty-members">
+                                  <div className="members-label">👥 Team Members:</div>
+                                  <div className="members-list-compact">
+                                    {duty.members.map((member, index) => (
+                                      <span key={index} className="member-tag">
+                                        <span className="member-name">{member.name}</span>
+                                        <span className="member-week">{member.week}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
-                          <div className="duty-card-body">
-                            <p className="duty-description">{duty.description}</p>
-                            {duty.members.length > 0 && (
-                              <div className="duty-members">
-                                <div className="members-label">👥 Team Members:</div>
-                                <div className="members-list-compact">
-                                  {duty.members.map((member, index) => (
-                                    <span key={index} className="member-tag">
-                                      <span className="member-name">{member.name}</span>
-                                      <span className="member-week">{member.week}</span>
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="no-duties-message">
-                    <div className="no-duties-icon">🎉</div>
-                    <h3 className="no-duties-title">No Duty Today!</h3>
-                    <p className="no-duties-text">
-                      Enjoy your day off from duties. You can still check what others are doing below.
-                    </p>
-                  </div>
-                )}
-              </section>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="no-duties-message">
+                      <div className="no-duties-icon">🎉</div>
+                      <h3 className="no-duties-title">No Duty Today!</h3>
+                      <p className="no-duties-text">
+                        Enjoy your day off from duties. You can still check what others are doing below.
+                      </p>
+                    </div>
+                  )}
+                </section>
 
-              {/* Other Duties Section */}
-              <section className="duties-section other-duties">
-                <h2 className="section-title">
-                  <span className="section-icon">👥</span>
-                  Other Duties
-                </h2>
+                {/* Other Duties Section */}
+                <section className="duties-section other-duties">
+                  <h2 className="section-title">
+                    <span className="section-icon">👥</span>
+                    Other Duties
+                  </h2>
 
-                {otherDuties.length > 0 ? (
                   <div className="duties-grid">
                     {otherDuties.map((duty) => {
                       console.log('Processing other duty:', duty);
@@ -252,17 +285,72 @@ export default function DutiesPage() {
                       );
                     })}
                   </div>
+                </section>
+              </>
+            ) : (
+              <section className="duties-section">
+                <h2 className="section-title">
+                  <span className="section-icon">📋</span>
+                  Duty Reference
+                </h2>
+                <p className="duty-reference-intro">
+                  No duties are scheduled for today. Here's what each duty involves:
+                </p>
+                {dutyReference.length > 0 ? (
+                  <>
+                    <div className="duties-grid">
+                      {dutyReference.map(({ name, description }) => (
+                        <div key={name} className="duty-card">
+                          <div className="duty-card-header">
+                            <h3 className="duty-name">{name}</h3>
+                          </div>
+                          <div className="duty-card-body">
+                            <p className="duty-description">{description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {teamReference.length > 0 && (
+                      <>
+                        <h2 className="section-title" style={{ marginTop: '1.5rem' }}>
+                          <span className="section-icon">👥</span>
+                          Duty Teams
+                        </h2>
+                        <div className="duties-grid">
+                          {teamReference.map(({ teamName, members }) => (
+                            <div key={teamName} className="duty-card other-duty-card">
+                              <div className="duty-card-header">
+                                <h3 className="duty-name">{teamName}</h3>
+                              </div>
+                              <div className="duty-card-body">
+                                <div className="members-list-compact">
+                                  {members.map((member, i) => (
+                                    <span key={i} className="member-tag">
+                                      <span className="member-name">{member.name}</span>
+                                      <span className="member-week">{member.week}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : scheduleLoading ? (
+                  <div className="loading-container">
+                    <div className="loading-spinner"></div>
+                    <p className="loading-text">Loading duty information...</p>
+                  </div>
                 ) : (
                   <div className="no-duties-message">
                     <div className="no-duties-icon">📭</div>
-                    <h3 className="no-duties-title">No Other Duties</h3>
-                    <p className="no-duties-text">
-                      There are no other duties scheduled for today.
-                    </p>
+                    <p className="no-duties-text">No duty information available.</p>
                   </div>
                 )}
               </section>
-            </>
+            )
           )}
 
           {activeTab === 'schedule' && (
