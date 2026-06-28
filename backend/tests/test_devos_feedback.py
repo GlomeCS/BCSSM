@@ -179,7 +179,7 @@ def test_edit_unauthenticated(client):
 
 
 def test_edit_feedback_too_long(client):
-    """Feedback over 140 chars → 400."""
+    """Feedback over 256 chars → 400."""
     with client.session_transaction() as sess:
         sess["user_name"] = "TestUser"
         sess["user_id"] = 1
@@ -187,13 +187,13 @@ def test_edit_feedback_too_long(client):
         sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-                       json={"feedback": "x" * 141})
+                       json={"feedback": "x" * 257})
     assert resp.status_code == 400
-    assert "140 characters" in resp.get_json()["error"]
+    assert "256 characters" in resp.get_json()["error"]
 
 
-def test_edit_feedback_exactly_140(client, mock_write):
-    """Feedback exactly 140 chars is accepted."""
+def test_edit_feedback_exactly_256(client, mock_write):
+    """Feedback exactly 256 chars is accepted."""
     mock_write.return_value = [(5,)]
 
     with client.session_transaction() as sess:
@@ -203,7 +203,7 @@ def test_edit_feedback_exactly_140(client, mock_write):
         sess["user_section"] = "Minis"
 
     resp = client.post("/api/devos-feedback/edit?date=2025-06-07&section=Minis",
-                       json={"feedback": "x" * 140})
+                       json={"feedback": "x" * 256})
     assert resp.status_code == 200
 
 
