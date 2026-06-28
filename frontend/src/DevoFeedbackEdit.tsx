@@ -42,7 +42,7 @@ const DevoFeedbackEdit: React.FC = () => {
 
   const error = missingParams ? 'Missing date or section parameters' : loadError ?? submitError;
 
-  const MAX_CHARS = 140;
+  const MAX_CHARS = 256;
 
   const handleFeedbackChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;

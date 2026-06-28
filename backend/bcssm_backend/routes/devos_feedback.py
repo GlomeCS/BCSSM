@@ -53,9 +53,9 @@ def init_feedback_routes(app):
         if not isinstance(new_feedback, str):
             return jsonify({'error': 'Feedback must be a string'}), 400
 
-        if len(new_feedback) > 140:
+        if len(new_feedback) > 256:
             return jsonify(
-                {'error': 'Feedback must be 140 characters or fewer'}
+                {'error': 'Feedback must be 256 characters or fewer'}
             ), 400
 
         logger.debug("edit_devos_feedback - editor_id: %s", g.user_id)

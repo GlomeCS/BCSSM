@@ -97,7 +97,7 @@ test('character counter updates as the user types', async ({ page }) => {
   const textarea = page.locator('textarea#feedbackArea');
   await textarea.clear();
   await textarea.fill('Hello world');
-  await expect(page.getByText('11 / 140')).toBeVisible();
+  await expect(page.getByText('11 / 256')).toBeVisible();
 });
 
 test('Save button is disabled when textarea is empty', async ({ page }) => {
