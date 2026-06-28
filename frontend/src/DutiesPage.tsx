@@ -145,7 +145,7 @@ export default function DutiesPage() {
     }
     return Array.from(teamMap.entries())
       .map(([teamName, members]) => ({ teamName, members }))
-      .sort((a, b) => a.teamName.localeCompare(b.teamName));
+      .sort((a, b) => a.teamName.localeCompare(b.teamName, undefined, { numeric: true }));
   })();
 
   return (
@@ -186,7 +186,12 @@ export default function DutiesPage() {
 
         <main className="duties-main">
           {activeTab === 'today' && (
-            (duties ?? []).length > 0 ? (
+            loading ? (
+              <div className="loading-container">
+                <div className="loading-spinner"></div>
+                <p className="loading-text">Loading duties...</p>
+              </div>
+            ) : (duties ?? []).length > 0 ? (
               <>
                 {/* Your Duties Section */}
                 <section className="duties-section your-duties">
