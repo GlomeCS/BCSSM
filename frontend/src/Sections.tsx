@@ -194,9 +194,9 @@ export default function UsersBySectionPage() {
       <div className="users-page">
         <header className="page-header">
           <div className="page-header-content">
-            <h1 className="page-title">👥 Users by Section</h1>
+            <h1 className="page-title">👥 Leaders by Section</h1>
             <p className="page-subtitle">
-              {sectionsData ? `${sectionsData.total_users} users across ${sectionsData.total_sections} sections` : ''}
+              {sectionsData ? `${sectionsData.total_users} leaders across ${sectionsData.total_sections} sections` : ''}
             </p>
           </div>
         </header>
@@ -205,7 +205,7 @@ export default function UsersBySectionPage() {
           <div className="error-message">
             <div className="error-icon">⚠️</div>
             <div className="error-text">
-              Failed to load users: {error}
+              Failed to load leaders: {error}
             </div>
           </div>
         )}
@@ -280,7 +280,7 @@ export default function UsersBySectionPage() {
                         <span className="section-title-text">{section.name}</span>
                         <span className="section-header-right">
                           <span className="user-count-badge">
-                            {userCount} user{userCount !== 1 ? 's' : ''}
+                            {userCount} leader{userCount !== 1 ? 's' : ''}
                           </span>
                           <span className={`collapse-chevron ${isCollapsed ? 'collapse-chevron--collapsed' : ''}`}>
                             ▼
@@ -326,7 +326,7 @@ export default function UsersBySectionPage() {
                         ) : (
                           <div className="no-users">
                             <div className="no-users-icon">👤</div>
-                            <p className="no-users-text">No matching users in this section</p>
+                            <p className="no-users-text">No matching leaders in this section</p>
                           </div>
                         )}
                       </div>
