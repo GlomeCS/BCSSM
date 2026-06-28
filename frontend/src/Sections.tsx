@@ -105,6 +105,21 @@ export default function UsersBySectionPage() {
     return getRoleBadgeColor(user.role);
   };
 
+  const SECTION_COLORS: Record<string, { cls: string; color: string }> = {
+    minis:  { cls: 'section-color-minis',  color: '#facc15' },
+    micros: { cls: 'section-color-micros', color: '#f97316' },
+    minors: { cls: 'section-color-minors', color: '#3b82f6' },
+    majors: { cls: 'section-color-majors', color: '#ef4444' },
+    midis:  { cls: 'section-color-midis',  color: '#10b981' },
+    maxis:  { cls: 'section-color-maxis',  color: '#a855f7' },
+  };
+
+  const getSectionTheme = (name: string) => {
+    const lower = name.toLowerCase();
+    const key = Object.keys(SECTION_COLORS).find(k => lower.includes(k));
+    return key ? SECTION_COLORS[key] : { cls: '', color: '' };
+  };
+
   const userMatchesWeek = (user: User, week: string): boolean => {
     if (week === "all") return true;
     return user.week === week || user.week === 'Both';
@@ -253,7 +268,7 @@ export default function UsersBySectionPage() {
                 const userCount = isFiltering ? section.users.length : section.user_count;
 
                 return (
-                  <div key={section.name} className={`section-card ${isCollapsed ? 'section-card--collapsed' : ''}`}>
+                  <div key={section.name} className={`section-card ${isCollapsed ? 'section-card--collapsed' : ''} ${getSectionTheme(section.name).cls}`}>
                     <h3 className="section-title">
                       <button
                         id={triggerId}
@@ -284,10 +299,13 @@ export default function UsersBySectionPage() {
                         {section.users.length > 0 ? (
                           <div className="users-list">
                             {sectionLeader && (
-                              <div className="user-item leader-item">
-                                <div className="user-info">
+                              <div className="user-item leader-item" style={{ background: `linear-gradient(135deg, ${getSectionTheme(section.name).color}1a, ${getSectionTheme(section.name).color}0d)`, borderColor: `${getSectionTheme(section.name).color}33` }}>
+                                <div className="user-info" style={{ borderLeft: `4px solid ${getSectionTheme(section.name).color}` }}>
                                   <span className="user-name leader-name">{sectionLeader.name}</span>
-                                  <span className={`role-badge ${getBadgeColor(sectionLeader)}`}>
+                                  <span
+                                    className={`role-badge ${getBadgeColor(sectionLeader)}`}
+                                    style={{ background: getSectionTheme(section.name).color, boxShadow: `0 2px 4px ${getSectionTheme(section.name).color}40` }}
+                                  >
                                     {getBadgeContent(sectionLeader)}
                                   </span>
                                 </div>
@@ -296,7 +314,7 @@ export default function UsersBySectionPage() {
 
                             {otherUsers.map((user, index) => (
                               <div key={index} className="user-item">
-                                <div className="user-info">
+                                <div className="user-info" style={{ borderLeft: `4px solid ${getSectionTheme(section.name).color}` }}>
                                   <span className="user-name">{user.name}</span>
                                   <span className={`role-badge ${getBadgeColor(user)}`}>
                                     {getBadgeContent(user)}
