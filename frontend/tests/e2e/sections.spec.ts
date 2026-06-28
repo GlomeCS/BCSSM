@@ -66,8 +66,8 @@ test('unauthenticated visit to /sections redirects to /login', async ({ page }) 
 
 test('sections page shows heading and total counts', async ({ page }) => {
   await setupSectionsPage(page);
-  await expect(page.getByText(/Users by Section/i)).toBeVisible();
-  await expect(page.getByText(/7 users across 2 sections/i)).toBeVisible();
+  await expect(page.getByText(/Leaders by Section/i)).toBeVisible();
+  await expect(page.getByText(/7 leaders across 2 sections/i)).toBeVisible();
 });
 
 test('shows all section cards', async ({ page }) => {
@@ -78,8 +78,8 @@ test('shows all section cards', async ({ page }) => {
 
 test('shows user count badge on each section card', async ({ page }) => {
   await setupSectionsPage(page);
-  await expect(page.getByText('4 users')).toBeVisible();
-  await expect(page.getByText('3 users')).toBeVisible();
+  await expect(page.getByText('4 leaders')).toBeVisible();
+  await expect(page.getByText('3 leaders')).toBeVisible();
 });
 
 test('lists users within each section', async ({ page }) => {
@@ -225,7 +225,7 @@ test('collapsing a section keeps other sections visible', async ({ page }) => {
 
 test('sections page visual snapshot - all roles', async ({ page }) => {
   await setupSectionsPage(page);
-  await expect(page.getByText(/7 users across 2 sections/i)).toBeVisible();
+  await expect(page.getByText(/7 leaders across 2 sections/i)).toBeVisible();
   await expect(page).toHaveScreenshot('sections-all-roles.png', { fullPage: true });
 });
 
@@ -253,6 +253,6 @@ test('sections page visual snapshot - collapsed', async ({ page }) => {
 test('sections page visual snapshot - mobile', async ({ page, isMobile }) => {
   test.skip(!isMobile, 'Mobile-only test');
   await setupSectionsPage(page);
-  await expect(page.getByText(/7 users across 2 sections/i)).toBeVisible();
+  await expect(page.getByText(/7 leaders across 2 sections/i)).toBeVisible();
   await expect(page).toHaveScreenshot('sections-mobile.png', { fullPage: true });
 });
