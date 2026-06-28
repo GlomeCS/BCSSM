@@ -117,7 +117,7 @@ export default function UsersBySectionPage() {
   const getSectionTheme = (name: string) => {
     const lower = name.toLowerCase();
     const key = Object.keys(SECTION_COLORS).find(k => lower.includes(k));
-    return key ? SECTION_COLORS[key] : { cls: '', color: '' };
+    return key ? SECTION_COLORS[key] : { cls: '', color: '#6b7280' };
   };
 
   const userMatchesWeek = (user: User, week: string): boolean => {
