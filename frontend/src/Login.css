@@ -232,7 +232,8 @@
 }
 
 .user-dropdown-item:hover,
-.user-dropdown-item.selected {
+.user-dropdown-item.selected,
+.user-dropdown-item.highlighted {
   background: rgba(60, 64, 89, 0.1);
 }
 

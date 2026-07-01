@@ -11,6 +11,7 @@ function Login() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [password, setPassword] = useState<string>("");
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<string>("");
@@ -25,12 +26,45 @@ function Login() {
     const handleClickOutside = (e: MouseEvent) => {
       if (comboboxRef.current && !comboboxRef.current.contains(e.target as Node)) {
         setIsDropdownOpen(false);
+        setHighlightedIndex(-1);
         if (!selectedUser) setSearchQuery("");
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [selectedUser]);
+
+  const handleComboKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setIsDropdownOpen(true);
+        setHighlightedIndex((i) => Math.min(i + 1, filteredUsers.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        if (isDropdownOpen) setHighlightedIndex((i) => Math.max(i - 1, 0));
+        break;
+      case "Enter":
+        if (isDropdownOpen && highlightedIndex >= 0 && highlightedIndex < filteredUsers.length) {
+          e.preventDefault();
+          const user = filteredUsers[highlightedIndex];
+          setSelectedUser(user);
+          setSearchQuery(user);
+          setPassword("");
+          setError("");
+          setIsDropdownOpen(false);
+          setHighlightedIndex(-1);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setIsDropdownOpen(false);
+        setHighlightedIndex(-1);
+        if (!selectedUser) setSearchQuery("");
+        break;
+    }
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -129,6 +163,8 @@ function Login() {
                   role="combobox"
                   aria-expanded={isDropdownOpen}
                   aria-haspopup="listbox"
+                  aria-controls="user-listbox"
+                  aria-activedescendant={highlightedIndex >= 0 ? `user-option-${highlightedIndex}` : undefined}
                   className="user-select"
                   type="text"
                   value={searchQuery}
@@ -137,9 +173,11 @@ function Login() {
                     setSelectedUser("");
                     setPassword("");
                     setError("");
+                    setHighlightedIndex(-1);
                     setIsDropdownOpen(true);
                   }}
                   onFocus={() => setIsDropdownOpen(true)}
+                  onKeyDown={handleComboKeyDown}
                   placeholder="Search for your profile..."
                   disabled={isLoading}
                   autoComplete="off"
@@ -150,13 +188,14 @@ function Login() {
                   </svg>
                 </div>
                 {isDropdownOpen && filteredUsers.length > 0 && (
-                  <ul role="listbox" className="user-dropdown">
-                    {filteredUsers.map((user) => (
+                  <ul id="user-listbox" role="listbox" className="user-dropdown">
+                    {filteredUsers.map((user, index) => (
                       <li
                         key={user}
+                        id={`user-option-${index}`}
                         role="option"
                         aria-selected={selectedUser === user}
-                        className={`user-dropdown-item${selectedUser === user ? " selected" : ""}`}
+                        className={`user-dropdown-item${selectedUser === user ? " selected" : ""}${highlightedIndex === index ? " highlighted" : ""}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setSelectedUser(user);
@@ -164,6 +203,7 @@ function Login() {
                           setPassword("");
                           setError("");
                           setIsDropdownOpen(false);
+                          setHighlightedIndex(-1);
                         }}
                       >
                         {user}

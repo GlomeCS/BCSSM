@@ -60,9 +60,10 @@ function mockLoginSuccess(user: string) {
   return user;
 }
 
-// Types in the combobox and clicks the matching dropdown option.
+// Clears the combobox, types a name, and clicks the matching dropdown option.
 async function selectUser(username: string) {
   const input = screen.getByRole('combobox');
+  await userEvent.clear(input);
   await userEvent.type(input, username);
   await userEvent.click(screen.getByRole('option', { name: username }));
 }
@@ -139,11 +140,7 @@ describe('Login', () => {
     await selectUser('Alice');
     await userEvent.type(screen.getByPlaceholderText(/enter your password/i), 'secret123');
     expect(screen.getByPlaceholderText(/enter your password/i)).toHaveValue('secret123');
-    // Switch to Bob: clear the search input and pick Bob from the dropdown
-    const input = screen.getByRole('combobox');
-    await userEvent.clear(input);
-    await userEvent.type(input, 'Bob');
-    await userEvent.click(screen.getByRole('option', { name: 'Bob' }));
+    await selectUser('Bob');
     expect(screen.getByPlaceholderText(/enter your password/i)).toHaveValue('');
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
