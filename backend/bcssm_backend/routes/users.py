@@ -138,6 +138,7 @@ def init_users_routes(app):
             app.logger.error("Login DB error for %s: %s", user_name, e)
             return jsonify({'error': 'An internal error has occurred.'}), 500
         session.clear()
+        session.permanent = True
         session.update({
             'user_name': user['name'],
             'user_id': user['id'],

@@ -707,6 +707,23 @@ def test_api_sections_error_dict_returns_500(mock_get_all_sections, mock_db_cach
     assert data["error"] == "Failed to fetch sections"
 
 
+# ─── Session lifetime config tests ───────────────────────────────────────────
+
+def test_permanent_session_lifetime_is_30_days(clean_env, mock_db_cache):
+    """PERMANENT_SESSION_LIFETIME must be 30 days so permanent sessions survive long enough."""
+    from datetime import timedelta
+    os.environ['FLASK_ENV'] = 'testing'
+    os.environ['user'] = 'test_user'
+    os.environ['password'] = 'test_password'
+    os.environ['host'] = 'localhost'
+    os.environ['database'] = 'test_db'
+
+    _mock_db, _mock_cache = mock_db_cache
+    app = create_app()
+
+    assert app.config['PERMANENT_SESSION_LIFETIME'] == timedelta(days=30)
+
+
 # ─── _fmt_ttl unit tests ───────────────────────────────────────────────────────
 
 def test_fmt_ttl_seconds():

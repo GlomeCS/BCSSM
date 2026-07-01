@@ -656,6 +656,20 @@ def test_api_login_success(client, patch_helpers):
         assert sess["user_id"] == 1
 
 
+def test_api_login_sets_permanent_session(client, patch_helpers):
+    """Successful login marks the session as permanent so the cookie gets a Max-Age."""
+    ph = patch_helpers
+    ph["authenticate_user"].return_value = {
+        "id": 1, "name": "Alice", "role": "Section Leader",
+        "section_name": "Minis", "can_edit_all": True,
+    }
+
+    client.post("/api/auth/login", json={"user_name": "Alice", "password": "secret123"})
+
+    with client.session_transaction() as sess:
+        assert sess.permanent is True
+
+
 def test_api_login_calls_cache_user_login(client, patch_helpers):
     """Successful login calls cache_user_login with the user dict."""
     ph = patch_helpers
