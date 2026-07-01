@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiGet, login } from "../api";
 import { useAuth } from "./AuthContext";
@@ -8,11 +8,29 @@ function Login() {
   const { currentUser, loading, setUser } = useAuth();
   const [users, setUsers] = useState<string[]>([]);
   const [selectedUser, setSelectedUser] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [password, setPassword] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [error, setError] = useState<string>("");
+  const comboboxRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  const filteredUsers = users.filter((u) =>
+    u.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (comboboxRef.current && !comboboxRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+        if (!selectedUser) setSearchQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [selectedUser]);
 
   useEffect(() => {
     if (loading) return;
@@ -22,7 +40,6 @@ function Login() {
       return;
     }
 
-    // Fetch available users
     setIsLoadingUsers(true);
     apiGet("/get-users")
       .then((response) => response.json())
@@ -107,29 +124,58 @@ function Login() {
                 <span className="loading-text">Loading users...</span>
               </div>
             ) : (
-              <div className="select-container">
-                <select
+              <div className="select-container" ref={comboboxRef}>
+                <input
+                  role="combobox"
+                  aria-expanded={isDropdownOpen}
+                  aria-haspopup="listbox"
                   className="user-select"
-                  value={selectedUser}
+                  type="text"
+                  value={searchQuery}
                   onChange={(e) => {
-                    setSelectedUser(e.target.value);
+                    setSearchQuery(e.target.value);
+                    setSelectedUser("");
                     setPassword("");
                     setError("");
+                    setIsDropdownOpen(true);
                   }}
+                  onFocus={() => setIsDropdownOpen(true)}
+                  placeholder="Search for your profile..."
                   disabled={isLoading}
-                >
-                  <option value="">Select your profile...</option>
-                  {users.map((user) => (
-                    <option key={user} value={user}>
-                      {user}
-                    </option>
-                  ))}
-                </select>
+                  autoComplete="off"
+                />
                 <div className="select-arrow">
                   <svg width="12" height="8" viewBox="0 0 12 8" fill="none">
                     <path d="M1 1L6 6L11 1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </div>
+                {isDropdownOpen && filteredUsers.length > 0 && (
+                  <ul role="listbox" className="user-dropdown">
+                    {filteredUsers.map((user) => (
+                      <li
+                        key={user}
+                        role="option"
+                        aria-selected={selectedUser === user}
+                        className={`user-dropdown-item${selectedUser === user ? " selected" : ""}`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSelectedUser(user);
+                          setSearchQuery(user);
+                          setPassword("");
+                          setError("");
+                          setIsDropdownOpen(false);
+                        }}
+                      >
+                        {user}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {isDropdownOpen && searchQuery && filteredUsers.length === 0 && (
+                  <ul role="listbox" className="user-dropdown">
+                    <li className="user-dropdown-empty">No matching users</li>
+                  </ul>
+                )}
               </div>
             )}
           </div>

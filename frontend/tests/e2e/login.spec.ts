@@ -27,8 +27,9 @@ test('login page visual snapshot', async ({ page }) => {
 
 test('selecting a user and entering a password enables the continue button', async ({ page }) => {
   await page.goto('/login');
-  await page.waitForSelector('select.user-select');
-  await page.selectOption('select.user-select', 'Alice');
+  await page.waitForSelector('input.user-select');
+  await page.fill('input.user-select', 'Alice');
+  await page.click('.user-dropdown-item:has-text("Alice")');
   // Button stays disabled until a password is also entered
   await expect(page.getByRole('button', { name: /continue/i })).toBeDisabled();
   await page.fill('input[type="password"]', 'secret123');

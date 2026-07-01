@@ -60,6 +60,13 @@ function mockLoginSuccess(user: string) {
   return user;
 }
 
+// Types in the combobox and clicks the matching dropdown option.
+async function selectUser(username: string) {
+  const input = screen.getByRole('combobox');
+  await userEvent.type(input, username);
+  await userEvent.click(screen.getByRole('option', { name: username }));
+}
+
 describe('Login', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -83,10 +90,11 @@ describe('Login', () => {
     expect(screen.getByText(/loading users/i)).toBeInTheDocument();
   });
 
-  it('renders user list after fetching', async () => {
+  it('renders user list in dropdown after fetching', async () => {
     mockFetchUsers();
     renderLogin();
-    await waitFor(() => expect(screen.getByRole('combobox')).toBeInTheDocument());
+    const input = await waitFor(() => screen.getByRole('combobox'));
+    await userEvent.click(input);
     USER_LIST.forEach(user => {
       expect(screen.getByRole('option', { name: user })).toBeInTheDocument();
     });
@@ -104,7 +112,6 @@ describe('Login', () => {
     mockFetchUsers();
     renderLogin();
     await waitFor(() => screen.getByRole('button', { name: /continue/i }));
-    // Button should be disabled until a user is selected
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
 
@@ -112,7 +119,7 @@ describe('Login', () => {
     mockFetchUsers();
     renderLogin();
     await waitFor(() => screen.getByRole('combobox'));
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'Alice');
+    await selectUser('Alice');
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
 
@@ -120,7 +127,7 @@ describe('Login', () => {
     mockFetchUsers();
     renderLogin();
     await waitFor(() => screen.getByRole('combobox'));
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'Alice');
+    await selectUser('Alice');
     await userEvent.type(screen.getByPlaceholderText(/enter your password/i), 'secret123');
     expect(screen.getByRole('button', { name: /continue/i })).not.toBeDisabled();
   });
@@ -129,10 +136,14 @@ describe('Login', () => {
     mockFetchUsers();
     renderLogin();
     await waitFor(() => screen.getByRole('combobox'));
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'Alice');
+    await selectUser('Alice');
     await userEvent.type(screen.getByPlaceholderText(/enter your password/i), 'secret123');
     expect(screen.getByPlaceholderText(/enter your password/i)).toHaveValue('secret123');
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'Bob');
+    // Switch to Bob: clear the search input and pick Bob from the dropdown
+    const input = screen.getByRole('combobox');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'Bob');
+    await userEvent.click(screen.getByRole('option', { name: 'Bob' }));
     expect(screen.getByPlaceholderText(/enter your password/i)).toHaveValue('');
     expect(screen.getByRole('button', { name: /continue/i })).toBeDisabled();
   });
@@ -142,7 +153,7 @@ describe('Login', () => {
     renderLogin();
     await waitFor(() => screen.getByRole('combobox'));
 
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'Bob');
+    await selectUser('Bob');
     await userEvent.type(screen.getByPlaceholderText(/enter your password/i), 'secret123');
     mockLoginSuccess('Bob');
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
@@ -161,7 +172,7 @@ describe('Login', () => {
     renderLogin();
     await waitFor(() => screen.getByRole('combobox'));
 
-    await userEvent.selectOptions(screen.getByRole('combobox'), 'Alice');
+    await selectUser('Alice');
     await userEvent.type(screen.getByPlaceholderText(/enter your password/i), 'secret123');
     vi.mocked(fetch).mockResolvedValueOnce(new Response('', { status: 500 }));
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
