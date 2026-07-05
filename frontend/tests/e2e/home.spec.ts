@@ -81,6 +81,7 @@ test('navbar contains correct links (desktop)', async ({ page, isMobile }) => {
   await loginAs(page);
   await expect(page.getByRole('link', { name: 'Duties' })).toHaveAttribute('href', '/duties');
   await expect(page.getByRole('link', { name: 'Sections' })).toHaveAttribute('href', '/sections');
+  await expect(page.getByRole('link', { name: 'Devotion' })).toHaveAttribute('href', '/react/devotion');
 });
 
 test('logout clears session and redirects to login', async ({ page, isMobile }) => {
