@@ -1,0 +1,45 @@
+/* ── Devotion PDF page ──────────────────────────────────────────────────── */
+
+.devotion-pdf-page {
+  min-height: 100vh;
+  padding: var(--space-16) var(--space-4) var(--space-8);
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.pdf-viewer-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.pdf-document {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+.pdf-page {
+  max-width: 100%;
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.pdf-page canvas {
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.pdf-error {
+  color: var(--color-error, #dc2626);
+  font-weight: 500;
+  text-align: center;
+}

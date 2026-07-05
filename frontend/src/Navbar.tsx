@@ -74,6 +74,7 @@ function Navbar() {
                     <li><Link to="/duties" className="nav-link">Duties</Link></li>
                     <li><Link to="/react/devos-feedback" className="nav-link">Devos Feedback</Link></li>
                     <li><Link to="/sections" className="nav-link">Sections</Link></li>
+                    <li><Link to="/react/devotion" className="nav-link">Devotion</Link></li>
                     <li>
                         <button
                             onClick={toggleTheme}
@@ -126,6 +127,11 @@ function Navbar() {
                         <li>
                             <Link to="/sections" className="mobile-nav-link" onClick={closeMenu}>
                                 👥 Sections
+                            </Link>
+                        </li>
+                        <li>
+                            <Link to="/react/devotion" className="mobile-nav-link" onClick={closeMenu}>
+                                📖 Devotion
                             </Link>
                         </li>
                         <li>

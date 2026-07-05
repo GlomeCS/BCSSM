@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./AuthContext";
 import Home from "./Home";
@@ -9,6 +10,7 @@ import DutiesPage from "./DutiesPage";
 import Sections from "./Sections";
 import AdminPasswords from "./AdminPasswords";
 
+const DevotionPdf = lazy(() => import("./DevotionPdf"));
 
 function App() {
   return (
@@ -20,6 +22,14 @@ function App() {
         <Route path="/react/devos-feedback/edit" element={<DevoFeedbackEdit />} />
         <Route path="/duties" element={<DutiesPage />} />
         <Route path="/sections" element={<Sections />} />
+        <Route
+          path="/react/devotion"
+          element={
+            <Suspense fallback={null}>
+              <DevotionPdf />
+            </Suspense>
+          }
+        />
         <Route path="/test" element={<SimpleTest />} />
         <Route path="/admin/passwords" element={<AdminPasswords />} />
       </Routes>
