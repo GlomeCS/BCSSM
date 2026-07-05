@@ -37,7 +37,7 @@ export default function DevotionPdf() {
       <div className="devotion-pdf-page">
         <header className="page-header">
           <div className="page-header-content">
-            <h1 className="page-title">Team Devotion</h1>
+            <h1 className="page-title">Team Devotional Resource</h1>
             <p className="page-subtitle">Live in the Light</p>
           </div>
         </header>
