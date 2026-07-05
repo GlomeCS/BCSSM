@@ -47,7 +47,10 @@ export default function DevotionPdf() {
           <Document
             file={PDF_URL}
             onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-            onLoadError={() => setError("Unable to load the devotion PDF. Please try again later.")}
+            onLoadError={(loadError) => {
+              console.error("Failed to load devotion PDF:", loadError);
+              setError("Unable to load the devotion PDF. Please try again later.");
+            }}
             loading={
               <div className="loading-container">
                 <div className="loading-spinner"></div>
@@ -55,7 +58,10 @@ export default function DevotionPdf() {
             }
             className="pdf-document"
           >
-            {numPages &&
+            {numPages !== null && numPages === 0 && (
+              <p className="pdf-error">This document has no pages to display.</p>
+            )}
+            {numPages !== null &&
               Array.from({ length: numPages }, (_, i) => (
                 <Page
                   key={i + 1}

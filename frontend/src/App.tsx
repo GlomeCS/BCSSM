@@ -9,6 +9,7 @@ import DevoFeedbackEdit from "./DevoFeedbackEdit";
 import DutiesPage from "./DutiesPage";
 import Sections from "./Sections";
 import AdminPasswords from "./AdminPasswords";
+import Navbar from "./Navbar";
 
 const DevotionPdf = lazy(() => import("./DevotionPdf"));
 
@@ -25,7 +26,16 @@ function App() {
         <Route
           path="/react/devotion"
           element={
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <>
+                  <Navbar />
+                  <div className="loading-container">
+                    <div className="loading-spinner"></div>
+                  </div>
+                </>
+              }
+            >
               <DevotionPdf />
             </Suspense>
           }
