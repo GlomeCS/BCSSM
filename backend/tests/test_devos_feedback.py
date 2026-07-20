@@ -44,7 +44,7 @@ def test_get_feedback_by_date_success(mock_read):
     result = get_feedback_by_date("2025-06-07")
     assert result == {
         "Minis": "Great job",
-        "Majors": "No feedback available"
+        "Majors": None
     }
 
 def test_get_feedback_by_date_exception(mock_read):

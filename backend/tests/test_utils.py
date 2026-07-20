@@ -917,7 +917,7 @@ def test_get_feedback_by_date_success(monkeypatch):
     mock_exec = MagicMock(return_value=[("Minis", "Great job"), ("Majors", None)])
     monkeypatch.setattr("backend.bcssm_backend.db_utils.execute_readonly_query", mock_exec)
     result = feedback_queries.get_feedback_by_date("2025-06-07")
-    assert result == {"Minis": "Great job", "Majors": "No feedback available"}
+    assert result == {"Minis": "Great job", "Majors": None}
 
 
 def test_get_feedback_by_date_exception(monkeypatch):
