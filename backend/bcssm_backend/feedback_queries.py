@@ -26,7 +26,7 @@ def get_feedback_by_date(date_str):
     LEFT JOIN feedback f ON s.id = f.section_id AND f.date = :date;
     """
     feedback_rows = _db.execute_readonly_query(query, {"date": date_str})
-    return {row[0]: row[1] if row[1] is not None else "No feedback available" for row in feedback_rows}
+    return {row[0]: row[1] for row in feedback_rows}
 
 
 def save_devos_feedback(section_name: str, date_str: str, new_feedback: str, editor_id: int) -> None:

@@ -7,6 +7,8 @@ import { useAuth } from './AuthContext';
 import { useApiGet } from './hooks/useApiGet';
 import "./DevoFeedbackEdit.css";
 
+const DEFAULT_FEEDBACK_TEMPLATE = 'Praise: \nPrayer: \n';
+
 const DevoFeedbackEdit: React.FC = () => {
   const [searchParams] = useSearchParams();
   const dateStr = searchParams.get('date') || '';
@@ -25,7 +27,10 @@ const DevoFeedbackEdit: React.FC = () => {
     `/api/devos-feedback?date=${encodeURIComponent(dateStr)}&section=${encodeURIComponent(section)}`,
     {
       skip: !currentUser || missingParams,
-      transform: (raw) => (raw as { feedback?: Record<string, string> }).feedback?.[section] ?? '',
+      transform: (raw) => {
+        const value = (raw as { feedback?: Record<string, string | null> }).feedback?.[section];
+        return value && value.trim() ? value : DEFAULT_FEEDBACK_TEMPLATE;
+      },
     }
   );
 
