@@ -18,5 +18,5 @@ Flask-Cors==6.0.5
 gunicorn==26.0.0
 redis==8.1.0
 pytest-cov==7.1.0
-pylint==4.0.6
+pylint==4.0.7
 bcrypt==5.0.0
