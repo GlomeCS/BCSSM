@@ -86,23 +86,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
-          # No `cache: npm` here on purpose: this job may build an
-          # untrusted/PR-controlled commit (via head_sha), and setup-node's
-          # npm cache is keyed off package-lock.json in a scope that's
-          # shared with trusted default-branch workflows. Populating it
-          # here would let a malicious lockfile/postinstall script poison
-          # the cache that a later privileged run restores from
-          # (cache poisoning). Use a run-scoped cache below instead.
-
-      - name: Cache node_modules (run-scoped, not shared across workflows)
-        uses: actions/cache@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4
-        with:
-          path: frontend/node_modules
-          # Key is unique to this run so it can never be written by an
-          # untrusted commit and later restored by a trusted workflow.
-          key: snapshot-regen-${{ runner.os }}-${{ github.run_id }}-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            snapshot-regen-${{ runner.os }}-${{ github.run_id }}-
+          # Deliberately no cache here (npm or actions/cache): this job
+          # builds an untrusted, PR-controlled commit (head_sha), and any
+          # cache written from that build is a candidate for poisoning a
+          # later trusted/default-branch workflow run that restores it.
 
       - name: Install dependencies
         run: npm ci
