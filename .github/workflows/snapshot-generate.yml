@@ -19,8 +19,57 @@ on:
 permissions: read-all
 
 jobs:
-  generate:
+  # Validates that the supplied inputs actually correspond to the PR's
+  # current head before we do anything privileged with them. Without this,
+  # a caller could pass a head_ref that doesn't match head_sha (e.g. a
+  # protected branch) and trick the commit job into pushing there.
+  validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      verified_sha: ${{ steps.verify.outputs.sha }}
+      verified_ref: ${{ steps.verify.outputs.ref }}
+    steps:
+      - name: Verify inputs match PR head
+        id: verify
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          HEAD_REF: ${{ inputs.head_ref }}
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+
+            if (pr.state !== 'open') {
+              core.setFailed(`PR #${process.env.PR_NUMBER} is not open (state: ${pr.state})`);
+              return;
+            }
+            if (pr.head.sha !== process.env.HEAD_SHA) {
+              core.setFailed(`head_sha input (${process.env.HEAD_SHA}) does not match PR head (${pr.head.sha})`);
+              return;
+            }
+            if (pr.head.ref !== process.env.HEAD_REF) {
+              core.setFailed(`head_ref input (${process.env.HEAD_REF}) does not match PR branch (${pr.head.ref})`);
+              return;
+            }
+            if (pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              core.setFailed('PR head is from a fork; refusing to push snapshots back to a fork-owned branch.');
+              return;
+            }
+
+            core.setOutput('sha', pr.head.sha);
+            core.setOutput('ref', pr.head.ref);
+  generate:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     defaults:
@@ -31,13 +80,29 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ inputs.head_sha }}
+          ref: ${{ needs.validate.outputs.verified_sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          # No `cache: npm` here on purpose: this job may build an
+          # untrusted/PR-controlled commit (via head_sha), and setup-node's
+          # npm cache is keyed off package-lock.json in a scope that's
+          # shared with trusted default-branch workflows. Populating it
+          # here would let a malicious lockfile/postinstall script poison
+          # the cache that a later privileged run restores from
+          # (cache poisoning). Use a run-scoped cache below instead.
+
+      - name: Cache node_modules (run-scoped, not shared across workflows)
+        uses: actions/cache@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4
+        with:
+          path: frontend/node_modules
+          # Key is unique to this run so it can never be written by an
+          # untrusted commit and later restored by a trusted workflow.
+          key: snapshot-regen-${{ runner.os }}-${{ github.run_id }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            snapshot-regen-${{ runner.os }}-${{ github.run_id }}-
 
       - name: Install dependencies
         run: npm ci
@@ -54,9 +119,9 @@ jobs:
         run: |
           git add frontend/tests/e2e/snapshots/
           if git diff --staged --quiet; then
-            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload updated snapshots
@@ -68,15 +133,16 @@ jobs:
           retention-days: 1
 
   commit:
-    needs: generate
+    needs: [validate, generate]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       pull-requests: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ inputs.head_sha }}
+          ref: ${{ needs.validate.outputs.verified_ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download updated snapshots
@@ -89,8 +155,9 @@ jobs:
       - name: Commit and push
         if: needs.generate.outputs.has_changes == 'true'
         env:
-          HEAD_REF: ${{ inputs.head_ref }}
+          HEAD_REF: ${{ needs.validate.outputs.verified_ref }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add frontend/tests/e2e/snapshots/
