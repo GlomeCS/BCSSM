@@ -28,7 +28,7 @@ def _configure_database(app):
     if not all([db_user, db_password, db_host, db_name]):
         raise RuntimeError("Missing required database environment variables.")
 
-    connection_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    connection_url = f"postgresql+psycopg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
     app.config['SQLALCHEMY_DATABASE_URI'] = connection_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
