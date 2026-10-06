@@ -57,7 +57,7 @@ def test_create_app_with_valid_env_vars(clean_env, mock_db_cache):
     app = create_app()
 
     assert isinstance(app, Flask)
-    assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql://test_user:test_password@localhost:6543/test_db'
+    assert app.config['SQLALCHEMY_DATABASE_URI'] == 'postgresql+psycopg://test_user:test_password@localhost:6543/test_db'
     assert app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] is False
 
     mock_db.init_app.assert_not_called()
@@ -104,7 +104,7 @@ def test_create_app_config(clean_env, mock_db_cache, monkeypatch, env, expected_
 
     app = create_app()
 
-    expected_db_uri = f"postgresql://test_user:test_password@localhost:6543/test_db"
+    expected_db_uri = f"postgresql+psycopg://test_user:test_password@localhost:6543/test_db"
 
     assert app.config["DEBUG"] == expected_debug  # Check DEBUG mode
     assert app.config["SQLALCHEMY_DATABASE_URI"] == expected_db_uri  # Ensure correct DB URI

@@ -8,11 +8,11 @@ MarkupSafe==3.0.3
 packaging==26.3
 pluggy==1.6.0
 pytest==9.1.1
-Werkzeug==3.1.8
+Werkzeug==3.1.9
 python-dotenv==1.2.3
 flask-sqlalchemy==3.1.1
 Flask-Caching==2.5.1
-psycopg2-binary==2.9.13
+psycopg[binary]==3.3.6
 pytest-mock==3.16.0
 Flask-Cors==6.0.5
 gunicorn==26.2.0
