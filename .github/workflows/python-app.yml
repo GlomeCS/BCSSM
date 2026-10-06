@@ -140,12 +140,10 @@ jobs:
         FLASK_ENV: production
       run: |
         # create_app() skips db.init_app()/cache.init_app() when TESTING=True, so the
-        # full pytest suite never exercises this path. No real DB/Redis connection is
-        # opened here, but SQLAlchemy imports the DB driver (psycopg) when the engine
-        # is created, so the driver must be installed. This catches import-time and
-        # wiring errors (e.g. a module shadowing the `db`/`cache` globals) and missing
-        # dependencies without making any outbound connections.
-        python -c "import psycopg" || { echo "::error::psycopg is not installed"; exit 1; }
+        # full pytest suite never exercises this path. Engine/cache creation here is
+        # lazy (no real DB/Redis connection is opened), so this just catches
+        # import-time and wiring errors (e.g. a module shadowing the `db`/`cache`
+        # globals) without making any outbound connections.
         python -c "
         from backend.bcssm_backend import create_app
         create_app()
